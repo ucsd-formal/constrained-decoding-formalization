@@ -159,7 +159,7 @@ private def PartialLex_seed (spec: LexerSpec α Γ σ) (seed: Option (List (Ch �
 def PartialLex (spec: LexerSpec α Γ σ) : Lexer α Γ :=
   PartialLex_seed spec (some ([], []))
 
-theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
+lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
     (∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) → PartialLex_seed spec (some ([], [])) w = some (tokens, unlexed)) ∧
     (∀ wp ws seed_f seed_s tokens unlexed, (PartialLexRel spec wp seed_f seed_s) ∧ PartialLex_seed spec (some (seed_f, seed_s)) ws = some (tokens, unlexed) → PartialLexRel spec (wp ++ ws) tokens unlexed)
       := by
@@ -357,6 +357,22 @@ theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.
                 rw[this]
                 exact ihr
               exact append_cons wp (ExtChar.char ch) tail
+
+theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
+    ∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) ↔ PartialLex spec w = some (tokens, unlexed)
+      := by
+  intro w tokens unlexed
+  apply Iff.intro
+  . exact (PartialLex_pruned_eq_PartialLexRel_seed spec hp).left w tokens unlexed
+  . intro h
+    have : PartialLexRel spec ([] ++ w) tokens unlexed := by
+      apply (PartialLex_pruned_eq_PartialLexRel_seed spec hp).right [] w
+      constructor
+      exact PartialLexRel.nil
+      simp[PartialLex] at h
+      exact h
+    simp at this
+    exact this
 
 
 /-- Given a lexing automaton `A`, build a character-to-token lexing FST with output over `Γ`
