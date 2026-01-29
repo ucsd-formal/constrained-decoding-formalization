@@ -113,10 +113,20 @@ theorem realizableSequencesComplete [Vocabulary α β] (spec: LexerSpec α Γ σ
   sorry
 
 -- a token is accepted if and only if in the current state
--- there is a realizable sequence that starts with the token that
--- is accepted in the current state
-theorem accept_if_ComputedValidTokenMask (P : PDA Γ π σp) (fst_comp : FSTComp α Γ σa) (qp: σp) (st: List π) (qa: σa) :
-  ∀ v,
-    v ∈ (ComputeValidTokenMask P (BuildInverseTokenSpannerTable fst_comp).snd (PreprocessParser fst_comp P) qa qp st) ↔
-    v q
-    ---
+--
+theorem accept_if_ComputedValidTokenMask
+   [FinEnum (Ch β)] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+   (P : PDA Γ π σp) (spec: LexerSpec α Γ σa) (tokens: List (Token (Ch α) (Ch β))) :
+  let detok := Detokenizing.BuildDetokenizingFST tokens
+  let fst := BuildLexingFST spec
+  let comb := FST.compose detok fst
+
+  let parser := ParserWithEOS P
+
+  let pp_table := PreprocessParser comb parser
+  let ⟨_, itst⟩ := BuildInverseTokenSpannerTable comb
+  ∀ qp st qa t,
+    t ∈ (ComputeValidTokenMask parser itst pp_table qa qp st) ↔
+    ∃ ts qa' gammas,
+      comb.evalFrom qa (t :: ts) = some (qa', gammas) ∧
+      gammas ∈ parser.acceptsFrom qp st := by sorry

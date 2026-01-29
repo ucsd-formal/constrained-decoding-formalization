@@ -42,21 +42,61 @@ theorem evalFrom_cons (s : σ) (x : α) (xs : List α) (h : (A.step s x).isSome)
   obtain ⟨a, h_s⟩ := h
   simp_all only [evalFrom, Option.get_some]
 
-
+theorem evalFrom_append (s : σ) (xs ys : List α) : A.evalFrom s (xs ++ ys) =
+  match A.evalFrom s xs with
+  | none => none
+  | some t => (A.evalFrom t ys) := by
+  induction xs generalizing s
+  case nil => simp [evalFrom]
+  case cons head tail ih =>
+    cases h : A.step s head with
+    | none => simp [evalFrom, h]
+    | some sp =>
+      simp[evalFrom, h, ih]
 
 @[simp]
 def eval : List α → Option σ :=
   A.evalFrom A.start
 
 def acceptsFrom (s : σ) : Language α :=
-  { w | ∃ f ∈ A.evalFrom s w, f ∈ A.accept }
+  { w | ∃ f, A.evalFrom s w = some f ∧ f ∈ A.accept }
 
 def accepts : Language α := A.acceptsFrom A.start
 
-
-
 def prefixLanguage : Language α :=
   {x | ∃ y, x ++ y ∈ A.accepts }
+
+def pruned : Prop :=
+  ∀ σ, ∃ w f, some f = A.evalFrom σ w ∧ f ∈ A.accept
+
+def intermediateLanguage : Language α :=
+  {w | A.eval w ≠ none }
+
+def pruned_prefixLanguage (h : A.pruned) : A.intermediateLanguage = A.prefixLanguage := by
+  ext w
+  simp[intermediateLanguage, prefixLanguage]
+  constructor
+  . intro h1
+    cases h3: A.evalFrom A.start w with
+    | none =>
+      have : ¬A.evalFrom A.start w = none := h1
+      contradiction
+    | some s =>
+      simp[pruned] at h
+      have ⟨u, f, hf1, hf2⟩ := h s
+      exists u
+      exists f
+      simp[h3, accepts, acceptsFrom, evalFrom_append, hf1, hf2]
+  . intro h1
+    let dst := A.eval w
+    simp[accepts, acceptsFrom] at h1
+    have ⟨f, hf1, hf2⟩ := h1
+    simp[evalFrom_append] at hf2
+    cases h3: A.evalFrom A.start w with
+    | none => simp[h3] at hf2
+    | some s =>
+      have : ¬A.evalFrom A.start w = none := by simp[h3]
+      exact this
 
 def isPrefix (w : List α) : Prop := w ∈ A.prefixLanguage
 
@@ -328,8 +368,82 @@ def evalFrom (s : σ) (l : List α) : Option (σ × List Γ) :=
       | none => none
       | some (s'', T) => (s'', S ++ T)
 
+/-- retain this version for comparison with lexers, which typically use foldl -/
+def evalFrom_fold_step (acc: Option (σ × List Γ)) (a : α) : Option (σ × List Γ) :=
+  match acc with
+  | none => none
+  | some (s', ts) =>
+    match M.step s' a with
+    | none => none
+    | some (s'', S) => some (s'', ts ++ S)
+
+def evalFrom_seed (s : σ) (l : List α) (seed: List Γ) :=
+      match M.evalFrom s l with
+      | none => none
+      | some (s', S) => some (s', seed ++ S)
+
+def evalFrom_fold_seed (s: σ) (l: List α) (seed: List Γ) : Option (σ × List Γ) :=
+  List.foldl M.evalFrom_fold_step (some (s, seed)) l
+
+def evalFrom_fold (s: σ) (l: List α) : Option (σ × List Γ) :=
+  M.evalFrom_fold_seed s l []
+
 def eval (input : List α) : Option (σ × List Γ) :=
   M.evalFrom M.start input
+
+def eval_fold (input : List α) : Option (σ × List Γ) :=
+  M.evalFrom_fold M.start input
+
+def evalFrom_fold_seed_eq_evalFrom_seed (s : σ) (l : List α) (seed: List Γ) :
+    M.evalFrom_fold_seed s l seed = M.evalFrom_seed s l seed := by
+  induction l generalizing s seed
+  case nil =>
+    simp [evalFrom_seed, evalFrom, evalFrom_fold_seed, evalFrom_fold]
+  case cons head tail ih =>
+    cases hc: M.evalFrom_fold_step (some (s, seed)) head
+    simp_all[evalFrom_fold_step]
+    .
+      cases hs: M.step s head
+      <;> simp[hs] at hc
+      simp [evalFrom_seed, evalFrom, evalFrom_fold_seed, evalFrom_fold, hs]
+      simp[evalFrom_fold_step, hs]
+      exact List.foldl_fixed' (congrFun rfl) tail
+    case some sp =>
+      have ⟨q', seed'⟩ := sp
+      simp[evalFrom_fold_seed, hc]
+      have : M.evalFrom_seed s (head :: tail) seed = M.evalFrom_seed q' tail seed' := by
+        simp[evalFrom_seed]
+        rw[evalFrom]
+        simp[evalFrom_fold_step] at hc
+        cases hs: M.step s head
+        <;> simp[hs] at hc
+        rename_i step_contr
+        simp[hc]
+        cases M.evalFrom q' tail with
+        | none => simp
+        | some r =>
+          simp[hc.left]
+          rw[←List.append_assoc]
+          simp[hc]
+      simp[this]
+      have ih' := ih q' seed'
+      simp[evalFrom_fold_seed] at ih'
+      exact ih'
+
+def evalFrom_fold_eq_evalFrom (s : σ) (l : List α) :
+    M.evalFrom_fold s l = M.evalFrom s l := by
+  have := evalFrom_fold_seed_eq_evalFrom_seed M s l []
+  have g :  M.evalFrom_fold_seed s l [] = M.evalFrom_fold s l := by
+    simp [evalFrom_fold]
+  rw[←g]
+  simp[this]
+  simp[evalFrom_seed]
+  cases M.evalFrom s l
+  <;> simp_all
+
+def eval_fold_eq_eval (l : List α) :
+    M.eval_fold l = M.eval l := by
+  exact evalFrom_fold_eq_evalFrom M M.start l
 
 @[simp]
 theorem evalFrom_nil (s : σ) : M.evalFrom s [] = some (s, []) := rfl
