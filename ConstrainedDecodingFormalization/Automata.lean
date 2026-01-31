@@ -63,9 +63,15 @@ def acceptsFrom (s : σ) : Language α :=
 
 def accepts : Language α := A.acceptsFrom A.start
 
+def accepts_iff {w : List α} : w ∈ A.accepts ↔
+  ∃ f, A.evalFrom A.start w = some f ∧ f ∈ A.accept := by
+  simp [accepts, acceptsFrom]
+  rw[Set.mem_setOf]
+
 def prefixLanguage : Language α :=
   {x | ∃ y, x ++ y ∈ A.accepts }
 
+-- no dead states
 def pruned : Prop :=
   ∀ σ, ∃ w f, some f = A.evalFrom σ w ∧ f ∈ A.accept
 
@@ -368,6 +374,11 @@ def evalFrom (s : σ) (l : List α) : Option (σ × List Γ) :=
       | none => none
       | some (s'', T) => (s'', S ++ T)
 
+def evalFrom_seed (s : σ) (l : List α) (seed: List Γ) :=
+      match M.evalFrom s l with
+      | none => none
+      | some (s', S) => some (s', seed ++ S)
+
 /-- retain this version for comparison with lexers, which typically use foldl -/
 def evalFrom_fold_step (acc: Option (σ × List Γ)) (a : α) : Option (σ × List Γ) :=
   match acc with
@@ -377,20 +388,29 @@ def evalFrom_fold_step (acc: Option (σ × List Γ)) (a : α) : Option (σ × Li
     | none => none
     | some (s'', S) => some (s'', ts ++ S)
 
-def evalFrom_seed (s : σ) (l : List α) (seed: List Γ) :=
-      match M.evalFrom s l with
-      | none => none
-      | some (s', S) => some (s', seed ++ S)
+@[simp]
+lemma evalFrom_nil_seed (s : σ) (l : List α) :
+    M.evalFrom_seed s l [] = M.evalFrom s l := by
+  simp [evalFrom_seed, List.append_nil]
+  split <;> simp_all
 
 def evalFrom_fold_seed (s: σ) (l: List α) (seed: List Γ) : Option (σ × List Γ) :=
   List.foldl M.evalFrom_fold_step (some (s, seed)) l
 
+@[simp]
+lemma evalFrom_fold_seed_nil (l : List α) :
+  List.foldl M.evalFrom_fold_step none l = none := by
+  exact List.foldl_fixed' (congrFun rfl) l
+
+@[simp]
 def evalFrom_fold (s: σ) (l: List α) : Option (σ × List Γ) :=
   M.evalFrom_fold_seed s l []
 
+@[simp]
 def eval (input : List α) : Option (σ × List Γ) :=
   M.evalFrom M.start input
 
+@[simp]
 def eval_fold (input : List α) : Option (σ × List Γ) :=
   M.evalFrom_fold M.start input
 
@@ -407,7 +427,6 @@ def evalFrom_fold_seed_eq_evalFrom_seed (s : σ) (l : List α) (seed: List Γ) :
       <;> simp[hs] at hc
       simp [evalFrom_seed, evalFrom, evalFrom_fold_seed, evalFrom_fold, hs]
       simp[evalFrom_fold_step, hs]
-      exact List.foldl_fixed' (congrFun rfl) tail
     case some sp =>
       have ⟨q', seed'⟩ := sp
       simp[evalFrom_fold_seed, hc]
@@ -437,9 +456,6 @@ def evalFrom_fold_eq_evalFrom (s : σ) (l : List α) :
     simp [evalFrom_fold]
   rw[←g]
   simp[this]
-  simp[evalFrom_seed]
-  cases M.evalFrom s l
-  <;> simp_all
 
 def eval_fold_eq_eval (l : List α) :
     M.eval_fold l = M.eval l := by
@@ -504,8 +520,6 @@ def transducesTo (w : List α) (v : List Γ) : Prop :=
     ((M.eval w).get h).2 = v ∧ ((M.eval w).get h).1 ∈ M.accept
   else
     False
-
-
 
 lemma reject_none {x : List α} (h : (M.eval x).isNone) : x ∉ M.accepts := by
   simp only [Option.isNone_iff_eq_none] at h
@@ -1350,23 +1364,7 @@ def mkStep (transitions : List (σ × α × (Option σ × List Γ))) : σ → α
 
 -/
 
-
 end FST
-
--- same as FST, but Option α allows for ε-transitions
-structure εFST (α Γ σ) where
-  alph : List α
-  oalph : List Γ
-  states : List σ
-  start : σ
-  step : σ → Option α → (Option σ × List Γ)
-  accept : List σ
-
-namespace εFST
-
-
-end εFST
-
 
 instance [DecidableEq σ] : Coe (FSA α σ) (NFA α σ) := ⟨fun fsa => fsa.toNFA⟩
 
