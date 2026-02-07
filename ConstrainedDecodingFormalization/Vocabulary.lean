@@ -1,7 +1,7 @@
-class Vocabulary ( α: Type u ) ( β: Type v ) [ BEq α ] [ BEq β ] where
+class Vocabulary ( α: Type u ) ( β: Type v ) [ BEq α ] where
   flatten : β → List α
   embed: α → β
-  eos: β
 
+  -- singleton assumption
   fe: ∀ a, flatten (embed a) = [a]
-  empty: ∀ b, flatten b = [] ↔ b = eos
+  empty: ∀ b, flatten b ≠ []

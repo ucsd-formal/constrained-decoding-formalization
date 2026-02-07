@@ -5,26 +5,23 @@ import Mathlib.Computability.Language
 import Mathlib.Data.Set.Defs
 import Mathlib.Data.Set.Basic
 import Mathlib.Data.List.Basic
+import Mathlib.Data.List.Flatten
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fintype.Basic
 import Mathlib.Data.Fintype.Sum
 import Mathlib.Tactic.Linarith
 
-import ConstrainedDecodingFormalization.RegularExpressionsToEpsilonNFA
 import ConstrainedDecodingFormalization.Automata
+import ConstrainedDecodingFormalization.Vocabulary
 
-open List RegularExpression
+open List
 
 universe u v w
 
-abbrev RE := RegularExpression
-
 variable
   {α : Type u} {Γ : Type v} {σ : Type w}
-  [DecidableEq α] [DecidableEq σ] [DecidableEq Γ]
-  [BEq α] [BEq σ] [LawfulBEq σ] [LawfulBEq α]
-  [Inhabited α] [Inhabited Γ]
-  [Fintype α] [Fintype σ] [Fintype Γ]
+  [DecidableEq α] [DecidableEq σ]
+  [BEq α] [BEq σ] [LawfulBEq σ]
 
 /-- Extend character alphabet with EOS symbol-/
 inductive ExtChar (α : Type u)
@@ -58,21 +55,11 @@ instance [e: FinEnum α] : FinEnum (ExtChar α) where
         · have : i = FinEnum.card α := by
             linarith
           subst this
-          simp [h]
+          simp
       }
   decEq := by infer_instance
 
 abbrev Ch := ExtChar
-
-variable (P : RE (Ch α))
-
-@[ext]
-structure Terminal (α : Type u) (Γ : Type v)  where
-  expr : RegularExpression α
-  symbol : Γ
-deriving Repr
-
-def LexingFSA := P.toεNFA.toNFA
 
 @[ext]
 structure Token (α : Type u) (Γ : Type v) where
@@ -205,13 +192,14 @@ def LexingState.src {σ : Type w} (spec: LexerSpec α Γ σ) : LexingState σ �
 | LexingState.start => spec.automaton.start
 
 @[simp]
-lemma LexingState_src_id {σ : Type w} (spec: LexerSpec α Γ σ) (s : σ) :
+def LexingState_src_id [DecidableEq α] [BEq α]{σ : Type w} (spec: LexerSpec α Γ σ) (s : σ) :
   LexingState.src spec (LexingState.id s) = s := by
   simp[LexingState.src]
 
+
 /-- Given a lexing automaton `A`, build a character-to-token lexing FST with output over `Γ`
     For the lexing FSA, we'll use the convention that each terminal symbol is attached to an accept state (see Fig. 1) -/
-def BuildLexingFST (spec: LexerSpec α Γ σ) :
+def BuildLexingFST [BEq α] [DecidableEq α] (spec: LexerSpec α Γ σ) :
     FST (Ch α) (Ch Γ) (LexingState σ) := Id.run do
   let ⟨A, term, hterm, _⟩ := spec
 
@@ -245,6 +233,7 @@ def BuildLexingFST (spec: LexerSpec α Γ σ) :
 def LexingFST_start (spec: LexerSpec α Γ σ) : (BuildLexingFST spec).start = LexingState.start := by
   simp[BuildLexingFST, Id.run]
 
+omit [DecidableEq α] [DecidableEq σ] [BEq α] in
 lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
     (∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) → PartialLex_seed spec (some ([], [])) w = some (tokens, unlexed)) ∧
     (∀ wp ws seed_f seed_s tokens unlexed, (PartialLexRel spec wp seed_f seed_s) ∧ PartialLex_seed spec (some (seed_f, seed_s)) ws = some (tokens, unlexed) → PartialLexRel spec (wp ++ ws) tokens unlexed)
@@ -254,17 +243,17 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
     intro w tokens unlexed h
     induction h
     case nil =>
-      simp[PartialLex, PartialLex_seed, PartialLex_trans]
+      simp[PartialLex_seed]
     case step_nil_eos w wn tokens ih wwn h hacc =>
-      simp[PartialLex, PartialLex_seed, PartialLex_trans] at hacc ⊢
+      simp[PartialLex_seed] at hacc ⊢
       simp[wwn, hacc, PartialLex_trans]
       exact h
     case step_eos w wn tokens unlexed ih wwn h hacc =>
-      simp[PartialLex, PartialLex_seed, PartialLex_trans] at hacc ⊢
+      simp[PartialLex_seed] at hacc ⊢
       simp[wwn, hacc, PartialLex_trans]
       simp[h]
     case step_char_continue w wn tokens unlexed ch ih wwn h hacc =>
-      simp[PartialLex, PartialLex_seed, PartialLex_trans] at hacc ⊢
+      simp[PartialLex_seed] at hacc ⊢
       simp[wwn, hacc, PartialLex_trans]
       cases he: spec.automaton.eval (unlexed ++ [ch]) with
       | none =>
@@ -275,13 +264,13 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
         simp at he
         simp[he]
     case step_char_commit w wn tokens unlexed ch ih wwn hni hc_pfx ht hacc =>
-      simp[PartialLex, PartialLex_seed, PartialLex_trans] at hacc ⊢
+      simp[PartialLex_seed] at hacc ⊢
       simp[wwn, hacc, PartialLex_trans]
       cases he: spec.automaton.eval (unlexed ++ [ch]) with
       | none =>
         simp[FSA.eval] at he
         simp[he]
-        simp[LexerSpec.accept_seq_term, FSA.accepts, FSA.acceptsFrom] at ht
+        simp[FSA.accepts, FSA.acceptsFrom] at ht
         split
         <;> simp_all
         rw[Set.mem_setOf] at ht
@@ -299,7 +288,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
         simp[heq'] at ht
         exists ht
         rename_i ht' _ _
-        simp[heq', LexerSpec.accept_seq_term, FSA.accepts, FSA.acceptsFrom]
+        simp[heq', LexerSpec.accept_seq_term]
       | some σ' =>
         have : spec.automaton.evalFrom spec.automaton.start (unlexed ++ [ch]) = none := by
           simp[←hprune] at hni
@@ -311,8 +300,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
 
   constructor
   . exact left
-  . intro wp ws seed_f seed_s tokens unlexed
-    intro h
+  . intro wp ws seed_f seed_s tokens unlexed h
     induction ws generalizing wp seed_f seed_s
     case nil =>
       simp[PartialLex_seed] at h
@@ -421,7 +409,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
             cases ha : spec.automaton.evalFrom spec.automaton.start seed_s with
             | none => simp[hp, ha] at hns
             | some σ =>
-              simp_all[hp, ha]
+              simp_all
               cases hbo : spec.automaton.eval [ch]
               . simp at hbo
                 simp[hbo] at hns
@@ -468,9 +456,9 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
                   have ⟨⟨_, hseed⟩, ht'⟩ := hns.right
                   apply ihr
                   apply PartialLexRel.step_char_commit h.left
-                  simp[PartialLex_seed]
+                  simp
                   exact hpfx
-                  simp[PartialLex_seed, new_tokens, new_unlexed, hns]
+                  simp[hns]
                   simp_all
                   simp[term] at ht
                   simp[ht] at hseed
@@ -486,6 +474,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
                   exact ihr
                 exact append_cons wp (ExtChar.char ch) tail
 
+omit [DecidableEq α] [DecidableEq σ] [BEq α] in
 theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
     ∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) ↔ PartialLex spec w = some (tokens, unlexed)
       := by
@@ -518,7 +507,7 @@ private def FSA_ch_to_LexingFST (spec: LexerSpec α Γ σ) :
     case h_2 s => simp at h
   case cons hd tl ih =>
     simp[FSA.evalFrom]
-    simp[FST.eval, FST.evalFrom] at h
+    simp at h
     cases hstep : spec.automaton.step (LexingState.src spec q) hd
     . simp[FST.evalFrom]
       nth_rewrite 1 [BuildLexingFST, Id.run]
@@ -577,7 +566,7 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
     intro h₀ h₁ h₂ h₃
     have h₂_fsa : spec.automaton.evalFrom spec.automaton.start seed_wr = some (LexingState.src spec q') := by
       by_cases hempty : seed_wr = []
-      . simp[hempty, h₃]
+      . simp[hempty]
         have := h₃.mp hempty
         simp[LexingState.src, this]
       . have : q' ≠ LexingState.start := by
@@ -589,7 +578,7 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
         simp[LexingState.src] at hbase ⊢
         cases q' <;> simp_all
 
-    simp[FST.eval, FST.eval_fold, FST.evalFrom_fold, FST.evalFrom_fold_seed]
+    simp[FST.evalFrom_fold_seed]
     rw[←FST.eval_fold_eq_eval] at h₂
     simp[FST.eval_fold, FST.evalFrom_fold] at h₂
   )
@@ -637,7 +626,7 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
           simp[haq', this]
 
         have hlex_wp_step : (BuildLexingFST spec).eval (wp ++ [head]) = some (LexingState.start, seed_ts ++ [.char produced_token, ExtChar.eos]) := by
-          simp[FST.evalFrom, FST.eval] at h₁ ⊢
+          simp[FST.eval] at h₁ ⊢
           rw[←FST.evalFrom_fold_eq_evalFrom] at h₁ ⊢
           simp[FST.evalFrom_fold, FST.evalFrom_fold_seed] at h₁ ⊢
           rw[h₁]
@@ -664,7 +653,7 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
         . simp at hempty
           have hlex_trans :
             (BuildLexingFST spec).evalFrom_fold_step (some (q', seed_ts)) head = some (LexingState.start, seed_ts ++ [ExtChar.eos]) := by
-            simp[FST.evalFrom, FST.eval] at h₁ ⊢
+            simp[FST.eval] at h₁ ⊢
             rw[←FST.evalFrom_fold_eq_evalFrom] at h₁
             simp[FST.evalFrom_fold, FST.evalFrom_fold_seed] at h₁ ⊢
             simp[FST.evalFrom_fold_step, BuildLexingFST, Id.run, hh]
@@ -678,7 +667,7 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
             simp[h_q0_na]
 
           have hlex_wp_step : (BuildLexingFST spec).eval (wp ++ [head]) = some (LexingState.start, seed_ts ++ [ExtChar.eos]) := by
-            simp[FST.evalFrom, FST.eval] at h₁ ⊢
+            simp[FST.eval] at h₁ ⊢
             rw[←FST.evalFrom_fold_eq_evalFrom] at h₁ ⊢
             simp[FST.evalFrom_fold, FST.evalFrom_fold_seed] at h₁ ⊢
             rw[h₁]
@@ -717,7 +706,7 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
             simp[hq', h₂_fsa] at haccept
             simp[haccept]
 
-          simp[hq', haccept, h₂_fsa, hlex_step]
+          simp[hlex_step]
     case char ch =>
       cases hstep : spec.automaton.step (LexingState.src spec q') ch
       case none =>
@@ -733,19 +722,19 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
             have : PartialLex_trans spec (some (seed_ts, seed_wr)) (ExtChar.char ch) = none := by
               simp[PartialLex_trans]
               simp[FSA.evalFrom_append]
-              simp[h₂_fsa, hh, hstep, haccept]
+              simp[h₂_fsa, haccept]
               simp[FSA.evalFrom, hstep]
               simp[hch]
             simp[this]
             have : ((BuildLexingFST spec).evalFrom_fold_step (some (q', seed_ts)) (ExtChar.char ch)) = none := by
               simp[BuildLexingFST, Id.run, FST.evalFrom_fold_step]
-              simp[hh, hch, hstep, haccept]
+              simp[hch, hstep, haccept]
             simp[this]
           case some qnext =>
             have hplex_step : PartialLex_trans spec (some (seed_ts, seed_wr)) (ExtChar.char ch) = some (seed_ts ++ [ExtChar.char unwrapped], [ch]) := by
-              simp[PartialLex_trans, hh]
+              simp[PartialLex_trans]
               simp[FSA.evalFrom_append]
-              simp[h₂_fsa, hh, haccept]
+              simp[h₂_fsa, haccept]
               simp[FSA.evalFrom, hstep]
               simp[unwrapped, term, qsrc]
               simp[hch]
@@ -758,11 +747,11 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
 
             have hlex_wp_step : (BuildLexingFST spec).evalFrom_fold_step (some (q', seed_ts)) (ExtChar.char ch) = some (LexingState.id qnext, seed_ts ++ [ExtChar.char unwrapped]) := by
               simp[FST.evalFrom_fold_step, BuildLexingFST, Id.run]
-              simp[h₂_fsa, hstep, haccept]
+              simp[hstep, haccept]
               simp[hch, unwrapped, term, qsrc]
 
             have hlex_wp_trans : (BuildLexingFST spec).eval (wp ++ [head]) = some (LexingState.id qnext, seed_ts ++ [ExtChar.char unwrapped]) := by
-              simp[FST.evalFrom, FST.eval] at h₁ ⊢
+              simp[FST.eval] at h₁ ⊢
               rw[←FST.evalFrom_fold_eq_evalFrom] at h₁ ⊢
               simp[FST.evalFrom_fold, FST.evalFrom_fold_seed] at h₁ ⊢
               rw[h₁]
@@ -773,27 +762,27 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
               simp[BuildLexingFST, Id.run, FST.eval, FST.evalFrom]
               simp[LexingState.src, hch]
 
-            have ih := ih (wp ++ [head]) (LexingState.id qnext) (seed_ts ++ [ExtChar.char unwrapped]) [ch] hplex_trans hlex_wp_trans lex_wr_step (by simp[hh])
+            have ih := ih (wp ++ [head]) (LexingState.id qnext) (seed_ts ++ [ExtChar.char unwrapped]) [ch] hplex_trans hlex_wp_trans lex_wr_step (by simp)
             rw[hplex_step]
             rw[hlex_wp_step]
             unfold FST.evalFrom_fold_seed at ih
             exact ih
         case neg =>
           have : PartialLex_trans spec (some (seed_ts, seed_wr)) (ExtChar.char ch) = none := by
-            simp[PartialLex_trans, hh]
+            simp[PartialLex_trans]
             simp[FSA.evalFrom_append]
             simp[h₂_fsa, FSA.evalFrom, hstep, haccept]
           simp[this]
           have : ((BuildLexingFST spec).evalFrom_fold_step (some (q', seed_ts)) (ExtChar.char ch)) = none := by
             simp[BuildLexingFST, Id.run, FST.evalFrom_fold_step]
-            simp[hh, hstep, haccept]
+            simp[hstep, haccept]
           simp[this]
       case some dst =>
         -- both will effectively take the transition specified by automata
         have hplex_step : PartialLex_trans spec (some (seed_ts, seed_wr)) (ExtChar.char ch) = some (seed_ts, seed_wr ++ [ch]) := by
-          simp[PartialLex_trans, hh]
+          simp[PartialLex_trans]
           simp[FSA.evalFrom_append]
-          simp[h₂_fsa, hh]
+          simp[h₂_fsa]
           simp[FSA.evalFrom, hstep]
 
         have hplex_trans : PartialLex spec (wp ++ [head]) = some (seed_ts, seed_wr ++ [ch]) := by
@@ -804,10 +793,10 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
 
         have hlex_wp_step : (BuildLexingFST spec).evalFrom_fold_step (some (q', seed_ts)) (ExtChar.char ch) = some (LexingState.id dst, seed_ts) := by
           simp[FST.evalFrom_fold_step, BuildLexingFST, Id.run]
-          simp[h₂_fsa, hstep]
+          simp[hstep]
 
         have hlex_wp_trans : (BuildLexingFST spec).eval (wp ++ [head]) = some (LexingState.id dst, seed_ts) := by
-          simp[FST.evalFrom, FST.eval] at h₁ ⊢
+          simp[FST.eval] at h₁ ⊢
           rw[←FST.evalFrom_fold_eq_evalFrom] at h₁ ⊢
           simp[FST.evalFrom_fold, FST.evalFrom_fold_seed] at h₁ ⊢
           rw[h₁]
@@ -821,7 +810,7 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
           rw[h₂]
           simp[BuildLexingFST, Id.run, hstep]
 
-        have ih := ih (wp ++ [head]) (LexingState.id dst) seed_ts (seed_wr ++ [ch]) hplex_trans hlex_wp_trans lex_wr_step (by simp[hh])
+        have ih := ih (wp ++ [head]) (LexingState.id dst) seed_ts (seed_wr ++ [ch]) hplex_trans hlex_wp_trans lex_wr_step (by simp)
         rw[hplex_step]
         rw[hlex_wp_step]
         unfold FST.evalFrom_fold_seed at ih
@@ -842,7 +831,7 @@ theorem PartialLex_to_LexingFST (spec: LexerSpec α Γ σ) (he: [] ∉ spec.auto
   have := this [] w new_q0 [] []
   have := this rfl
   have := this (by simp[FST.eval, fst, new_q0]) (by simp[FST.eval, fst, new_q0]) (by simp[new_q0, fst])
-  simp[PartialLex, fst] at this ⊢
+  simp[PartialLex] at this ⊢
   rw[FST.evalFrom_fold_seed_eq_evalFrom_seed] at this
   simp[FST.evalFrom_seed] at this
   split
@@ -913,75 +902,388 @@ theorem LexingFST_to_PartialLexRel (spec: LexerSpec α Γ σ) (he: [] ∉ spec.a
     simp only [hpl, heq] at hrel
     simp[hrel]
 
+lemma LexingFst_smallStep (spec: LexerSpec α Γ σ) :
+  ∀ q a q' terminals,
+    (BuildLexingFST spec).step q a = some (q', terminals) →
+    terminals = [] ∨ (∃ t, terminals = [t]) ∨ (a = ExtChar.eos ∧ ∃ t, terminals = [ExtChar.char t, ExtChar.eos]) := by
+  intro q a q' terminals h
+  simp[BuildLexingFST, Id.run] at h
+  split at h <;> split at h <;> simp_all
+  have ⟨ha, _, pf⟩ := h
+  apply Or.inr
+  have pf := pf.right.right
+  rw[←pf]
+  simp
+  apply Or.inr
+  apply Or.inr
+  rw[←h.right]
+  simp
+  apply Or.inr
+  simp[←h.right]
+
+
 namespace Detokenizing
 
 universe x
 variable { V : Type x }
 variable [BEq V]
 
-def BuildDetokenizingFST (tokens: List (Token α V)) : FST V α Unit :=
-  let step := fun _ s =>
-    match tokens.find? λ t => t.symbol == s with
-    | some t => (Unit.unit, t.string)
-    | none => none
-
+def BuildDetokenizingFST [v: Vocabulary α V] : FST V α Unit :=
+  let step := fun _ s => some (Unit.unit, v.flatten s)
   FST.mk Unit.unit step [Unit.unit]
 
-def detokenize (tokens: List (Token α V)) (w : List V) : Option (List α) :=
+def detokenize [v: Vocabulary α V] (w : List V) : List α :=
   match w with
-  | [] => some []
-  | w' :: ws =>
-    match tokens.find? λ t => t.symbol == w' with
-    | some t => do
-      let res ← detokenize tokens ws
-      t.string ++ res
-    | none => none
+  | [] => []
+  | w' :: ws => v.flatten w' ++ detokenize ws
 
-theorem detokenizerFST_eq_detokenizer  ( tokens : List (Token α V)) :
-  ∀ ( w : List V ), detokenize tokens w = ((BuildDetokenizingFST tokens).eval w).map Prod.snd := by
-  intro w
-  have lem : ∀ w, detokenize tokens w = ((BuildDetokenizingFST tokens).evalFrom Unit.unit w).map Prod.snd := by
-    intro w
-    induction w
-    case nil =>
-      simp[detokenize, BuildDetokenizingFST, FST.evalFrom]
-    case cons head tail ih =>
-      simp[FST.eval, FST.evalFrom, detokenize]
-      split <;> simp_all
-      case h_1 =>
-        rename_i tt heq
-        conv =>
-          pattern (BuildDetokenizingFST tokens).step 0 head
-          simp[BuildDetokenizingFST]
-        simp[heq]
-        split <;> simp_all
-      case h_2 =>
-        rename_i tt heq
-        conv =>
-          pattern (BuildDetokenizingFST tokens).step 0 head
-          simp[BuildDetokenizingFST]
-        have h : tokens.find? (λ t => t.symbol == head) = none := by
-          apply List.find?_eq_none.mpr
-          intro x hx
-          rw [heq x hx]
-          trivial
-        rw[h]
-        simp
-  exact lem w
+omit [DecidableEq α] [BEq V] in
+lemma detokenize_flatmap [v: Vocabulary α V] (w : List V) :
+  detokenize (v := v) w = (w.flatMap (fun big => v.flatten big)) := by
+  induction w
+  case nil => simp[detokenize, List.flatMap]
+  case cons head tail ih =>
+    simp[detokenize, List.flatMap]
+    simp[ih]
+    rfl
 
-theorem detokenizer_comp { σ0 } ( tokens : List (Token α V)) (f : FST α Γ σ0) :
-  ∀ w, ((FST.compose (BuildDetokenizingFST tokens) f).eval w).map Prod.snd =
-    match detokenize tokens w with
-    | some u => (f.eval u).map Prod.snd
-    | none => none := by
+omit [DecidableEq α] [BEq V] in
+lemma detokenize_app [v: Vocabulary α V] (s1 s2 : List V) :
+  detokenize (v := v) (s1 ++ s2) = detokenize (v := v) s1 ++ detokenize (v := v) s2 := by
+  induction s1
+  case nil => simp[detokenize]
+  case cons head tail ih =>
+    simp[detokenize, List.append_assoc]
+    rw[←ih]
+
+omit [DecidableEq α] [BEq V] in
+theorem detokenizerFST_eq_detokenizer [v: Vocabulary α V] :
+  ∀ ( w : List V ), some ((Unit.unit, detokenize w,)) = (BuildDetokenizingFST (v := v)).eval w := by
   intro w
-  have := FST.compose_correct (BuildDetokenizingFST tokens) f w
+  induction w
+  case nil =>
+    simp[detokenize, BuildDetokenizingFST, FST.evalFrom]
+  case cons head tail ih =>
+    simp[FST.eval, FST.evalFrom, detokenize]
+    conv =>
+      pattern BuildDetokenizingFST.step BuildDetokenizingFST.start head
+      simp[BuildDetokenizingFST]
+    simp at ih ⊢
+    conv at ih =>
+      pattern (BuildDetokenizingFST).start
+      simp[BuildDetokenizingFST]
+    cases h : (BuildDetokenizingFST (v := v)).evalFrom () tail
+    <;> rw[h] at ih
+    simp at ih
+    simp at ih ⊢
+    rename_i val
+    let ⟨_, tail⟩ := val
+    simp at ih ⊢
+    exact ih
+
+omit [DecidableEq α] [BEq V] in
+lemma detokenizer_comp_step [v: Vocabulary α V] { σ0 } (f : FST α Γ σ0) (q: σ0) :
+  ∀ a, ((FST.compose (BuildDetokenizingFST (v := v)) f).step (Unit.unit, q) a) =
+    (f.evalFrom q (v.flatten a)).map (fun (q, out) => ((Unit.unit, q), out)) := by
+  intro a
+  simp[FST.compose, FST.compose_fun_step, BuildDetokenizingFST]
+  split <;> simp_all
+
+omit [DecidableEq α] [BEq V] in
+theorem detokenizer_comp [v: Vocabulary α V] { σ0 } (f : FST α Γ σ0) (q: σ0) :
+  ∀ w, ((FST.compose (BuildDetokenizingFST (v := v)) f).evalFrom (Unit.unit, q) w) =
+    (f.evalFrom q (detokenize (v := v) w)).map (fun (q, out) => ((Unit.unit, q), out)) := by
+  intro w
+  have := FST.compose_correct (BuildDetokenizingFST (v := v)) f w Unit.unit q
   rw[this]
-  simp[FST.compose_fun_eval, FST.compose_fun_evalFrom]
-  rw[detokenizerFST_eq_detokenizer]
-  simp[FST.eval]
-  cases h : (BuildDetokenizingFST tokens).evalFrom (BuildDetokenizingFST tokens).start w with
-  | some u =>
-    simp_all[h, Option.map, Prod.snd]
-    cases f.evalFrom f.start u.2 <;> simp_all
-  | none => simp_all
+  simp[FST.compose_fun_evalFrom]
+  have := detokenizerFST_eq_detokenizer (v := v) w
+  simp at this
+  rw[←this]
+  simp
+  simp[Option.map]
+  split
+  <;> simp_all
+
+-- if two words detokenize to the same thing, then their compositions with any fst are equal
+omit [DecidableEq α] [BEq V] in
+theorem detokenize_eq_comp [v: Vocabulary α V] { σ0 } (w1: List V) (w2: List V) (f : FST α Γ σ0) (q: σ0) :
+  detokenize (v := v) w1 = detokenize (v := v) w2 → (FST.compose (BuildDetokenizingFST (v := v) ) f).evalFrom (Unit.unit, q) w1 = (FST.compose (BuildDetokenizingFST (v := v)) f).evalFrom (Unit.unit, q) w2 := by
+  intro h
+  have hw1 := detokenizer_comp (v := v) f q w1
+  have hw2 := detokenizer_comp (v := v) f q w2
+  rw[←h] at hw2
+  cases hd : detokenize (v := v) w1
+  <;> simp[hd] at hw1 hw2
+  <;> simp[hw1, hw2]
+
+-- via the singleton assumption on the vocabulary, this means
+-- that if something is realizable, it is realizable via singletons
+omit [DecidableEq α] [BEq V] in
+theorem detokenize_singleton [v: Vocabulary α V] { σ0 } (f: FST α Γ σ0) (q: σ0) :
+  ∀ ( w : List V ), ∃ ( ws : List V ),
+    (FST.compose (BuildDetokenizingFST (v := v) ) f).evalFrom (Unit.unit, q) w = (FST.compose (BuildDetokenizingFST (v := v)) f).evalFrom (Unit.unit, q) ws
+    ∧ (∀ t ∈ ws, ∃ t0, v.flatten t = [t0]) := by
+  intro w
+  let ws := w.flatMap (fun big => (v.flatten big).map (fun ch => v.embed ch))
+  have h_w_ws : detokenize (v := v) w = detokenize (v := v) ws := by
+    induction w
+    case nil => simp[ws]
+    case cons head tail ih =>
+      simp[ws, detokenize]
+      simp at ih
+      simp[detokenize_app]
+      rw[←ih]
+      simp
+      rw[detokenize_flatmap]
+      simp[List.flatMap_map]
+      simp[v.fe]
+  exists ws
+  have := detokenize_eq_comp (v := v) w ws f q
+  constructor
+  exact this h_w_ws
+  simp[ws]
+  intro t x hx x_1 _ hx_1
+  simp[←hx_1, v.fe]
+
+
+def BuildDetokLexer [v: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ) : FST V (Ch Γ) (Unit × LexingState σ) :=
+  let lex_fst := BuildLexingFST spec
+  let detok := Detokenizing.BuildDetokenizingFST (v := v)
+  FST.compose detok lex_fst
+
+-- whitespace is accepted exactly in the start state and the state after the start state
+-- and there is at least one non whitespace token
+def whitespace_assumption (spec: LexerSpec α Γ σ) (twhite : α) (qwhite : σ) : Prop :=
+  qwhite ∈ spec.automaton.accept ∧
+  spec.automaton.step spec.automaton.start twhite = some qwhite ∧
+  spec.automaton.step qwhite twhite = some qwhite ∧
+  (∀ t', twhite ≠ t' → spec.automaton.step qwhite t' = none) ∧
+  (∀ q, q ≠ spec.automaton.start ∧ q ≠ qwhite → spec.automaton.step q twhite = none)
+
+def whitespace_terminal (spec: LexerSpec α Γ σ) (twhite : α) (qwhite : σ) (hw: whitespace_assumption spec twhite qwhite) : Γ :=
+  let ret := spec.term qwhite
+  have := (spec.hterm qwhite).mp hw.left
+  ret.get this
+
+-- at any state, we can produce any single producible token
+-- we may assume that there are only singletons
+
+-- for any state, the set of all realizable sequences is all single computible tokens
+-- and then any sequence of terminals, modulo whitespace (apart from empty sequence)
+omit [DecidableEq α] [BEq V] in
+def detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+  (hw: whitespace_assumption spec twhite qwhite) (q: LexingState σ) :
+  let white_term := (whitespace_terminal spec twhite qwhite hw)
+  let lexer := BuildDetokLexer (v := vocab) spec
+  lexer.moddedRealizableSequences (Unit.unit, q) white_term =
+    { Ts | Ts = [] ∨
+           (∃ t tsfx,
+             ¬Ts.contains (ExtChar.char white_term) ∧
+             Ts = t :: tsfx ∧ t ∈ lexer.singleProducible (Unit.unit, q)) } := by
+  ext x
+  let lexer := BuildDetokLexer (v := vocab) spec
+  have hlexer : lexer = (BuildDetokenizingFST.compose (BuildLexingFST spec)) := by
+    simp[BuildDetokLexer, lexer]
+  set white_term := (whitespace_terminal spec twhite qwhite hw) with hwhite_term
+
+  let rem_ws := fun t => t != ExtChar.char white_term
+
+  apply Iff.intro
+  -- forward:
+    -- effectively just need to show that it must start with a single producible token
+    -- via assumption of singletons
+    -- otherwise, the fact that tsfx can be anything means that we are done
+  . intro h
+    by_cases he : x = []
+    . simp[he]
+      rw[Set.mem_setOf]
+      simp
+    . let first := x.head he
+      let others := x.tail
+      rw[Set.mem_setOf]
+      apply Or.inr
+      exists first
+      exists others
+      simp[FST.moddedRealizableSequences] at h
+      rw[Set.mem_setOf] at h
+      have ⟨v, hv_rs, hv_filter⟩ := h
+      constructor
+      rw[←hv_filter]
+      simp
+      constructor
+      simp[first, others]
+      -- only non trivial part
+      show first ∈ lexer.singleProducible ((), q)
+      simp[FST.singleProducible]
+      simp[FST.realizableSequences] at hv_rs
+      rw[Set.mem_setOf] at hv_rs
+      have ⟨_, qf, w, hw⟩ := hv_rs
+      have h_singleton := detokenize_singleton (BuildLexingFST spec) q w
+      rw[←hlexer] at h_singleton
+      have ⟨ws, h_eq, h_ws_singleton⟩ := h_singleton
+      rw[hw] at h_eq
+      set step_list := lexer.stepList ((), q) ws with h_step_list
+      have h_step_list_app_v := lexer.stepList_eval ((), q) ws
+      simp[←h_eq] at h_step_list_app_v
+      have ⟨step_list, h_step_list⟩ := h_step_list_app_v
+      -- so we know that the translist concatenated together forms v
+      -- and that v filtered forms x
+      -- so then translist filtered concatenated forms x
+      let filtered_step_list := step_list.map (fun (a, b, c, d) => (a, b, c, d.filter rem_ws))
+      have h_filt_step_list : (filtered_step_list.flatMap (fun (_, _, _, d) => d)) = x := by
+        simp[filtered_step_list, List.flatMap]
+        conv =>
+          pattern ((fun x => _) ∘ _)
+          unfold Function.comp
+          simp
+        rw[←hv_filter]
+        rw[←h_step_list.right]
+        simp[List.flatMap]
+        conv =>
+          pattern ((fun x => _) ∘ _)
+          unfold Function.comp
+          simp
+
+      -- by using he, find the first nonempty transition
+      -- this does use a little indexing which makes stuff hard to prove
+      let oFirstTransition := filtered_step_list.findFinIdx? (fun (_, _, _, d) => d != [])
+      have h_oFirstTransition : oFirstTransition.isSome := by
+        by_contra ha
+        simp only [not_not, ne_eq, bne_iff_ne, Option.not_isSome_iff_eq_none, findFinIdx?_eq_none_iff, oFirstTransition] at ha
+        have h_flatten := h_filt_step_list
+        simp[List.flatMap] at h_flatten
+        have hnull: (List.map (fun x => x.2.2.2) filtered_step_list) = List.map (fun x => []) filtered_step_list := by
+          apply List.map_congr_left
+          exact ha
+        simp[hnull] at h_flatten
+        simp[h_flatten] at hv_filter
+        contradiction
+      let firstTransitionIdx := oFirstTransition.get h_oFirstTransition
+      let firstTransition := filtered_step_list[firstTransitionIdx]
+      have h_firstTransition_lt_stepList : firstTransitionIdx < step_list.length := by
+        have : filtered_step_list.length = step_list.length := by simp[filtered_step_list]
+        rw[←this]
+        simp
+      let unfiltered_firstTransition := step_list[firstTransitionIdx]
+      have h_filtered_unfiltered : firstTransition = (unfiltered_firstTransition.1, unfiltered_firstTransition.2.1, unfiltered_firstTransition.2.2.1, unfiltered_firstTransition.2.2.2.filter rem_ws) := by
+        simp[firstTransition, unfiltered_firstTransition, filtered_step_list]
+      let emptyPrefix := List.take firstTransitionIdx filtered_step_list
+      simp[oFirstTransition] at h_oFirstTransition
+      have h_first_transition : filtered_step_list.findFinIdx? (fun (_, _, _, d) => d != []) = some firstTransitionIdx := by
+        simp only [firstTransitionIdx, oFirstTransition, Option.some_get]
+      have ⟨hft_ne, h_prefix_empty⟩ := findFinIdx?_eq_some_iff.mp h_first_transition
+      have h_emptyPrefix : (emptyPrefix.flatMap (fun (_, _, _, d) => d)) = [] := by
+        simp[emptyPrefix, List.flatMap]
+        intro l
+        intro hl
+        have ⟨j, hjlt, hj⟩ := List.mem_take_iff_getElem.mp hl
+        simp at hjlt h_prefix_empty
+        rw[←hj]
+        simp
+        have : j < filtered_step_list.length := by
+          have : firstTransitionIdx < filtered_step_list.length := by simp[firstTransitionIdx]
+          exact Nat.lt_trans hjlt this
+        let fin_j := Fin.mk j this
+        have := h_prefix_empty fin_j hjlt
+        simp[this, fin_j]
+      -- x is the emptyPrefix.flatMap ++ suffix.flatMap
+      have h_x_prefix_suffix : x = emptyPrefix.flatMap (fun (_, _, _, d) => d) ++ (filtered_step_list.drop (firstTransitionIdx)).flatMap (fun (_, _, _, d) => d) := by
+        have base := h_filt_step_list
+        simp at base
+        have h_app : emptyPrefix ++ (filtered_step_list.drop (firstTransitionIdx)) = filtered_step_list := by
+          simp[emptyPrefix, List.take_append_drop]
+        rw[←h_app] at base
+        simp at base
+        simp
+        exact Eq.symm base
+      -- so then, if the firstTransition is not empty (which its not), its head must be the global head
+      have h_first_from_ft : first = firstTransition.2.2.2.head (by simp at hft_ne; exact hft_ne) := by
+        simp[first, h_emptyPrefix, h_x_prefix_suffix]
+        simp[List.flatMap]
+        apply List.head_flatten_eq_head_head
+
+
+        sorry
+
+      -- translist (and translist filtered) consists of steps of 0, 1, or 2
+      -- lets show that the first one must be 1 or 2
+      have h_first_production : (lexer.step firstTransition.1 firstTransition.2.1).map (fun (q, ts) => (q, ts.filter rem_ws)) = some (firstTransition.2.2) := by
+        have := lexer.stepList_zip ((), q) ws
+        simp only [h_step_list] at this
+        have : lexer.step firstTransition.1 firstTransition.2.1 = some unfiltered_firstTransition.2.2 := by
+          have := this unfiltered_firstTransition (by simp[unfiltered_firstTransition])
+          rw[←congrArg Prod.fst h_filtered_unfiltered] at this
+          rw[←congrArg (fun x => x.2.1) h_filtered_unfiltered] at this
+          exact this
+        simp[this]
+        simp[h_filtered_unfiltered]
+
+      have ⟨flat, h_flat⟩ : ∃ t, vocab.flatten firstTransition.2.1 = [t] := by
+        have := lexer.stepList_w ((), q) ws
+        simp only [h_step_list] at this
+        have : firstTransition.2.1 ∈ ws := by
+          have h_in : firstTransition.2.1 ∈ List.map (fun x => x.2.1) filtered_step_list := by
+            apply mem_map.mpr
+            exists firstTransition
+            simp[firstTransition]
+          simp only [List.map_map, filtered_step_list] at h_in
+          unfold Function.comp at h_in
+          rw[this] at h_in
+          exact h_in
+        exact h_ws_singleton firstTransition.2.1 this
+      simp[lexer, BuildDetokLexer] at h_first_production
+      rw[detokenizer_comp_step] at h_first_production
+      simp[h_flat] at h_first_production
+      have ⟨_, q', produced, hstep, hq'produced⟩ := h_first_production
+      have h_first_production_small := LexingFst_smallStep spec firstTransition.1.2 flat q' produced hstep
+      -- it can't be 0
+      have hproduced_ne : produced ≠ [] := by
+        have lem : filter rem_ws produced ≠ [] := by
+          have : filter rem_ws produced = firstTransition.2.2.2 := by
+            simpa using congrArg Prod.snd hq'produced
+          simp[firstTransition, this]
+          simp at hft_ne
+          exact hft_ne
+        by_contra h
+        simp[h] at lem
+
+      simp[hproduced_ne] at h_first_production_small
+      cases h_first_production_small
+      -- if its 1, we're done
+      . rename_i h_production
+        have ⟨t, ht⟩ := h_production
+        -- first show that first is the same as t
+        sorry
+      . sorry
+        -- its only two if second one is EOS (this is the annoying case)
+        -- in this case, replace the eos with whitespace and we can show the exchange argument
+  . rw[Set.mem_setOf]
+    intro h
+    cases h
+    -- empty sequence is trivial
+    . rename_i h
+      simp[h]
+      simp[FST.moddedRealizableSequences]
+      rw[Set.mem_setOf]
+      exists []
+      simp[FST.realizableSequences]
+      rw[Set.mem_setOf]
+      exists ()
+      exists q
+      exists []
+    . rename_i h
+      have ⟨t, tsfx, h_no_white, h_eq, h_singleton⟩ := h
+      -- since t is single producible, we can construct a sequence construction t followed by whitespace
+      -- this is painful as shit
+      -- produce each one via producing a token and a whitespace right after
+      sorry
+  -- backward
+    -- show that we can create anything afterwards basically
+    --
+
+def whitespace_tokens : List (Token Char Unit) :=
+  [ { symbol := Unit.unit, string := [' ', '\n', '\t'] } ]
+
+
+end Detokenizing

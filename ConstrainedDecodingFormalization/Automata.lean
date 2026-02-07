@@ -6,7 +6,6 @@ import Mathlib.Data.Finset.Basic
 import Mathlib.Data.PFun
 import Std.Data.HashMap.Basic
 import Std.Data.HashSet.Basic
-import Mathlib.Data.MLList.BestFirst
 import Mathlib.Data.FinEnum
 import Mathlib.Data.List.Nodup
 
@@ -92,7 +91,7 @@ def pruned_prefixLanguage (h : A.pruned) : A.intermediateLanguage = A.prefixLang
       have ⟨u, f, hf1, hf2⟩ := h s
       exists u
       exists f
-      simp[h3, accepts, acceptsFrom, evalFrom_append, hf1, hf2]
+      simp[h3, evalFrom_append, hf1, hf2]
   . intro h1
     let dst := A.eval w
     simp[accepts, acceptsFrom] at h1
@@ -127,7 +126,7 @@ theorem mem_accepts {x : List α} (h : (A.eval x).isSome) : x ∈ A.accepts ↔ 
     intro ha
     exists (A.eval x).get h
     constructor
-    · simp [eval, Option.coe_get]
+    · simp [eval]
     · exact ha
 
 def adj (q : σ) [FinEnum α] [FinEnum σ] : Finset σ :=
@@ -151,7 +150,7 @@ instance [BEq σ] [LawfulBEq σ] (l : List α) : Decidable (l ∈ A.accepts) :=
   else
     isFalse (by
       intro h_contra
-      simp [accepts, acceptsFrom, eval] at h_contra
+      simp [accepts, acceptsFrom] at h_contra
       cases h_contra with
       | intro f hf =>
         have : (A.eval l).isSome := Option.isSome_iff_exists.mpr ⟨f, hf.1⟩
@@ -173,7 +172,7 @@ def toDFA : DFA α (Option σ) :=
 
   let accept := A.accept.map (fun s => some s)
 
-  ⟨step, A.start, accept.toFinset.toSet⟩
+  ⟨step, A.start, SetLike.coe accept.toFinset⟩
 
 lemma toDFA_none_not_accept : none ∉ A.toDFA.accept := by
   simp_all [toDFA]
@@ -223,17 +222,17 @@ theorem toDFA_eval_correct : ∀ (l : List α), A.toDFA.eval l = A.eval l := by
 
 theorem toDFA_correct : A.toDFA.accepts = A.accepts := by
   ext x
-  simp only [DFA.mem_accepts, mem_accepts]
+  simp only [DFA.mem_accepts]
   cases h : A.eval x
   .
     have : A.toDFA.eval x = none := by simp_all only [toDFA_eval_correct]
-    simp_all [acceptsFrom, h, eval, accepts]
+    simp_all [acceptsFrom, eval, accepts]
     refine (iff_false_right ?_).mpr (by apply toDFA_none_not_accept)
     have : ¬(∃ f, A.evalFrom A.start x = some f ∧ f ∈ A.accept) := by
       simp_all only [reduceCtorEq, false_and, exists_false, not_false_eq_true]
     exact fun a => this a
   .
-    have : (A.eval x).isSome := by simp_all [h]
+    have : (A.eval x).isSome := by simp_all
     rw [Option.isSome_iff_exists] at this
     obtain ⟨a, h'⟩ := this
     have : A.toDFA.eval x = a := by
@@ -270,7 +269,7 @@ instance : DecidableEq (FSA α σ) := fun M N =>
     cases b
     simp [toProd] at h_eq
     simp [mk.injEq]
-    simp_all [Prod.mk.injEq, and_self, toProd]
+    simp_all [and_self]
 
   if h : toProd M = toProd N then
     isTrue (by exact h_inj M N h)
@@ -323,7 +322,7 @@ lemma toNFA_evalFrom_empty (x : List α) :
     simp [NFA.evalFrom_nil]
   case cons ih =>
     rw [←NFA.evalFrom] at *
-    simp_all [NFA.evalFrom_nil, toNFA_evalFrom_step_cons_empty]
+    simp_all
 
 lemma toNFA_evalFrom_Subsingleton (A : FSA α σ) (s : σ) (l : List α) :
     Subsingleton (A.toNFA.evalFrom {s} l) := by
@@ -341,7 +340,7 @@ lemma toNFA_evalFrom_Subsingleton (A : FSA α σ) (s : σ) (l : List α) :
     split
     dsimp
     apply ih _
-    simp only [NFA.evalFrom, NFA.stepSet, NFA.stepSet_empty]
+    simp only [NFA.evalFrom]
     rw [List.foldl.eq_def]
     split
     exact IsEmpty.instSubsingleton
@@ -391,7 +390,7 @@ def evalFrom_fold_step (acc: Option (σ × List Γ)) (a : α) : Option (σ × Li
 @[simp]
 lemma evalFrom_nil_seed (s : σ) (l : List α) :
     M.evalFrom_seed s l [] = M.evalFrom s l := by
-  simp [evalFrom_seed, List.append_nil]
+  simp [evalFrom_seed]
   split <;> simp_all
 
 def evalFrom_fold_seed (s: σ) (l: List α) (seed: List Γ) : Option (σ × List Γ) :=
@@ -418,14 +417,14 @@ def evalFrom_fold_seed_eq_evalFrom_seed (s : σ) (l : List α) (seed: List Γ) :
     M.evalFrom_fold_seed s l seed = M.evalFrom_seed s l seed := by
   induction l generalizing s seed
   case nil =>
-    simp [evalFrom_seed, evalFrom, evalFrom_fold_seed, evalFrom_fold]
+    simp [evalFrom_seed, evalFrom, evalFrom_fold_seed]
   case cons head tail ih =>
     cases hc: M.evalFrom_fold_step (some (s, seed)) head
     simp_all[evalFrom_fold_step]
     .
       cases hs: M.step s head
       <;> simp[hs] at hc
-      simp [evalFrom_seed, evalFrom, evalFrom_fold_seed, evalFrom_fold, hs]
+      simp [evalFrom_seed, evalFrom, evalFrom_fold_seed, hs]
       simp[evalFrom_fold_step, hs]
     case some sp =>
       have ⟨q', seed'⟩ := sp
@@ -441,7 +440,7 @@ def evalFrom_fold_seed_eq_evalFrom_seed (s : σ) (l : List α) (seed: List Γ) :
         cases M.evalFrom q' tail with
         | none => simp
         | some r =>
-          simp[hc.left]
+          simp
           rw[←List.append_assoc]
           simp[hc]
       simp[this]
@@ -505,10 +504,176 @@ theorem evalFrom_append (s : σ) (xs ys : List α) : M.evalFrom s (xs ++ ys) =
     | some sp =>
       simp[evalFrom, h, ih]
       cases h' : M.evalFrom sp.1 tail with
-      | none => simp [h']
+      | none => simp
       | some sp2 =>
-        simp [h']
-        cases h2 : M.evalFrom sp2.1 ys <;> simp [h2]
+        simp
+        cases h2 : M.evalFrom sp2.1 ys <;> simp
+
+def stepList (s : σ) (a : List α) : Option (List (σ × α × σ × List Γ)) :=
+  match a with
+  | [] => some ([])
+  | x :: xs =>
+    match M.step s x with
+    | none => none
+    | some s' =>
+      match stepList s'.fst xs with
+      | none => none
+      | some next => some ( (s, x, s'.fst, s'.snd) :: next )
+
+lemma stepList_w ( s: σ) (w: List α) :
+  match M.stepList s w with
+  | none => True
+  | some lst => lst.map (fun (_, x, _, _) => x) = w := by
+  induction w generalizing s
+  case nil => simp [stepList]
+  case cons head tail ih =>
+    simp [stepList]
+    cases h: M.step s head
+    simp
+    case some step =>
+      simp at ih ⊢
+      have ih' := ih step.1
+      cases h' : M.stepList step.1 tail
+      <;> simp[h'] at ih'
+      simp
+      simp[ih']
+
+lemma stepList_len (s: σ) (w: List α) :
+  match M.stepList s w with
+  | none => True
+  | some lst => lst.length = w.length := by
+  induction w generalizing s
+  case nil =>
+    simp [stepList]
+  case cons head tail ih =>
+    simp [stepList]
+    cases h: M.step s head
+    simp
+    case some step =>
+      simp at ih
+      simp
+      have ih' := ih step.1
+      cases h' : M.stepList step.1 tail
+      <;> simp[h'] at ih'
+      simp
+      simp
+      exact ih'
+
+lemma stepList_eval (s: σ) (w: List α) :
+  match M.evalFrom s w with
+  | none => M.stepList s w = none
+  | some lst =>
+    ∃ lst', M.stepList s w = some lst' ∧
+            (lst'.flatMap (fun (_, _, _, g) => g)) = lst.2 := by
+  induction w generalizing s
+  case nil =>
+    simp [evalFrom, stepList]
+  case cons head tail ih =>
+    simp [evalFrom, stepList]
+    cases h: M.step s head
+    simp
+    case some step =>
+      simp at ih
+      simp
+      have ih' := ih step.1
+      cases h' : M.evalFrom step.1 tail
+      <;> simp[h'] at ih'
+      simp[ih']
+      simp
+      have ⟨lst', h_step, h_eq⟩ := ih'
+      simp[h_step ]
+      simp[h_eq]
+
+lemma stepList_prefix_nil (s: σ) (p: List α) (a: List α) (h: p <+: a) :
+  match M.stepList s p with
+  | none => M.stepList s a = none
+  | some _ => True := by
+  induction a generalizing p s
+  case nil =>
+    simp at h
+    simp[h]
+    split <;> simp_all
+  case cons head tail ih =>
+    cases p
+    case nil => simp_all[stepList]
+    case cons head' tail' =>
+      simp at h
+      simp[h]
+      simp[stepList]
+      cases hh : M.step s head
+      <;> simp_all
+      split
+      <;> try simp_all
+      rename_i step _ heq
+      split at heq
+      <;> try simp at heq
+      rename_i heq'
+      have ih' := ih step.1 tail' h.right
+      simp[heq'] at ih'
+      simp[ih']
+
+lemma stepList_prefix_a ( s: σ) (a: List α) :
+  match M.stepList s a with
+  | none => True
+  | some lst => ∀ p, p <+: a → M.stepList s p = some (lst.take p.length) := by
+  induction a generalizing s
+  case nil =>
+    simp [stepList]
+  case cons head tail ih =>
+    simp [stepList]
+    cases h: M.step s head
+    simp
+    case some step =>
+      simp at ih
+      simp
+      have ih' := ih step.1
+      cases h' : M.stepList step.1 tail
+      <;> simp[h'] at ih'
+      simp
+      simp
+      intro pfx hpfx
+      cases pfx with
+      | nil => simp [stepList]
+      | cons head' tail' =>
+        simp at hpfx
+        simp[stepList, h, hpfx]
+        have ih' := ih step.1
+        cases htail : M.stepList step.1 tail'
+        <;> simp
+        have := stepList_prefix_nil M step.1 tail' tail hpfx.right
+        simp[htail] at this
+        rw[this] at h'
+        contradiction
+        simp[h'] at ih'
+        have ih' := ih' tail' hpfx.right
+        rw[htail] at ih'
+        simp at ih'
+        exact ih'
+
+lemma stepList_zip (s: σ) (a: List α) :
+  match M.stepList s a with
+  | none => True
+  | some lst => ∀ trans ∈ lst, M.step trans.fst trans.snd.fst = some trans.snd.snd := by
+  induction a generalizing s
+  case nil =>
+    simp [stepList]
+  case cons head tail ih =>
+    simp [stepList]
+    cases h: M.step s head
+    simp
+    case some step =>
+      simp at ih
+      simp
+      have ih' := ih step.1
+      cases h' : M.stepList step.1 tail
+      <;> simp[h'] at ih'
+      simp
+      simp
+      intro src char dst tok ha
+      cases ha
+      <;> rename_i hl
+      simp[h, hl]
+      exact ih' src char dst tok hl
 
 def acceptsFrom (s : σ) : Language α :=
   { w | ∃ f ∈ M.evalFrom s w, f.1 ∈ M.accept }
@@ -520,6 +685,15 @@ def transducesTo (w : List α) (v : List Γ) : Prop :=
     ((M.eval w).get h).2 = v ∧ ((M.eval w).get h).1 ∈ M.accept
   else
     False
+
+def realizableSequences (q: σ) : Language Γ :=
+  { v | ∃ q' w, M.evalFrom q w = some (q', v) }
+
+-- a sequence is mod realizable if theres a realizable sequence
+-- that "mods" to it. Here, mod means deleting all instances of a character
+-- specifically whitespace
+def moddedRealizableSequences [BEq Γ] (q: σ) (mod: Γ) : Language Γ :=
+  { v | ∃ v' ∈ M.realizableSequences q, v'.filter (fun x => x != mod) = v }
 
 lemma reject_none {x : List α} (h : (M.eval x).isNone) : x ∉ M.accepts := by
   simp only [Option.isNone_iff_eq_none] at h
@@ -542,7 +716,7 @@ theorem mem_accepts {x : List α} (h : (M.eval x).isSome) : x ∈ M.accepts ↔ 
     intro ha
     exists (M.eval x).get h
     constructor
-    · simp [eval, Option.coe_get]
+    · simp [eval]
     · exact ha
 
 def mkStep [DecidableEq α] [DecidableEq σ] (transitions : List (σ × α × Option (σ × List Γ))) : σ → α → Option (σ × List Γ) :=
@@ -565,11 +739,11 @@ lemma compl_card_lt_of_insert
   [Fintype σ] [DecidableEq σ]
   {vis : Finset σ} {s : σ} (h : s ∉ vis) :
   ((vis ∪ {s})ᶜ).card < (visᶜ).card := by
-  simp
   observe h_sub : visᶜ ∩ {s}ᶜ ⊆ visᶜ
   have h_neq : visᶜ ∩ {s}ᶜ ≠ visᶜ := by simp [h]
   observe h_proper_sub : visᶜ ∩ {s}ᶜ ⊂ visᶜ
   observe h_goal : (visᶜ ∩ {s}ᶜ).card < (visᶜ).card
+  simp only[Finset.compl_union]
   exact h_goal
 
 def dfs
@@ -616,7 +790,7 @@ lemma evalFrom_cons_some_iff {s s'' : σ} {a : α} {as : List α} {U : List Γ} 
   unfold evalFrom
   cases h₀ : M.step s a with
   | none =>
-      simp [h₀]
+      simp
   | some p =>
       rcases p with ⟨s', S⟩
       cases h₁ : M.evalFrom s' as with
@@ -627,7 +801,7 @@ lemma evalFrom_cons_some_iff {s s'' : σ} {a : α} {as : List α} {U : List Γ} 
             simp [h₁] at h
           .
             rintro ⟨s1, S1, T, hstep, heval, hU⟩
-            simp_all [evalFrom]
+            simp_all
             have : M.evalFrom s' [] = some (s', []) := rfl
             have : s' = s1 := by
               simp_all
@@ -662,7 +836,7 @@ lemma evalFrom_cons_some_iff {s s'' : σ} {a : α} {as : List α} {U : List Γ} 
             rcases hex with ⟨s'_, S_, T', hstep, heval, hU⟩
             have : s' = s' ∧ S = S := by exact And.intro rfl rfl
             have hsT : s₁ = s'' ∧ T = T' := by
-              simp_all [h₁, Prod.mk.injEq]
+              simp_all [Prod.mk.injEq]
               obtain ⟨l, r⟩ := hstep
               subst l r
               cases h : as
@@ -684,8 +858,8 @@ lemma evalFrom_cons_some_iff {s s'' : σ} {a : α} {as : List α} {U : List Γ} 
                 simp_all only [Option.some.injEq, Prod.mk.injEq, and_self]
             rcases hsT with ⟨hs, hT⟩
             have : U = S ++ T := by
-              simp_all [hT]
-            simp [h₀, h₁, hs, this]
+              simp_all
+            simp [h₁, hs, this]
 
 lemma evalFrom_cons_singleton_iff
   (M : FST α Γ σ) {s s'' : σ} {a : α} {as : List α} {t : Γ} :
@@ -849,7 +1023,7 @@ lemma dfs_sound_core_or
                   rcases res with ⟨v2, r2⟩
                   have hstep1 : stepAccum (visacc, retacc) x = (visacc ∪ v2, retacc ∪ r2) := by
                     dsimp [stepAccum]
-                    simp [hstepx, hres, h₀]
+                    simp [hstepx, h₀]
                     have : v2 = (M.dfs (a := a) s' base retacc).1 := congrArg Prod.fst hres
                     subst this
                     constructor
@@ -912,7 +1086,7 @@ lemma dfs_sound_core_or
                               (∃ s0, M.step s x = some (s0, [t]) ∧
                                       M.evalFrom s0 [] = some (s', [])) :=
                               ⟨s', by simpa [hstepx], by simp [evalFrom]⟩
-                            simp [evalFrom_cons_singleton_iff (M := M)]
+                            simp
                             subst h₀ hcard
                             simp_all [base, P, stepAccum]
                           ·
@@ -967,155 +1141,155 @@ lemma trim_eps_into_V
   sorry
 
 /-- Monotonicity in the seed for `dfs` -/
-lemma dfs_seed_mono
-  (M : FST α Γ σ) [Fintype σ] [Fintype Γ] [FinEnum α]
-  [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
-  {s : σ} {V : Finset σ} {ret ret' : List Γ}
-  (hsub : ret ⊆ ret') :
-  (M.dfs (a := a) s V ret).2 ⊆ (M.dfs (a := a) s V ret').2 := by
-  let P : Nat → Prop := fun n =>
-    ∀ {s V ret ret' : _},
-      (Vᶜ).card = n →
-      ret ⊆ ret' →
-      (M.dfs (a := a) s V ret).2 ⊆ (M.dfs (a := a) s V ret').2
+-- lemma dfs_seed_mono
+--   (M : FST α Γ σ) [Fintype σ] [Fintype Γ] [FinEnum α]
+--   [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
+--   {s : σ} {V : Finset σ} {ret ret' : List Γ}
+--   (hsub : ret ⊆ ret') :
+--   (M.dfs (a := a) s V ret).2 ⊆ (M.dfs (a := a) s V ret').2 := by
+--   let P : Nat → Prop := fun n =>
+--     ∀ {s V ret ret' : _},
+--       (Vᶜ).card = n →
+--       ret ⊆ ret' →
+--       (M.dfs (a := a) s V ret).2 ⊆ (M.dfs (a := a) s V ret').2
 
-  have step : ∀ n, (∀ m, m < n → P m) → P n := by
-    intro n IH s V ret ret' hcard hseed
-    unfold FST.dfs
-    by_cases hs : s ∈ V
-    ·
-      intro x hx
-      simp_all [hs]
-      apply Set.mem_of_subset_of_mem hseed hx
+--   have step : ∀ n, (∀ m, m < n → P m) → P n := by
+--     intro n IH s V ret ret' hcard hseed
+--     unfold FST.dfs
+--     by_cases hs : s ∈ V
+--     ·
+--       intro x hx
+--       simp_all [hs]
+--       apply Set.mem_of_subset_of_mem hseed hx
 
-    ·
-      let step :
-          (Finset σ × List Γ) → α → (Finset σ × List Γ) :=
-        fun acc next =>
-          let (visacc, retacc) := acc
-          match M.step s next with
-          | none => (visacc, retacc)
-          | some (s2, out2) =>
-            match out2 with
-            | [] =>
-                let (v2, r2) := M.dfs (a := a) s2 (V ∪ {s}) retacc
-                (visacc ∪ v2, retacc ∪ r2)
-            | [γ] =>
-                (visacc, γ :: retacc)
-            | _::_::_ =>
-                (visacc, retacc)
+--     ·
+--       let step :
+--           (Finset σ × List Γ) → α → (Finset σ × List Γ) :=
+--         fun acc next =>
+--           let (visacc, retacc) := acc
+--           match M.step s next with
+--           | none => (visacc, retacc)
+--           | some (s2, out2) =>
+--             match out2 with
+--             | [] =>
+--                 let (v2, r2) := M.dfs (a := a) s2 (V ∪ {s}) retacc
+--                 (visacc ∪ v2, retacc ∪ r2)
+--             | [γ] =>
+--                 (visacc, γ :: retacc)
+--             | _::_::_ =>
+--                 (visacc, retacc)
 
-      -- fold-level monotonicity wrt. second component (your proof shape)
-      have fold_mono :
-        ∀ (L : List α) (acc₀ acc₁ : Finset σ × List Γ),
-          acc₀.2 ⊆ acc₁.2 →
-          (List.foldl step acc₀ L).2 ⊆ (List.foldl step acc₁ L).2 := by
-        intro L
-        induction L with
-        | nil =>
-            intro acc₀ acc₁ hseed x hx; simpa [List.foldl] using hseed hx
-        | cons aL L ih =>
-            intro acc₀ acc₁ hseed x hx
-            cases' acc₀ with vis₀ out₀; cases' acc₁ with vis₁ out₁
-            simp [List.foldl, step] at hx ⊢
-            cases hstepL : M.step s aL with
-            | none =>
-                apply ih _ _ hseed
-                unfold step
-                simp_all
-            | some p =>
-                rcases p with ⟨s2, out2⟩
-                cases out2 with
-                | nil =>
-                    have hlt : ((V ∪ {s})ᶜ).card < (Vᶜ).card :=
-                      compl_card_lt_of_insert (σ := σ) (vis := V) (s := s) hs
-                    subst hcard
-                    have IHbase : P ((V ∪ {s})ᶜ).card := IH _ hlt
-                    have ih_seed :
-                      (M.dfs (a := a) s2 (V ∪ {s}) out₀).2 ⊆
-                      (M.dfs (a := a) s2 (V ∪ {s}) out₁).2 :=
-                      IHbase (s := s2) (V := V ∪ {s})
-                             (ret := out₀) (ret' := out₁) rfl hseed
-
-
-                    have hx' :
-                      x ∈ (List.foldl step
-                              (vis₀ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₀).1,
-                               out₀ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₀).2) L).2 := by
-                      simpa [List.foldl, step, hstepL] using hx
+--       -- fold-level monotonicity wrt. second component (your proof shape)
+--       have fold_mono :
+--         ∀ (L : List α) (acc₀ acc₁ : Finset σ × List Γ),
+--           acc₀.2 ⊆ acc₁.2 →
+--           (List.foldl step acc₀ L).2 ⊆ (List.foldl step acc₁ L).2 := by
+--         intro L
+--         induction L with
+--         | nil =>
+--             intro acc₀ acc₁ hseed x hx; simpa [List.foldl] using hseed hx
+--         | cons aL L ih =>
+--             intro acc₀ acc₁ hseed x hx
+--             cases' acc₀ with vis₀ out₀; cases' acc₁ with vis₁ out₁
+--             simp [List.foldl, step] at hx ⊢
+--             cases hstepL : M.step s aL with
+--             | none =>
+--                 apply ih _ _ hseed
+--                 unfold step
+--                 simp_all
+--             | some p =>
+--                 rcases p with ⟨s2, out2⟩
+--                 cases out2 with
+--                 | nil =>
+--                     have hlt : ((V ∪ {s})ᶜ).card < (Vᶜ).card :=
+--                       compl_card_lt_of_insert (σ := σ) (vis := V) (s := s) hs
+--                     subst hcard
+--                     have IHbase : P ((V ∪ {s})ᶜ).card := IH _ hlt
+--                     have ih_seed :
+--                       (M.dfs (a := a) s2 (V ∪ {s}) out₀).2 ⊆
+--                       (M.dfs (a := a) s2 (V ∪ {s}) out₁).2 :=
+--                       IHbase (s := s2) (V := V ∪ {s})
+--                              (ret := out₀) (ret' := out₁) rfl hseed
 
 
-                    have hseed_tail :
-                      (out₀ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₀).2) ⊆
-                      (out₁ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₁).2) := by
-                      intro y hy
-                      simp_all
+--                     have hx' :
+--                       x ∈ (List.foldl step
+--                               (vis₀ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₀).1,
+--                                out₀ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₀).2) L).2 := by
+--                       simpa [List.foldl, step, hstepL] using hx
 
-                      have list_mem {l l' : List Γ} (h : l ⊆ l') (x : Γ) : x ∈ l → x ∈ l' := by
-                        have list_finset {l l' : List Γ} : l ⊆ l' ↔ l.toFinset ⊆ l'.toFinset := by
-                          apply forall_congr'
-                          intro a
-                          rw [List.mem_toFinset, List.mem_toFinset]
-                        rw [list_finset] at h
-                        have : x ∈ l.toFinset → x ∈ l'.toFinset := by
-                          apply Set.mem_of_subset_of_mem
-                          apply h
-                        rw [List.mem_toFinset, List.mem_toFinset] at this
-                        apply this
 
-                      cases hy
-                      .
-                        left
-                        rename_i h'
-                        apply list_mem hseed; apply h'
-                      .
-                        right
-                        rename_i h'
-                        apply list_mem ih_seed; apply h'
+--                     have hseed_tail :
+--                       (out₀ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₀).2) ⊆
+--                       (out₁ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₁).2) := by
+--                       intro y hy
+--                       simp_all
 
-                    let acc₀ :
-                        Finset σ × List Γ :=
-                      (vis₀ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₀).1,
-                       out₀ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₀).2)
-                    let acc₁ :
-                        Finset σ × List Γ :=
-                      (vis₁ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₁).1,
-                       out₁ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₁).2)
-                    have hsubset : acc₀.2 ⊆ acc₁.2 := by simpa using hseed_tail
-                    have hx'' : x ∈ (List.foldl step acc₁ L).2 :=
-                      (ih acc₀ acc₁ hsubset) hx'
-                    simp_all only [Prod.mk.eta, Prod.forall, step, acc₀, acc₁]
+--                       have list_mem {l l' : List Γ} (h : l ⊆ l') (x : Γ) : x ∈ l → x ∈ l' := by
+--                         have list_finset {l l' : List Γ} : l ⊆ l' ↔ l.toFinset ⊆ l'.toFinset := by
+--                           apply forall_congr'
+--                           intro a
+--                           rw [List.mem_toFinset, List.mem_toFinset]
+--                         rw [list_finset] at h
+--                         have : x ∈ l.toFinset → x ∈ l'.toFinset := by
+--                           apply Set.mem_of_subset_of_mem
+--                           apply h
+--                         rw [List.mem_toFinset, List.mem_toFinset] at this
+--                         apply this
 
-                | cons g tail =>
-                    cases tail with
-                    | nil =>
-                        have hseed' : (g :: out₀) ⊆ (g :: out₁) := by
-                          intro y hy
-                          rcases List.mem_cons.1 hy with rfl | hy_tail
-                          · exact List.mem_cons_self _ _
-                          · exact List.mem_cons_of_mem _ (hseed hy_tail)
-                        have hstep_single : M.step s aL = some (s2, [g]) := by
-                          simpa using hstepL
-                        have hx' :
-                          x ∈ (List.foldl step (vis₀, g :: out₀) L).2 := by
-                          simpa [List.foldl, step, hstep_single] using hx
-                        have hx'' :
-                          x ∈ (List.foldl step (vis₁, g :: out₁) L).2 :=
-                          (ih (vis₀, g :: out₀) (vis₁, g :: out₁) hseed') hx'
-                        simpa [List.foldl, step, hstep_single] using hx''
-                    | cons _ _ =>
-                        apply ih _ _ hseed
-                        unfold step
-                        simp_all
+--                       cases hy
+--                       .
+--                         left
+--                         rename_i h'
+--                         apply list_mem hseed; apply h'
+--                       .
+--                         right
+--                         rename_i h'
+--                         apply list_mem ih_seed; apply h'
 
-      let alph : List α := FinEnum.toList (α := α)
-      have : (alph.foldl step (V, ret)).2 ⊆ (alph.foldl step (V, ret')).2 :=
-        fold_mono alph (V, ret) (V, ret') hseed
-      subst hcard
-      simp_all only [Prod.mk.eta, Prod.forall, ↓reduceDIte, step, alph, P]
+--                     let acc₀ :
+--                         Finset σ × List Γ :=
+--                       (vis₀ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₀).1,
+--                        out₀ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₀).2)
+--                     let acc₁ :
+--                         Finset σ × List Γ :=
+--                       (vis₁ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₁).1,
+--                        out₁ ∪ (M.dfs (a := a) s2 (V ∪ {s}) out₁).2)
+--                     have hsubset : acc₀.2 ⊆ acc₁.2 := by simpa using hseed_tail
+--                     have hx'' : x ∈ (List.foldl step acc₁ L).2 :=
+--                       (ih acc₀ acc₁ hsubset) hx'
+--                     simp_all only [Prod.mk.eta, Prod.forall, step, acc₀, acc₁]
 
-  have H : P ((Vᶜ).card) := Nat.strongRecOn (motive := P) ((Vᶜ).card) step
-  exact H (s := s) (V := V) (ret := ret) (ret' := ret') rfl hsub
+--                 | cons g tail =>
+--                     cases tail with
+--                     | nil =>
+--                         have hseed' : (g :: out₀) ⊆ (g :: out₁) := by
+--                           intro y hy
+--                           rcases List.mem_cons.1 hy with rfl | hy_tail
+--                           · exact List.mem_cons_self _ _
+--                           · exact List.mem_cons_of_mem _ (hseed hy_tail)
+--                         have hstep_single : M.step s aL = some (s2, [g]) := by
+--                           simpa using hstepL
+--                         have hx' :
+--                           x ∈ (List.foldl step (vis₀, g :: out₀) L).2 := by
+--                           simpa [List.foldl, step, hstep_single] using hx
+--                         have hx'' :
+--                           x ∈ (List.foldl step (vis₁, g :: out₁) L).2 :=
+--                           (ih (vis₀, g :: out₀) (vis₁, g :: out₁) hseed') hx'
+--                         simpa [List.foldl, step, hstep_single] using hx''
+--                     | cons _ _ =>
+--                         apply ih _ _ hseed
+--                         unfold step
+--                         simp_all
+
+--       let alph : List α := FinEnum.toList (α := α)
+--       have : (alph.foldl step (V, ret)).2 ⊆ (alph.foldl step (V, ret')).2 :=
+--         fold_mono alph (V, ret) (V, ret') hseed
+--       subst hcard
+--       simp_all only [Prod.mk.eta, Prod.forall, ↓reduceDIte, step, alph, P]
+
+--   have H : P ((Vᶜ).card) := Nat.strongRecOn (motive := P) ((Vᶜ).card) step
+--   exact H (s := s) (V := V) (ret := ret) (ret' := ret') rfl hsub
 
 
 lemma dfs_complete
@@ -1194,19 +1368,19 @@ lemma compose_fun_step_cons { β : Type u_1 } { τ : Type u_2 }
   simp[evalFrom]
   cases h₁ : M₁.step s₁ w with
   | none =>
-    simp[evalFrom, h₁]
+    simp
   | some sp =>
     simp
     cases h₃ : M₂.evalFrom s₂ sp.2 with
     | none =>
-      split <;> simp_all[h₃]
+      split <;> simp_all
       rename_i T' h_eq
       split at h_eq <;> simp_all
       rename_i T'' _
       have := M₂.evalFrom_append s₂ sp.2 T''
       simp_all
     | some sp2 =>
-      split <;> simp_all[h₃]
+      split <;> simp_all
       next h_eq =>
         split at h_eq <;> simp_all
       next h_eq =>
@@ -1217,18 +1391,18 @@ lemma compose_fun_step_cons { β : Type u_1 } { τ : Type u_2 }
         split <;> simp_all
         rename_i heq'
         cases h₄ : M₂.evalFrom sp2.1 T'' with
-        | none => simp_all[h₄]
+        | none => simp_all
         | some dst =>
-          simp_all[h₄]
+          simp_all
           obtain ⟨a, ⟨b, hab⟩⟩ := heq'
           simp_all
 
-def compose_fun_eval {β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (w : List α) : Option (List β) :=
-  (compose_fun_evalFrom M₁ M₂ M₁.start M₂.start w).map Prod.snd
+def compose_fun_eval {β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (w : List α) : Option ((σ × τ) × List β) :=
+  (compose_fun_evalFrom M₁ M₂ M₁.start M₂.start w)
 
-def compose_correct { β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (w : List α) :
-  ((M₁.compose M₂).eval w).map Prod.snd = compose_fun_eval M₁ M₂ w := by
-  simp[eval, compose_fun_eval]
+def compose_correct { β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (w : List α) (q1 : σ) (q2 : τ) :
+  ((M₁.compose M₂).evalFrom (q1, q2) w) = compose_fun_evalFrom M₁ M₂ q1 q2 w := by
+  simp[compose_fun_evalFrom]
   have lem :
     ∀ { s₁ s₂ },
       (M₁.compose M₂).evalFrom (s₁, s₂) w = compose_fun_evalFrom M₁ M₂ s₁ s₂ w  := by
@@ -1247,7 +1421,7 @@ def compose_correct { β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M
       split <;> simp_all
       simp[Option.map]
       split <;> simp_all
-  exact congrArg (Option.map Prod.snd) lem
+  exact lem
 
 
 
