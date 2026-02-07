@@ -617,6 +617,50 @@ lemma eval_of_stepList (s: σ) (w: List α) :
       simp[hlst]
       exists sp.1
 
+-- this definition is a bit awkward with the none optional optionals
+lemma stepList_eval_take (s: σ) (w: List α) (j: Fin w.length) :
+  match M.stepList s w with
+  | none => true
+  | some lst =>
+    Option.map Prod.fst (M.evalFrom s (w.take j)) = lst[j]?.map (fun x => x.1):= by
+  induction w generalizing s
+  case nil =>
+    simp at j ⊢
+    exact Fin.elim0 j
+  case cons head tail ih =>
+    simp at j ⊢
+    simp[stepList]
+    cases h: M.step s head
+    simp_all
+    case some val =>
+    cases htail : M.stepList val.1 tail
+    simp_all
+    rename_i tail_prod
+    simp_all
+    by_cases hj0 : j = 0
+    . simp[hj0]
+    . let j' := j.pred hj0
+      have : j = j'.succ := (Fin.pred_eq_iff_eq_succ hj0).mp rfl
+      simp[this, evalFrom, h]
+      have ih := ih val.1 j'
+      simp[htail] at ih
+      have : tail_prod.length = tail.length := by
+        have := M.stepList_len val.1 tail
+        simp[htail] at this
+        exact this
+      let j'' : Fin tail_prod.length := Fin.mk j' (by simp[j'.2, this])
+      have : j''.toNat = j' := by simp[j'']
+      nth_rewrite 2 [←this] at ih
+      nth_rewrite 2 [←this]
+      have ⟨q'', hq''⟩ : ∃ s, Option.map (fun x => x.1) tail_prod[j''.toNat]? = some s := by
+        simp
+      rw[hq''] at ih ⊢
+      split
+      case h_1 heq => simp[heq] at ih
+      case h_2 heq =>
+        simp[heq] at ih
+        simp
+        exact ih
 
 lemma stepList_prefix_nil (s: σ) (p: List α) (a: List α) (h: p <+: a) :
   match M.stepList s p with
