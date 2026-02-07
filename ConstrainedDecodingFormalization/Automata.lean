@@ -559,7 +559,7 @@ lemma stepList_len (s: σ) (w: List α) :
       simp
       exact ih'
 
-lemma stepList_eval (s: σ) (w: List α) :
+lemma stepList_of_eval (s: σ) (w: List α) :
   match M.evalFrom s w with
   | none => M.stepList s w = none
   | some lst =>
@@ -583,6 +583,40 @@ lemma stepList_eval (s: σ) (w: List α) :
       have ⟨lst', h_step, h_eq⟩ := ih'
       simp[h_step ]
       simp[h_eq]
+
+lemma eval_of_stepList (s: σ) (w: List α) :
+  match M.stepList s w with
+  | none => M.evalFrom s w = none
+  | some lst =>
+    ∃ q', M.evalFrom s w = some (q', lst.flatMap (fun (_, _, _, g) => g)) := by
+  cases h : M.stepList s w
+  case none =>
+    simp
+    cases h_eval: M.evalFrom s w with
+    | none => simp
+    | some sp =>
+      have := M.stepList_of_eval s w
+      simp[h_eval] at this
+      have ⟨lst, hlst⟩ := this
+      rw[h] at hlst
+      simp at hlst
+  case some lst =>
+    cases h_eval: M.evalFrom s w with
+    | none =>
+      simp
+      have := M.stepList_of_eval s w
+      simp[h_eval] at this
+      rw[h] at this
+      simp at this
+    | some sp =>
+      have := M.stepList_of_eval s w
+      simp[h_eval] at this
+      have ⟨lst, hlst⟩ := this
+      rw[h] at hlst
+      simp at hlst
+      simp[hlst]
+      exists sp.1
+
 
 lemma stepList_prefix_nil (s: σ) (p: List α) (a: List α) (h: p <+: a) :
   match M.stepList s p with
@@ -612,7 +646,7 @@ lemma stepList_prefix_nil (s: σ) (p: List α) (a: List α) (h: p <+: a) :
       simp[heq'] at ih'
       simp[ih']
 
-lemma stepList_prefix_a ( s: σ) (a: List α) :
+lemma stepList_prefix_w ( s: σ) (a: List α) :
   match M.stepList s a with
   | none => True
   | some lst => ∀ p, p <+: a → M.stepList s p = some (lst.take p.length) := by
@@ -691,9 +725,10 @@ def realizableSequences (q: σ) : Language Γ :=
 
 -- a sequence is mod realizable if theres a realizable sequence
 -- that "mods" to it. Here, mod means deleting all instances of a character
--- specifically whitespace
-def moddedRealizableSequences [BEq Γ] (q: σ) (mod: Γ) : Language Γ :=
-  { v | ∃ v' ∈ M.realizableSequences q, v'.filter (fun x => x != mod) = v }
+-- unless it starts with that character (usually whitespace)
+-- this is a rather unnatural definition, but is crucial to the proof
+def tailModdedRealizableSequences [BEq Γ] (q: σ) (mod: Γ) : Language Γ :=
+  { v | ∃ v' ∈ M.realizableSequences q, ¬[mod] <+: v' ∧ v'.filter (fun x => x != mod) = v }
 
 lemma reject_none {x : List α} (h : (M.eval x).isNone) : x ∉ M.accepts := by
   simp only [Option.isNone_iff_eq_none] at h

@@ -1071,12 +1071,12 @@ def whitespace_terminal (spec: LexerSpec α Γ σ) (twhite : α) (qwhite : σ) (
 
 -- for any state, the set of all realizable sequences is all single computible tokens
 -- and then any sequence of terminals, modulo whitespace (apart from empty sequence)
-omit [DecidableEq α] [BEq V] in
-def detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+omit [BEq V] in
+lemma detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
   (hw: whitespace_assumption spec twhite qwhite) (q: LexingState σ) :
   let white_term := (whitespace_terminal spec twhite qwhite hw)
   let lexer := BuildDetokLexer (v := vocab) spec
-  lexer.moddedRealizableSequences (Unit.unit, q) white_term =
+  lexer.tailModdedRealizableSequences (Unit.unit, q) white_term =
     { Ts | Ts = [] ∨
            (∃ t tsfx,
              ¬Ts.contains (ExtChar.char white_term) ∧
@@ -1105,11 +1105,15 @@ def detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Voc
       apply Or.inr
       exists first
       exists others
-      simp[FST.moddedRealizableSequences] at h
+      simp[FST.tailModdedRealizableSequences] at h
       rw[Set.mem_setOf] at h
       have ⟨v, hv_rs, hv_filter⟩ := h
+      have hvne : v ≠ [] := by
+        by_contra hve
+        simp[hve] at hv_filter
+        exact he hv_filter
       constructor
-      rw[←hv_filter]
+      rw[←hv_filter.right]
       simp
       constructor
       simp[first, others]
@@ -1124,7 +1128,7 @@ def detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Voc
       have ⟨ws, h_eq, h_ws_singleton⟩ := h_singleton
       rw[hw] at h_eq
       set step_list := lexer.stepList ((), q) ws with h_step_list
-      have h_step_list_app_v := lexer.stepList_eval ((), q) ws
+      have h_step_list_app_v := lexer.stepList_of_eval ((), q) ws
       simp[←h_eq] at h_step_list_app_v
       have ⟨step_list, h_step_list⟩ := h_step_list_app_v
       -- so we know that the translist concatenated together forms v
@@ -1137,7 +1141,7 @@ def detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Voc
           pattern ((fun x => _) ∘ _)
           unfold Function.comp
           simp
-        rw[←hv_filter]
+        rw[←hv_filter.right]
         rw[←h_step_list.right]
         simp[List.flatMap]
         conv =>
@@ -1168,15 +1172,20 @@ def detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Voc
       let unfiltered_firstTransition := step_list[firstTransitionIdx]
       have h_filtered_unfiltered : firstTransition = (unfiltered_firstTransition.1, unfiltered_firstTransition.2.1, unfiltered_firstTransition.2.2.1, unfiltered_firstTransition.2.2.2.filter rem_ws) := by
         simp[firstTransition, unfiltered_firstTransition, filtered_step_list]
+      let unfiltered_emptyPrefix := step_list.take firstTransitionIdx
       let emptyPrefix := List.take firstTransitionIdx filtered_step_list
       simp[oFirstTransition] at h_oFirstTransition
       have h_first_transition : filtered_step_list.findFinIdx? (fun (_, _, _, d) => d != []) = some firstTransitionIdx := by
         simp only [firstTransitionIdx, oFirstTransition, Option.some_get]
       have ⟨hft_ne, h_prefix_empty⟩ := findFinIdx?_eq_some_iff.mp h_first_transition
-      have h_emptyPrefix : (emptyPrefix.flatMap (fun (_, _, _, d) => d)) = [] := by
-        simp[emptyPrefix, List.flatMap]
-        intro l
-        intro hl
+      have huft_ne : unfiltered_firstTransition.2.2.2 ≠ [] := by
+        by_contra he
+        simp[unfiltered_firstTransition] at he
+        simp[he, filtered_step_list] at hft_ne
+
+      have h_emptyPrefix : ∀ l ∈ emptyPrefix.map (fun x => x.2.2.2), l = [] := by
+        intro l hl
+        simp only [List.map_take, emptyPrefix] at hl
         have ⟨j, hjlt, hj⟩ := List.mem_take_iff_getElem.mp hl
         simp at hjlt h_prefix_empty
         rw[←hj]
@@ -1187,74 +1196,187 @@ def detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Voc
         let fin_j := Fin.mk j this
         have := h_prefix_empty fin_j hjlt
         simp[this, fin_j]
+
+      have h_emptyPrefix_flatMap : (emptyPrefix.flatMap (fun (_, _, _, d) => d)) = [] := by
+        simp[emptyPrefix, List.flatMap]
+        intro l hl
+        simp only [←List.map_take] at hl
+        simp only [emptyPrefix] at h_emptyPrefix
+        exact h_emptyPrefix l hl
+
       -- x is the emptyPrefix.flatMap ++ suffix.flatMap
-      have h_x_prefix_suffix : x = emptyPrefix.flatMap (fun (_, _, _, d) => d) ++ (filtered_step_list.drop (firstTransitionIdx)).flatMap (fun (_, _, _, d) => d) := by
-        have base := h_filt_step_list
-        simp at base
-        have h_app : emptyPrefix ++ (filtered_step_list.drop (firstTransitionIdx)) = filtered_step_list := by
-          simp[emptyPrefix, List.take_append_drop]
-        rw[←h_app] at base
-        simp at base
+      have prefix_suffix { σ } : ∀ (l : List (σ × V × σ × List (Ch Γ))) j x, (l.flatMap (fun (_, _, _, d) => d)) = x →
+        (l.take j).flatMap (fun (_, _, _, d) => d) ++ (l.drop j).flatMap (fun (_, _, _, d) => d) = x
+        := by
+        intro l j x h
+        simp at h
+        have h_app : (l.take j) ++ (l.drop j) = l := by
+          simp[List.take_append_drop]
+        rw[←h_app] at h
+        simp only [List.flatMap_append] at h
         simp
-        exact Eq.symm base
+        exact h
+
+      have h_x_prefix_suffix : x = emptyPrefix.flatMap (fun (_, _, _, d) => d) ++ (filtered_step_list.drop (firstTransitionIdx)).flatMap (fun (_, _, _, d) => d) := by
+        exact Eq.symm (prefix_suffix filtered_step_list firstTransitionIdx x h_filt_step_list)
+      have h_v_prefix_suffix : v = unfiltered_emptyPrefix.flatMap (fun (_, _, _, d) => d) ++ (step_list.drop (firstTransitionIdx)).flatMap (fun (_, _, _, d) => d) := by
+        exact Eq.symm (prefix_suffix step_list firstTransitionIdx v h_step_list.right)
+
       -- so then, if the firstTransition is not empty (which its not), its head must be the global head
       have h_first_from_ft : first = firstTransition.2.2.2.head (by simp at hft_ne; exact hft_ne) := by
-        simp[first, h_emptyPrefix, h_x_prefix_suffix]
+        simp[first, h_emptyPrefix_flatMap, h_x_prefix_suffix]
         simp[List.flatMap]
-        apply List.head_flatten_eq_head_head
-
-
-        sorry
-
+        rw[List.head_flatten_eq_head_head]
+        simp[firstTransition]
+        simp at hft_ne ⊢
+        exact hft_ne
       -- translist (and translist filtered) consists of steps of 0, 1, or 2
       -- lets show that the first one must be 1 or 2
-      have h_first_production : (lexer.step firstTransition.1 firstTransition.2.1).map (fun (q, ts) => (q, ts.filter rem_ws)) = some (firstTransition.2.2) := by
+      have h_first_production : lexer.step unfiltered_firstTransition.1 unfiltered_firstTransition.2.1 = some (unfiltered_firstTransition.2.2) := by
         have := lexer.stepList_zip ((), q) ws
         simp only [h_step_list] at this
-        have : lexer.step firstTransition.1 firstTransition.2.1 = some unfiltered_firstTransition.2.2 := by
-          have := this unfiltered_firstTransition (by simp[unfiltered_firstTransition])
-          rw[←congrArg Prod.fst h_filtered_unfiltered] at this
-          rw[←congrArg (fun x => x.2.1) h_filtered_unfiltered] at this
-          exact this
+        have : lexer.step unfiltered_firstTransition.1 unfiltered_firstTransition.2.1 = some unfiltered_firstTransition.2.2 := by
+          exact this unfiltered_firstTransition (by simp[unfiltered_firstTransition])
         simp[this]
-        simp[h_filtered_unfiltered]
 
-      have ⟨flat, h_flat⟩ : ∃ t, vocab.flatten firstTransition.2.1 = [t] := by
+      have ⟨flat, h_flat⟩ : ∃ t, vocab.flatten unfiltered_firstTransition.2.1 = [t] := by
         have := lexer.stepList_w ((), q) ws
         simp only [h_step_list] at this
-        have : firstTransition.2.1 ∈ ws := by
-          have h_in : firstTransition.2.1 ∈ List.map (fun x => x.2.1) filtered_step_list := by
+        have : unfiltered_firstTransition.2.1 ∈ ws := by
+          have h_in : unfiltered_firstTransition.2.1 ∈ List.map (fun x => x.2.1) step_list := by
             apply mem_map.mpr
-            exists firstTransition
-            simp[firstTransition]
-          simp only [List.map_map, filtered_step_list] at h_in
-          unfold Function.comp at h_in
+            exists unfiltered_firstTransition
+            simp[unfiltered_firstTransition]
           rw[this] at h_in
           exact h_in
-        exact h_ws_singleton firstTransition.2.1 this
+        exact h_ws_singleton unfiltered_firstTransition.2.1 this
       simp[lexer, BuildDetokLexer] at h_first_production
       rw[detokenizer_comp_step] at h_first_production
       simp[h_flat] at h_first_production
-      have ⟨_, q', produced, hstep, hq'produced⟩ := h_first_production
-      have h_first_production_small := LexingFst_smallStep spec firstTransition.1.2 flat q' produced hstep
-      -- it can't be 0
+      have ⟨q', produced, hstep, hq'produced⟩ := h_first_production
+      have h_first_production_small := LexingFst_smallStep spec unfiltered_firstTransition.1.2 flat q' produced hstep
+      -- the produced tokens can't be 0 (as it is assumed to be first non zero)
       have hproduced_ne : produced ≠ [] := by
-        have lem : filter rem_ws produced ≠ [] := by
-          have : filter rem_ws produced = firstTransition.2.2.2 := by
+        simp[filtered_step_list] at hft_ne
+        have lem : produced ≠ [] := by
+          have : produced = unfiltered_firstTransition.2.2.2 := by
             simpa using congrArg Prod.snd hq'produced
-          simp[firstTransition, this]
-          simp at hft_ne
-          exact hft_ne
+          simp[this]
+          exact huft_ne
         by_contra h
         simp[h] at lem
-
       simp[hproduced_ne] at h_first_production_small
+
+      -- we showed before that the filtered prefix is empty
+      -- but we actually need that the unfiltered prefix is empty
+      -- we can get this by using hv.left, namely that the source
+      -- realizable sequence did not start with whitespace
+      -- consequently, the unfiltered emptyPrefix cannot contain whitespace
+      have h_prefix_production_must_all_be_wt : ∀ p ∈ unfiltered_emptyPrefix.flatMap (fun (_, _, _, d) => d), p = ExtChar.char white_term := by
+        intro p hp
+        simp only [mem_flatMap, unfiltered_emptyPrefix] at hp
+        simp[emptyPrefix] at h_emptyPrefix
+        have ⟨a, ha⟩ := hp
+        have : a.2.2.2.filter rem_ws = [] := by
+          have ⟨j, hjlt, hj⟩ := List.mem_take_iff_getElem.mp ha.left
+          have : filtered_step_list[j].2.2.2 = a.2.2.2.filter rem_ws := by
+            simp[filtered_step_list, hj]
+          rw[←this]
+          apply h_emptyPrefix filtered_step_list[j].2.2.2
+          simp only[←List.map_take]
+          simp[List.mem_take_iff_getElem]
+          exists j
+          have : j < firstTransitionIdx := by
+            exact (Nat.lt_min.mp hjlt).left
+          exists this
+        simp[rem_ws] at this
+        exact this p ha.right
+      have h_unfiltered_emptyPrefix : unfiltered_emptyPrefix.flatMap (fun (_, _, _, d) => d) = [] := by
+        have := h_v_prefix_suffix
+        by_contra hne
+        let hhead := (unfiltered_emptyPrefix.flatMap (fun (_, _, _, d) => d)).head hne
+        let vtail := v.tail
+        have : v.head hvne = hhead := by
+          simp[this, hhead]
+          exact head_append_left hne
+        have : v.head hvne = ExtChar.char white_term := by
+          have hhead_bad := h_prefix_production_must_all_be_wt hhead (by simp[hhead])
+          simp[this, hhead_bad]
+        have : v = [ExtChar.char white_term] ++ vtail := by
+          have hmerge : v = v.head hvne :: v.tail := by simp
+          simp[this] at hmerge
+          simp
+          exact hmerge
+        have : [ExtChar.char white_term] <+: v := by
+          exists v.tail
+          simp[this]
+        exact hv_filter.left this
+
       cases h_first_production_small
-      -- if its 1, we're done
+      -- if its 1, we're 'done', just need to combine results
       . rename_i h_production
         have ⟨t, ht⟩ := h_production
-        -- first show that first is the same as t
-        sorry
+        -- we already showed that first is the same as t
+        -- and that production on the prefix is empty
+        -- now need to glue everything together
+        let total_prefix := List.take (firstTransitionIdx.toNat + 1) filtered_step_list
+        let wfinal := ws.take (firstTransitionIdx.toNat + 1)
+        exists wfinal
+        have hpfx := lexer.stepList_prefix_w ((), q) ws
+        simp[h_step_list] at hpfx
+        have h_step_wfinal : lexer.stepList ((), q) wfinal = some (take wfinal.length step_list) := by
+          apply hpfx
+          simp[wfinal, List.take_prefix]
+
+        have := lexer.eval_of_stepList ((), q) wfinal
+        simp[h_step_wfinal] at this
+        have ⟨a, b, hterm⟩ := this
+        exists a
+        exists b
+        convert hterm
+        simp only [length_take, wfinal]
+        have : (List.take (min (firstTransitionIdx.toNat + 1) ws.length) step_list) = unfiltered_emptyPrefix ++ [unfiltered_firstTransition] := by
+          have : firstTransitionIdx + 1 = min (firstTransitionIdx.toNat + 1) ws.length := by
+            simp[Nat.add_one_le_iff]
+            have := lexer.stepList_len ((), q) ws
+            simp[h_step_list.left] at this
+            rw[←this]
+            have : step_list.length = filtered_step_list.length := by simp[filtered_step_list]
+            rw[this]
+            simp
+          rw[←this]
+          simp[List.take_add_one, unfiltered_emptyPrefix, unfiltered_firstTransition]
+        rw[this]
+        simp[flatMap_append]
+        simp[h_unfiltered_emptyPrefix]
+        -- these proofs use proofs (dependent types ig) within their type (for accessing head)
+        -- so its often motive incorrect to do rewrites
+        -- this adds a lot of type gymnastics so i have to do this weird thing here
+        have ⟨head, tail, hcons, hhead⟩ : ∃ head tail, firstTransition.2.2.2 = head :: tail ∧ head = first := by
+          have := h_first_from_ft
+          cases h : firstTransition.2.2.2
+          . simp[h] at this
+            simp at hft_ne
+            contradiction
+          . rename_i head tail
+            exists head
+            exists tail
+            simp
+            simp[h] at this
+            exact Eq.symm this
+        rw[←hhead]
+        simp[firstTransition, filtered_step_list] at hcons
+        have := congrArg Prod.snd hq'produced
+        simp[ht, unfiltered_firstTransition] at this
+        rw[←this] at hcons
+        simp[unfiltered_firstTransition]
+        simp[←this]
+        simp[filter] at hcons
+        split at hcons
+        <;> (
+          simp at hcons
+          try simp[hcons]
+        )
       . sorry
         -- its only two if second one is EOS (this is the annoying case)
         -- in this case, replace the eos with whitespace and we can show the exchange argument
@@ -1264,7 +1386,7 @@ def detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Voc
     -- empty sequence is trivial
     . rename_i h
       simp[h]
-      simp[FST.moddedRealizableSequences]
+      simp[FST.tailModdedRealizableSequences]
       rw[Set.mem_setOf]
       exists []
       simp[FST.realizableSequences]
