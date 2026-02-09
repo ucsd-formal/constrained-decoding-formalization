@@ -72,7 +72,8 @@ def prefixLanguage : Language α :=
 
 -- no dead states
 def pruned : Prop :=
-  ∀ σ, ∃ w f, some f = A.evalFrom σ w ∧ f ∈ A.accept
+  ∀ σ, (∃ w f, some f = A.evalFrom σ w ∧ f ∈ A.accept) ∧
+       (∃ w, some σ = A.evalFrom A.start w)
 
 def intermediateLanguage : Language α :=
   {w | A.eval w ≠ none }
@@ -88,7 +89,7 @@ def pruned_prefixLanguage (h : A.pruned) : A.intermediateLanguage = A.prefixLang
       contradiction
     | some s =>
       simp[pruned] at h
-      have ⟨u, f, hf1, hf2⟩ := h s
+      have ⟨u, f, hf1, hf2⟩ := (h s).left
       exists u
       exists f
       simp[h3, evalFrom_append, hf1, hf2]
@@ -538,6 +539,20 @@ lemma stepList_w ( s: σ) (w: List α) :
       simp
       simp[ih']
 
+lemma stepList_mem_w ( s: σ) (w: List α) :
+  match M.stepList s w with
+  | none => True
+  | some lst => ∀ l ∈ lst, l.2.1 ∈ w := by
+  have := M.stepList_w s w
+  cases h: M.stepList s w
+  case none => simp [h] at this; exact this
+  case some lst =>
+    simp only [h] at this ⊢
+    rw[←this]
+    simp only [List.mem_map]
+    intro l  hl
+    exists l
+
 lemma stepList_len (s: σ) (w: List α) :
   match M.stepList s w with
   | none => True
@@ -564,7 +579,10 @@ lemma stepList_of_eval (s: σ) (w: List α) :
   | none => M.stepList s w = none
   | some lst =>
     ∃ lst', M.stepList s w = some lst' ∧
-            (lst'.flatMap (fun (_, _, _, g) => g)) = lst.2 := by
+            (lst'.flatMap (fun (_, _, _, g) => g)) = lst.2 ∧
+            match lst'.getLast? with
+            | none => lst.1 = s
+            | some val => lst.1 = val.2.2.1 := by
   induction w generalizing s
   case nil =>
     simp [evalFrom, stepList]
@@ -583,12 +601,21 @@ lemma stepList_of_eval (s: σ) (w: List α) :
       have ⟨lst', h_step, h_eq⟩ := ih'
       simp[h_step ]
       simp[h_eq]
+      cases h : lst'.getLast?
+      simp[h] at h_eq ⊢
+      simp[List.getLast?_cons, h]
+      exact h_eq.right
+      simp[h, List.getLast?_cons] at h_eq ⊢
+      exact h_eq.right
 
 lemma eval_of_stepList (s: σ) (w: List α) :
   match M.stepList s w with
   | none => M.evalFrom s w = none
   | some lst =>
-    ∃ q', M.evalFrom s w = some (q', lst.flatMap (fun (_, _, _, g) => g)) := by
+    M.evalFrom s w = some (
+      match lst.getLast? with
+      | some val => val.2.2.1
+      | none => s, lst.flatMap (fun (_, _, _, g) => g)) := by
   cases h : M.stepList s w
   case none =>
     simp
@@ -615,7 +642,25 @@ lemma eval_of_stepList (s: σ) (w: List α) :
       rw[h] at hlst
       simp at hlst
       simp[hlst]
-      exists sp.1
+      cases hl : lst.getLast?
+      <;> (simp[hl] at hlst ⊢
+           simp[←hlst.right.right])
+
+lemma eval_of_stepList_opaque (s: σ) (w: List α) :
+  match M.stepList s w with
+  | none => M.evalFrom s w = none
+  | some lst =>
+    ∃ q', M.evalFrom s w = some (q', lst.flatMap (fun (_, _, _, g) => g)) := by
+  have := eval_of_stepList M s w
+  cases h : M.stepList s w
+  case none =>
+    simp[h] at this
+    exact this
+  case some lst =>
+    simp[h] at this ⊢
+    exists (match lst.getLast? with
+            | some val => val.2.2.1
+            | none => s)
 
 -- this definition is a bit awkward with the none optional optionals
 lemma stepList_eval_take (s: σ) (w: List α) (j: Fin w.length) :
@@ -773,6 +818,9 @@ def realizableSequences (q: σ) : Language Γ :=
 -- this is a rather unnatural definition, but is crucial to the proof
 def tailModdedRealizableSequences [BEq Γ] (q: σ) (mod: Γ) : Language Γ :=
   { v | ∃ v' ∈ M.realizableSequences q, ¬[mod] <+: v' ∧ v'.filter (fun x => x != mod) = v }
+
+def moddedRealizableSequences [BEq Γ] (q: σ) (mod: Γ) : Language Γ :=
+  { v | ∃ v' ∈ M.realizableSequences q, v'.filter (fun x => x != mod) = v }
 
 lemma reject_none {x : List α} (h : (M.eval x).isNone) : x ∉ M.accepts := by
   simp only [Option.isNone_iff_eq_none] at h

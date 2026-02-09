@@ -9,9 +9,9 @@ import Mathlib.Data.List.Flatten
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.Fintype.Basic
 import Mathlib.Data.Fintype.Sum
-import Mathlib.Tactic.Linarith
 
 import ConstrainedDecodingFormalization.Automata
+import ConstrainedDecodingFormalization.Char
 import ConstrainedDecodingFormalization.Vocabulary
 
 open List
@@ -23,55 +23,13 @@ variable
   [DecidableEq α] [DecidableEq σ]
   [BEq α] [BEq σ] [LawfulBEq σ]
 
-/-- Extend character alphabet with EOS symbol-/
-inductive ExtChar (α : Type u)
-| char : α → ExtChar α
-| eos  : ExtChar α
-deriving DecidableEq, Repr
-
-instance {α} : Coe (α) (ExtChar α) := ⟨fun a => ExtChar.char a⟩
-instance [e: FinEnum α] : FinEnum (ExtChar α) where
-  card := FinEnum.card α + 1
-  equiv :=
-    let e := e.equiv
-    { toFun := fun x =>
-        match x with
-        | ExtChar.eos     => ⟨FinEnum.card α, Nat.lt_succ_self _⟩
-        | ExtChar.char a  => ⟨e a, Nat.lt_succ_of_lt (Fin.is_lt (e a))⟩
-      invFun := fun i =>
-        if h : i.val < FinEnum.card α then ExtChar.char (e.symm ⟨i.val, h⟩)
-        else ExtChar.eos
-      left_inv := by
-        intro x
-        cases x with
-        | eos =>
-          simp
-        | char a =>
-          simp
-      right_inv := by
-        intro ⟨i, hi⟩
-        by_cases h : i < FinEnum.card α
-        · simp [h]
-        · have : i = FinEnum.card α := by
-            linarith
-          subst this
-          simp
-      }
-  decEq := by infer_instance
-
-abbrev Ch := ExtChar
-
-@[ext]
-structure Token (α : Type u) (Γ : Type v) where
-  symbol : Γ
-  string : List α
-deriving Repr, DecidableEq
 
 structure LexerSpec (α Γ σ) where
   automaton : FSA α σ
   term: σ → Option Γ
   hterm: ∀ s, s ∈ automaton.accept ↔ (term s).isSome
   term_inj: ∀ s₁ s₂ t, term s₁ = some t ∧ term s₂ = some t → s₁ = s₂
+  term_surj: ∀ t, ∃ s, term s = some t
 
 def LexerSpec.seq_term (spec: LexerSpec α Γ σ) (seq: List α) : Option Γ :=
   match spec.automaton.eval seq with
@@ -201,7 +159,7 @@ def LexingState_src_id [DecidableEq α] [BEq α]{σ : Type w} (spec: LexerSpec �
     For the lexing FSA, we'll use the convention that each terminal symbol is attached to an accept state (see Fig. 1) -/
 def BuildLexingFST [BEq α] [DecidableEq α] (spec: LexerSpec α Γ σ) :
     FST (Ch α) (Ch Γ) (LexingState σ) := Id.run do
-  let ⟨A, term, hterm, _⟩ := spec
+  let ⟨A, term, hterm, _, _⟩ := spec
 
   let new_q0 := LexingState.start
   let q0 := spec.automaton.start
@@ -1053,14 +1011,20 @@ def BuildDetokLexer [v: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ) : FST V
 
 -- whitespace is accepted exactly in the start state and the state after the start state
 -- and there is at least one non whitespace token
-def whitespace_assumption (spec: LexerSpec α Γ σ) (twhite : α) (qwhite : σ) : Prop :=
+-- technically it's possible to derive the non whitespace based on other assumptions
+-- but this is not necessary
+-- this assumption also does allow whitespace to be formed by going to another state and back to the start
+-- and then appending whitespace, but this doesn't hurt the proof
+def whitespace_assumption (spec: LexerSpec α Γ σ) (tnonwhite : α) (twhite : α) (qnonwhite : σ) (qwhite : σ) : Prop :=
   qwhite ∈ spec.automaton.accept ∧
-  spec.automaton.step spec.automaton.start twhite = some qwhite ∧
-  spec.automaton.step qwhite twhite = some qwhite ∧
+  (∀ s t, spec.automaton.step s t = some qwhite ↔ ((s = qwhite ∨ s = spec.automaton.start) ∧ t = twhite)) ∧
   (∀ t', twhite ≠ t' → spec.automaton.step qwhite t' = none) ∧
-  (∀ q, q ≠ spec.automaton.start ∧ q ≠ qwhite → spec.automaton.step q twhite = none)
+  (∀ q, q ≠ spec.automaton.start ∧ q ≠ qwhite → spec.automaton.step q twhite = none) ∧
+  qnonwhite ∈ spec.automaton.accept ∧
+  spec.automaton.step spec.automaton.start tnonwhite = some qnonwhite ∧
+  tnonwhite ≠ twhite
 
-def whitespace_terminal (spec: LexerSpec α Γ σ) (twhite : α) (qwhite : σ) (hw: whitespace_assumption spec twhite qwhite) : Γ :=
+def whitespace_terminal (spec: LexerSpec α Γ σ) (tnonwhite : α) (twhite : α) (qnonwhite : σ) (qwhite : σ) (hw: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) : Γ :=
   let ret := spec.term qwhite
   have := (spec.hterm qwhite).mp hw.left
   ret.get this
@@ -1068,6 +1032,14 @@ def whitespace_terminal (spec: LexerSpec α Γ σ) (twhite : α) (qwhite : σ) (
 @[simp]
 private def produce {σ V Γ} (step : σ × V × σ × List (Ch Γ)) : List (Ch Γ) :=
   step.2.2.2
+
+private lemma detok_eval_embed { V Γ } [v: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ) (q: LexingState σ) (t: ExtChar α) :
+  (BuildDetokLexer spec).step ((), q) (v.embed t) =
+  (Option.map (fun x => (((), x.1), x.2)) ((BuildLexingFST spec).step q t)) := by
+  simp[BuildDetokLexer]
+  rw[detokenizer_comp_step]
+  simp[v.fe]
+
 
 private lemma flatMap_prefix_suffix {σ V Γ} (l : List (σ × V × σ × List (Ch Γ))) (j : Nat) (x : List (Ch Γ))
     (h : l.flatMap (fun (_, _, _, d) => d) = x) :
@@ -1078,6 +1050,617 @@ private lemma flatMap_prefix_suffix {σ V Γ} (l : List (σ × V × σ × List (
   simp only [List.flatMap_append] at h
   simp
   exact h
+
+-- general exchange argument
+-- remove to shortest prefix that produces the token
+-- may also assume that each word in the vocabulary is a singleton
+omit [BEq V] in
+private lemma exchange_basis [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ) (char: ExtChar Γ)
+  (q : LexingState σ) (hchar: char ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
+  ∃ wpfx wlast pfx last,
+                (BuildDetokLexer (v := vocab) spec).stepList ((), q) (wpfx) = some (pfx) ∧
+                (BuildDetokLexer (v := vocab) spec).stepList ((), q) (wpfx ++ [wlast]) = some (pfx ++ [last]) ∧
+                flatMap produce pfx = [] ∧
+                produce last = [char] ∧
+                (BuildDetokLexer (v := vocab) spec).evalFrom ((), q) (wpfx ++ [wlast]) = some (last.2.2.1, [char]) ∧
+                ∀ t ∈ (wpfx ++ [wlast]), ∃ t0, vocab.flatten t = [t0] := by
+  let lexer := BuildDetokLexer (v := vocab) spec
+  simp[FST.singleProducible] at hchar
+  obtain ⟨w, _, qf, hwqforg⟩ := hchar
+  simp[BuildDetokLexer] at hwqforg
+  obtain ⟨w, hwqf, hw⟩ := detokenize_singleton (v := vocab) (BuildLexingFST spec) q w
+  rw[hwqforg, Eq.comm] at hwqf
+  have dum : (BuildDetokenizingFST.compose (BuildLexingFST spec)) = BuildDetokLexer (v := vocab) spec := by simp[BuildDetokLexer]
+  rw[dum] at hwqf
+  have := lexer.stepList_of_eval ((), q) w
+  simp[lexer, hwqf] at this
+  obtain ⟨step_list, hstep_list, flat_step⟩ := this
+  let firstTransitionIndexO := step_list.findFinIdx? (fun step => produce step ≠ [])
+  have : firstTransitionIndexO.isSome := by
+    by_contra h
+    simp only [findFinIdx?_eq_none_iff, Option.not_isSome_iff_eq_none, firstTransitionIndexO] at h
+    simp only [produce, ne_eq, decide_not, Bool.not_eq_eq_eq_not, Bool.not_true,
+      decide_eq_false_iff_not, Decidable.not_not] at h
+    have : flatMap (fun step => produce step) step_list = [] := by
+      simp only [mem_map, produce, flatMap, flatten_eq_nil_iff]
+      intro l he
+      obtain ⟨a, ha⟩ := he
+      rw[h a] at ha
+      <;> simp[ha]
+    simp only [produce] at this
+    rw[flat_step.left] at this
+    simp at this
+  obtain ⟨firstTransitionIndex, ho⟩ : ∃ i, firstTransitionIndexO = some i := by
+    simp only [Option.isSome_iff_exists, firstTransitionIndexO] at this
+    exact this
+  have hfirst := findFinIdx?_eq_some_iff.mp ho
+  simp at hfirst
+  obtain ⟨hne, hbefore⟩ := hfirst
+  have h_prefix_empty : (step_list.take firstTransitionIndex).flatMap produce = [] := by
+    simp[flatMap]
+    intro l hl
+    obtain ⟨j, hjlt, hj⟩ := List.mem_take_iff_getElem.mp (by simpa using hl)
+    rw[←hj]
+    simp
+    have : j < step_list.length := Nat.lt_trans (Nat.lt_min.mp hjlt).left (by simp : firstTransitionIndex < step_list.length)
+    exact hbefore (Fin.mk j this) (Nat.lt_min.mp hjlt).left
+  unfold produce at h_prefix_empty
+  -- The first non-empty transition produces exactly [char]
+  have hprod_first : produce step_list[firstTransitionIndex] = [char] := by
+    have h_decomp := flatMap_prefix_suffix step_list firstTransitionIndex [char] flat_step.left
+    simp[h_prefix_empty] at h_decomp
+
+    have : step_list[firstTransitionIndex] :: (step_list.drop firstTransitionIndex).tail = step_list.drop firstTransitionIndex := by
+      have : firstTransitionIndex < step_list.length := by simp
+      simp only [List.drop_eq_getElem_cons this]
+      simp
+
+    rw[←this] at h_decomp
+    simp[flatMap] at h_decomp
+    cases hprod : (drop (↑firstTransitionIndex) (map (fun x => x.2.2.2) step_list))
+    <;> rw[hprod] at h_decomp
+    . simp at h_decomp
+    . rename_i head tail
+      simp[append_eq_singleton_iff] at h_decomp
+      set dummy := head :: tail with hdummy
+      have : dummy.head (by simp) = head := by simp[dummy]
+      simp_rw[←hprod] at this
+      simp at this
+      rw[←this] at h_decomp
+      cases h_decomp
+      case inr h => simp[h]
+      case inl h => simp[hne] at h
+
+  have hslen:= lexer.stepList_len ((), q) w
+  simp[lexer, hstep_list] at hslen
+  have hft_lt_w : firstTransitionIndex.val < w.length := by
+     rw[←hslen]
+     simp
+  exists w.take firstTransitionIndex
+  exists w[firstTransitionIndex]'hft_lt_w
+  exists step_list.take firstTransitionIndex
+  exists step_list[firstTransitionIndex]
+  have hpfxo := lexer.stepList_prefix_w ((), q) w
+  simp[lexer, hstep_list] at hpfxo
+  have hpfx := hpfxo (List.take (↑firstTransitionIndex + 1) w) (by simp[List.take_prefix])
+  constructor
+  . have hpfx := hpfxo (List.take ↑firstTransitionIndex w) (by simp[List.take_prefix])
+    simp[hpfx]
+    exact Nat.le_of_lt hft_lt_w
+  constructor
+  . simp[hpfx]
+    simp[hslen]
+  . constructor
+    · simp[flatMap]
+      intro l hl
+      obtain ⟨j, hjlt, hj⟩ := List.mem_take_iff_getElem.mp (by simpa using hl)
+      rw[←hj]
+      simp
+      have : j < step_list.length := Nat.lt_trans (Nat.lt_min.mp hjlt).left (by simp : firstTransitionIndex < step_list.length)
+      exact hbefore (Fin.mk j this) (Nat.lt_min.mp hjlt).left
+    constructor
+    . exact hprod_first
+    . have := lexer.eval_of_stepList ((), q) (take (↑firstTransitionIndex + 1) w)
+      simp[lexer, hpfx] at this
+      have hlt : firstTransitionIndex + 1 ≤ w.length := by simp[←hslen, Nat.add_one_le_of_lt]
+      simp[hlt] at this
+      simp[this]
+      simp[getLast?_take]
+      rw[take_add_one]
+      simp only [List.flatMap_append, h_prefix_empty]
+      simp at hprod_first
+      simp[hprod_first]
+      intro t ht
+      apply hw
+      exact List.mem_of_mem_take ht
+
+-- the only reachable state from qwhite is qwhite
+private lemma qwhite_sink { σ α } [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } (spec: LexerSpec α Γ σ)
+   (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) :
+    ∀ q w, spec.automaton.evalFrom qwhite w = some q → q = qwhite := by
+  intro q w h
+  induction w
+  case nil =>
+     simp[FSA.evalFrom] at h
+     exact h.symm
+  case cons head tail ih =>
+    obtain ⟨_, hstay , hwa, _⟩ := hwa
+    simp[FSA.evalFrom] at h
+    split at h
+    simp at h
+    rename_i heq
+    have : head = twhite := by
+      by_contra hx
+      have := hwa head (by intro hx'; exact hx hx'.symm)
+      rw[this] at heq
+      simp at heq
+    have hstay := hstay qwhite head
+    simp[this] at hstay heq
+    rw[hstay] at heq
+    simp at heq
+    simp[←heq] at h
+    exact ih h
+
+-- for any non qwhite state
+-- we can build a path to it that does not start with twhite
+omit [BEq V] in
+private lemma path_nonwhitespace [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+  (hpruned: spec.automaton.pruned) (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite)
+  : ∀ qtarget, qtarget ≠ qwhite → qtarget ≠ spec.automaton.start →
+    ∃ ws wt qi, ws ≠ twhite ∧
+            spec.automaton.step spec.automaton.start ws = some qi ∧
+            (BuildDetokLexer (v := vocab) spec).step (Unit.unit, LexingState.start) (vocab.embed ws) = some (((), LexingState.id qi), []) ∧
+            (BuildDetokLexer (v := vocab) spec).evalFrom (Unit.unit, LexingState.start) (map vocab.embed (ExtChar.char ws :: wt)) = some ((Unit.unit, LexingState.id qtarget), []) := by
+  -- take
+  intro qt hqt_nonwhite hqt_nstart
+  simp[FSA.pruned] at hpruned
+  obtain ⟨w, hw⟩ := (hpruned qt).right
+  have : w ≠ [] := by
+    intro h
+    simp[h] at hw
+    exact hqt_nstart hw
+  let h := w.head this
+  have hhtail : w = h :: w.tail := by simp[h]
+  have ⟨step, hstep⟩ : ∃ q, spec.automaton.step spec.automaton.start h = some q := by
+    rw[hhtail] at hw
+    simp[FSA.evalFrom] at hw
+    split at hw
+    simp at hw
+    rename_i s' heq
+    exists s'
+
+  exists h
+  exists map ExtChar.char w.tail
+  exists step
+  constructor
+  . intro ha
+    rw[hhtail] at hw
+    simp[FSA.evalFrom] at hw
+    split at hw
+    simp at hw
+    rename_i heq
+    simp[ha] at heq
+    have ⟨_, hstay, _⟩ := hwa
+    have hstay := hstay spec.automaton.start h
+    simp[ha] at hstay
+    rw[heq] at hstay
+    simp at hstay
+    simp[hstay] at hw
+    have := qwhite_sink spec hwa qt (w.tail) hw.symm
+    exact hqt_nonwhite this
+  constructor
+  exact hstep
+  constructor
+  . simp[detok_eval_embed, BuildLexingFST, Id.run, LexingState.src]
+    simp[hstep]
+  . rw[←List.map_cons, ←hhtail]
+    generalize hqs : spec.automaton.start = qs at hw
+    generalize hq's : LexingState.start = q's
+    have hrel : LexingState.src spec q's = qs := by
+      simp[LexingState.src, hqs]
+      simp[←hq's]
+    clear hqs hq's hstep
+    induction w generalizing qs q's
+    case nil => simp at hhtail
+    case cons head tail ih =>
+      simp[FSA.evalFrom] at hw
+      simp at ih ⊢
+      simp[FST.evalFrom]
+      split at hw <;> try simp at hw
+      simp[detok_eval_embed]
+      simp[BuildLexingFST, Id.run]
+      rename_i s heq
+      simp[hrel, heq]
+      by_cases h : tail = []
+      simp[h] at hw ⊢
+      exact hw.symm
+      have ih' := ih h s hw (LexingState.id s) (by simp[LexingState.src])
+      rw[ih']
+
+-- extract the common proof that qp.2 = LexingState.id qwhite
+omit [BEq V] in
+private lemma exchange_basis_ends_at_qwhite [BEq (Ch Γ)] [LawfulBEq (Ch Γ)]  [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+  (hempty : [] ∉ spec.automaton.accepts) (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ)
+  (_: (BuildDetokLexer (v := vocab) spec).stepList ((), q) (wpfx ++ [wlast]) = some (pfx ++ [last]))
+  (hflat_pfx: flatMap produce pfx = [])
+  (hlast: produce last = [ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)])
+  (hflat: ∀ t ∈ wpfx ++ [wlast], ∃ t0, vocab.flatten t = [t0])
+  (heval: (BuildDetokLexer (v := vocab) spec).evalFrom ((), q) (wpfx ++ [wlast]) = some (last.2.2.1, [ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)]))
+  (hqp: (BuildDetokLexer spec).evalFrom ((), q) wpfx = some ((unt, qp), flatMap (fun x => x.2.2.2) pfx)) : qp = LexingState.id qwhite := by
+  simp[FSA.accepts_iff] at hempty
+  unfold produce at hflat_pfx hlast
+  simp[FST.evalFrom_append, hflat_pfx, hqp] at heval
+  simp[BuildDetokLexer] at heval
+  rw[detokenizer_comp_step] at heval
+  obtain ⟨t, ht⟩ := hflat wlast (by simp)
+  rw[ht] at heval
+  simp[FST.evalFrom_singleton] at heval
+  have ⟨unt, hunt⟩ := heval
+  simp[BuildLexingFST, Id.run] at hunt
+  split at hunt
+  <;> split at hunt
+  <;> try split at hunt
+  all_goals (
+    simp at hunt
+  )
+  obtain ⟨⟨a, ⟨_, _, hq⟩⟩, x⟩ := hunt
+  obtain ⟨haccept, _⟩ := hwa
+  simp[whitespace_terminal] at hq
+  have hws := ((spec.hterm qwhite).mp haccept)
+  rename_i haccept2 _ _ _
+  have hqps := ((spec.hterm (LexingState.src spec qp)).mp haccept2)
+  have := spec.term_inj (LexingState.src spec qp) qwhite ((spec.term qwhite).get hws)
+  simp at this
+  have hterm_eq : spec.term (LexingState.src spec qp) = spec.term qwhite := by
+    simp[Option.isSome_iff_exists] at hws hqps
+    obtain ⟨a, ha⟩ := hws
+    obtain ⟨b, hb⟩ := hqps
+    simp_rw[ha, hb] at hq
+    simp at hq
+    simp[ha, hb]
+    exact hq
+  simp[hterm_eq] at this
+  unfold LexingState.src at this
+  split at this <;> try simp[this]
+  rw[←this] at haccept
+  exact hempty haccept
+
+-- if you can produce a single whitespace,
+-- you can produce whitespace while ending up at any non whitespace state
+--
+-- most complicated of the exchange arguments
+-- since white term is producible, we may find a path that goes to qwhite
+-- traverse that path, then traverse the path to the qtarget (which must not start with qwhite)
+-- these two together will produce the necessary construction
+omit [BEq V] in
+private lemma exchange_whitespacea [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+  (hempty : [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned) (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ)
+  (hwsa: ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa) ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
+    ∀ qtarget, qtarget ≠ qwhite → qtarget ≠ spec.automaton.start →
+    ∃ w, (BuildDetokLexer (v := vocab) spec).evalFrom (Unit.unit, q) w = some ((Unit.unit, LexingState.id qtarget), [ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)]) := by
+  let lexer := BuildDetokLexer (v := vocab) spec
+  let white_term := whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa
+  obtain ⟨wpfx, wlast, pfx, last, hprefix_list, hstep_list, hflat_pfx, hlast, heval, hflat⟩ := exchange_basis spec white_term q hwsa
+  intro qtarget hqt_nonwhite hqt_nstart
+  obtain ⟨ws, wt, step, hws_nwhite, hstep, hfst_step, hw⟩ := path_nonwhitespace (vocab := vocab) spec hpruned hwa qtarget hqt_nonwhite hqt_nstart
+  let w := wpfx ++ ([vocab.embed ws] ++ (map vocab.embed wt))
+  exists w
+  simp[w, FST.evalFrom_append]
+  rw[←map_cons]
+  have := lexer.eval_of_stepList_opaque ((), q) wpfx
+  simp[lexer, hprefix_list] at this
+  obtain ⟨unt, qp, hqp⟩ := this
+  simp[hqp]
+  exists ()
+  unfold produce at hflat_pfx
+  simp[hflat_pfx]
+  have hqp_white : qp = LexingState.id qwhite := by
+    exact exchange_basis_ends_at_qwhite spec hempty hwa q hstep_list hflat_pfx hlast hflat heval hqp
+
+  simp only [hqp_white]
+  have : unt = () := by simp
+  rw[this]
+  simp[FST.evalFrom] at hw ⊢
+  simp[detok_eval_embed]
+  simp[BuildLexingFST, Id.run]
+  obtain ⟨haccept, _, hwa, _⟩ := hwa
+  have hwa := hwa ws (by intro ha; exact hws_nwhite ha.symm)
+  simp[hwa, haccept]
+  simp[whitespace_terminal]
+  split at hw
+  simp at hw
+  rename_i heq
+  simp[hstep]
+  simp[hfst_step] at heq
+  rw[heq.left]
+  simp[heq] at hw
+  split at hw
+  simp at hw
+  rename_i heq'
+  simp[heq']
+  simp at hw
+  exact hw
+
+-- if you can produce whitespace,
+-- you can produce that and eos and end at qwhite
+omit [BEq V] in
+private lemma exchange_whitespace_eos [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+  (hempty : [] ∉ spec.automaton.accepts) (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ)
+  (hwsa: ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa) ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
+    ∃ w, (BuildDetokLexer (v := vocab) spec).evalFrom (Unit.unit, q) w = some ((Unit.unit, LexingState.id qwhite), [ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa), ExtChar.eos]) := by
+  let lexer := BuildDetokLexer (v := vocab) spec
+  let white_term := whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa
+  obtain ⟨wpfx, wlast, pfx, last, hprefix_list, hstep_list, hflat_pfx, hlast, heval, hflat⟩ := exchange_basis spec white_term q hwsa
+  let w := wpfx ++ [vocab.embed .eos, vocab.embed twhite]
+  exists w
+  simp[w, FST.evalFrom_append]
+  have := lexer.eval_of_stepList_opaque ((), q) wpfx
+  simp[lexer, hprefix_list] at this
+  obtain ⟨unt, qp, hqp⟩ := this
+  unfold produce at hflat_pfx
+  simp[hqp, hflat_pfx]
+  have hqp_white : qp = LexingState.id qwhite := by
+    exact exchange_basis_ends_at_qwhite spec hempty hwa q hstep_list hflat_pfx hlast hflat heval hqp
+
+  simp[hqp_white, BuildDetokLexer, FST.evalFrom]
+  rw[detokenizer_comp_step]
+  simp[vocab.fe]
+  simp[BuildLexingFST, Id.run]
+  obtain ⟨haccept, hwa, _⟩ := hwa
+  simp[haccept]
+  rw[detokenizer_comp_step]
+  simp[vocab.fe, LexingState.src, FST.evalFrom_singleton]
+  have hwa := hwa spec.automaton.start twhite
+  simp at hwa
+  simp[hwa, whitespace_terminal]
+
+-- if you can produce a single nonwhitespace,
+-- you can produce that nonwhitespace while ending up at qwhite
+omit [BEq V] in
+private lemma exchange_nonwhitespace [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+  (hempty : [] ∉ spec.automaton.accepts) (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ) (term: Γ)
+  (hterm: term ≠ (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa) ∧ ExtChar.char term ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
+    ∃ w, (BuildDetokLexer (v := vocab) spec).evalFrom (Unit.unit, q) w = some ((Unit.unit, LexingState.id qwhite), [ExtChar.char term]) := by
+  simp[FSA.accepts_iff] at hempty
+  let lexer := BuildDetokLexer (v := vocab) spec
+  obtain ⟨wpfx, wlast, pfx, last, hprefix_list, hstep_list, hflat_pfx, hlast, heval, hflat⟩ := exchange_basis spec term q hterm.right
+  let w := wpfx ++ [vocab.embed twhite]
+  exists w
+  simp[w, FST.evalFrom_append]
+  have := lexer.eval_of_stepList_opaque ((), q) wpfx
+  simp[lexer, hprefix_list] at this
+  obtain ⟨unt, qp, hqp⟩ := this
+  unfold produce at hflat_pfx
+  simp[hflat_pfx] at hqp
+  simp[hqp]
+  -- since we produced term on the original branch
+  -- old state must be that as well (in particular, not whitespace)
+  have hqp_nwhite : (LexingState.src spec qp ≠ spec.automaton.start) ∧ qp ≠ LexingState.id qwhite ∧ spec.term (LexingState.src spec qp) = some term := by
+    simp[FST.evalFrom_append, hqp] at heval
+    simp[BuildDetokLexer] at heval
+    rw[detokenizer_comp_step] at heval
+    obtain ⟨t, ht⟩ := hflat wlast (by simp)
+    rw[ht] at heval
+    simp[FST.evalFrom_singleton] at heval
+    obtain ⟨a, ha⟩ := heval
+    simp[BuildLexingFST, Id.run] at ha
+    split at ha
+    <;> split at ha
+    <;> try split at ha
+    all_goals (
+      simp at ha
+    )
+    obtain ⟨⟨q, hsteps, hqa, hspec⟩, g⟩ := ha
+    rename_i hfailstep haccept
+    constructor
+    . intro ha
+      rw[ha] at haccept
+      exact hempty haccept
+    have hspec' : spec.term (LexingState.src spec qp) = some term := by
+      simp_rw[←hspec]
+      simp
+    constructor
+    . intro ha
+      rw[ha] at hspec'
+      simp[whitespace_terminal] at hterm
+      rw[←hspec] at hterm
+      simp_rw[ha] at hterm
+      simp[LexingState.src] at hterm
+    . exact hspec'
+  simp[BuildDetokLexer]
+  rw[detokenizer_comp_step]
+  simp[vocab.fe]
+  simp[BuildLexingFST, Id.run]
+  cases hstep : (spec.automaton.step (LexingState.src spec qp) twhite)
+  simp
+  obtain ⟨_, hwa, _⟩ := hwa
+  have := hwa spec.automaton.start twhite
+  simp at this
+  simp[this]
+  simp[hqp_nwhite]
+  have := (spec.hterm (LexingState.src spec qp)).mpr (by simp[hqp_nwhite.right.right])
+  exact this
+  simp
+  obtain ⟨haccept, _, _,  hwa, _⟩ := hwa
+  have := hwa (LexingState.src spec qp)
+  simp[hstep] at this
+  simp[hqp_nwhite] at this
+  unfold LexingState.src at this
+  split at this
+  rename_i a
+  simp at hqp_nwhite hstep
+  have := hwa a (by simp[hqp_nwhite])
+  simp[this] at hstep
+  rw[this] at hempty
+  exact hempty haccept
+
+-- if you can produce eos,
+-- you can produce eos while ending up at qwhite
+omit [BEq V] in
+private lemma exchange_eos [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+  (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ)
+  (hterm: ExtChar.eos ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
+    ∃ w, (BuildDetokLexer (v := vocab) spec).evalFrom (Unit.unit, q) w = some ((Unit.unit, LexingState.id qwhite), [ExtChar.eos]) := by
+  -- exchange basis, can get it to something that has a steplist which is empty and then [target]
+  -- and for non eos, that means it must
+  let lexer := BuildDetokLexer (v := vocab) spec
+  obtain ⟨wpfx, wlast, pfx, last, hprefix_list, hstep_list, hflat_pfx, hlast, heval, hflat⟩ := exchange_basis spec (ExtChar.eos) q hterm
+  set w := wpfx ++ [wlast]
+  exists w ++ [vocab.embed twhite]
+  have := lexer.eval_of_stepList ((), q) w
+  simp[lexer] at this
+  -- show that last.2.2.1 = qstart since thats the only way to produce a single eos
+  have hlast_start : last.2.2.1 = ((), LexingState.start) := by
+    have := lexer.stepList_zip ((), q) w
+    simp only [lexer, hstep_list] at this
+    have := this last (by simp)
+    simp at hlast
+    have l : last.2.2 = (last.2.2.1, [ExtChar.eos]) := by simp[←hlast]
+    rw[l] at this
+    simp[BuildDetokLexer] at this
+    rw[detokenizer_comp_step] at this
+    simp[BuildLexingFST, Id.run] at this
+    have hmw : last.2.1 ∈ w := by
+      have := lexer.stepList_mem_w  (() , q) w
+      rw[hstep_list] at this
+      simp only [] at this
+      exact this last (by simp)
+    obtain ⟨t, ht⟩ := hflat last.2.1 hmw
+    rw[ht] at this
+    simp[FST.evalFrom_singleton] at this
+    split at this
+    <;> split at this
+    <;> try split at this
+    all_goals (
+      obtain ⟨a, ha⟩ := this
+      simp at ha
+    )
+    simp[ha]
+  simp[FST.evalFrom_append, heval]
+  simp[BuildDetokLexer]
+  rw[detokenizer_comp_step]
+  simp[vocab.fe]
+  simp[hlast_start, BuildLexingFST, Id.run]
+  obtain ⟨_, hwa, _⟩ := hwa
+  have := hwa spec.automaton.start twhite
+  simp at this
+  simp[LexingState.src, this]
+
+omit [BEq V] in
+private lemma qwhite_prod_white [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+   (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) :
+    ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa) ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, LexingState.id qwhite) := by
+  simp[FST.singleProducible]
+  exists [vocab.embed tnonwhite]
+  simp[BuildDetokLexer, detokenizer_comp_step]
+  simp[BuildLexingFST, Id.run, vocab.fe]
+  obtain ⟨hqwhite, _, h, _, hqnwhite, hqnwhite_t, hdiff⟩ := hwa
+  have := h tnonwhite hdiff.symm
+  simp[this]
+  constructor
+  exists qnonwhite
+  exists hqwhite
+
+omit [BEq V] in
+lemma detok_ws_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite tnonwhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+  (hempty : [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned)
+  (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ)
+  (hwsa: ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa) ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
+    let white_term := (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)
+    { Ts | ¬Ts.contains (ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)) } =
+    (BuildDetokLexer (v := vocab) spec).moddedRealizableSequences (Unit.unit, q) white_term := by
+  intro white_term
+  ext x
+  rw[Set.mem_setOf]
+
+  apply Iff.intro
+  . simp[FST.moddedRealizableSequences]
+    intro h
+    induction x generalizing q
+    case nil =>
+      exists []
+      simp[FST.realizableSequences]
+      rw[Set.mem_setOf]
+      exists ()
+      exists q
+      exists []
+    case cons head tail ih =>
+      have hwsa_o := hwsa
+      simp[FST.singleProducible] at h hwsa
+      have ⟨fatwstart, _, q', hq'⟩ := hwsa
+      simp[BuildDetokLexer] at hq'
+      cases hhead : head
+      case char ch =>
+        -- first build the sequence that produces just whitespace
+        -- then build the actual target
+        -- then append a whitespace
+        -- then build the tail
+        have ⟨qtarget, hqtarget⟩ := spec.term_surj ch
+        have hqtarget_accept : qtarget ∈ spec.automaton.accept := by
+          simp[spec.hterm, hqtarget]
+        have hnestart : qtarget ≠ spec.automaton.start := by
+          intro ha
+          rw[ha] at hqtarget
+          have : spec.automaton.start ∈ spec.automaton.accept := by
+            simp[spec.hterm, hqtarget]
+          simp[FSA.accepts_iff] at hempty
+          exact hempty this
+        have hne_qwhite : qtarget ≠ qwhite := by
+          intro ha
+          simp[ha] at hqtarget
+          simp[whitespace_terminal, hqtarget] at h
+          exact h.left hhead.symm
+        obtain ⟨wbase, hwbase⟩ := exchange_whitespace (vocab := vocab) spec hempty hpruned hwa q hwsa_o qtarget hne_qwhite hnestart
+        let wfull := wbase ++ [vocab.embed twhite]
+        have ⟨tail_seq, htail_seq⟩ := ih (LexingState.id qwhite) (qwhite_prod_white (vocab := vocab) spec hwa) h.right
+        exists [ExtChar.char white_term, head] ++ tail_seq
+        constructor
+        simp[FST.realizableSequences] at htail_seq ⊢
+        rw[Set.mem_setOf] at htail_seq ⊢
+        exists Unit.unit
+        obtain ⟨_, qf, ⟨wtail, hwqf⟩⟩ := htail_seq.left
+        exists qf
+        exists wfull ++ wtail
+        simp[wfull, FST.evalFrom_append]
+        simp[hwbase, white_term, FST.evalFrom]
+        nth_rewrite 1 [BuildDetokLexer]
+        simp[detokenizer_comp_step, vocab.fe, BuildLexingFST, Id.run]
+        have : spec.automaton.step qtarget twhite = none := by
+          obtain ⟨_, _, _, target, _⟩ := hwa
+          have := target qtarget
+          simp[hne_qwhite, hnestart] at this
+          exact this
+        simp[this, hqtarget_accept, hqtarget]
+        obtain ⟨_, target, _⟩ := hwa
+        have := target spec.automaton.start twhite
+        simp at this
+        simp[this, hwqf, hhead]
+        simp[white_term, filter_cons, htail_seq]
+        simp[hhead] at h ⊢
+        rw[eq_comm]
+        exact h.left
+      case eos =>
+        obtain ⟨wbase, hwbase⟩ := exchange_whitespace_eos (vocab := vocab) spec hempty hwa q hwsa_o
+        have ⟨tail_seq, htail_seq⟩ := ih (LexingState.id qwhite) (qwhite_prod_white (vocab := vocab) spec hwa) h.right
+        exists [ExtChar.char white_term, ExtChar.eos] ++ tail_seq
+        constructor
+        simp[FST.realizableSequences] at htail_seq ⊢
+        rw[Set.mem_setOf] at htail_seq ⊢
+        exists Unit.unit
+        obtain ⟨_, qf, ⟨wtail, hwqf⟩⟩ := htail_seq.left
+        exists qf
+        exists wbase ++ wtail
+        simp[FST.evalFrom_append, hwbase]
+        simp[white_term]
+        constructor
+        exact hwqf
+        simp[htail_seq]
+  . intro h
+    simp[FST.moddedRealizableSequences] at h
+    have ⟨v, hv⟩ := h
+    simp[white_term] at hv
+    rw[←hv.right]
+    simp
 
 private lemma find_first_nonempty { σ V Γ } [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] (filtered_step_list : List (σ × V × σ × List (Ch Γ)))
     (x : List (Ch Γ)) (he : x ≠ [])
@@ -1133,10 +1716,10 @@ private lemma first_eq_head_of_first_nonempty {Γ V σ} (x : List (Ch Γ)) (he :
   simp[hne]
 
 omit [BEq V] in
-private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
   (hempty : [] ∉ spec.automaton.accepts)
-  (hwa: whitespace_assumption spec twhite qwhite) (q: LexingState σ) :
-  let white_term := (whitespace_terminal spec twhite qwhite hwa)
+  (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ) :
+  let white_term := (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)
   let lexer := BuildDetokLexer (v := vocab) spec
   ∀ x ∈ lexer.tailModdedRealizableSequences (Unit.unit, q) white_term,
     x ∈ { Ts | Ts = [] ∨
@@ -1196,7 +1779,7 @@ private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qw
         unfold Function.comp
         simp
       rw[←hv_filter.right]
-      rw[←h_step_list.right]
+      rw[←h_step_list.right.left]
       simp[List.flatMap]
       conv =>
         pattern ((fun x => _) ∘ _)
@@ -1224,7 +1807,7 @@ private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qw
 
     have h_v_prefix_suffix : v = unfiltered_emptyPrefix.flatMap (fun (_, _, _, d) => d) ++
                                 (step_list.drop firstTransitionIdx).flatMap (fun (_, _, _, d) => d) :=
-      Eq.symm (flatMap_prefix_suffix step_list firstTransitionIdx v h_step_list.right)
+      Eq.symm (flatMap_prefix_suffix step_list firstTransitionIdx v h_step_list.right.left)
 
     -- so then, if the firstTransition is not empty (which its not), its head must be the global head
     have h_first_from_ft : x.head he = filtered_step_list[firstTransitionIdx].2.2.2.head
@@ -1266,7 +1849,6 @@ private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qw
       simp[this]
       exact huft_ne
     simp[hproduced_ne] at h_first_production_small
-
 
     -- we showed before that the filtered prefix is empty
     -- but we actually need that the unfiltered prefix is empty
@@ -1335,7 +1917,7 @@ private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qw
         apply hpfx
         simp[wfinal, List.take_prefix]
 
-      have := lexer.eval_of_stepList ((), q) wfinal
+      have := lexer.eval_of_stepList_opaque ((), q) wfinal
       simp[h_step_wfinal] at this
       have ⟨a, b, hterm⟩ := this
       exists a
@@ -1391,7 +1973,7 @@ private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qw
         rw[this]
         simp
       rw[this] at h_step_empty
-      have := lexer.eval_of_stepList ((), q) (ws.take firstTransitionIdx)
+      have := lexer.eval_of_stepList_opaque ((), q) (ws.take firstTransitionIdx)
       simp[h_step_empty] at this
       rw[←hunfiltered_emptyPrefix] at this
       simp[h_unfiltered_emptyPrefix] at this
@@ -1470,19 +2052,107 @@ private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qw
         by_contra h
         simp_rw[h] at h_t_ne_white
         contradiction
-      obtain ⟨_, hstart_good, _, _, hnonqhite_fail⟩ := hwa
+      obtain ⟨_, hstart_good, _, hnonqhite_fail, _⟩ := hwa
       have : spec.automaton.step (LexingState.src spec emptyq') twhite = none := by
         exact hnonqhite_fail (LexingState.src spec emptyq') (by simp[hnstart, hnqwhite])
       simp[this]
       constructor
       exists qwhite
+      have := hstart_good spec.automaton.start twhite
+      simp at this
+      assumption
       exact h_first_eq_prod
 
 omit [BEq V] in
-lemma detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
-  (hempty : [] ∉ spec.automaton.accepts)
-  (hwa: whitespace_assumption spec twhite qwhite) (q: LexingState σ) :
-  let white_term := (whitespace_terminal spec twhite qwhite hwa)
+private lemma detok_rs_pfx_backward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite tnonwhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+  (hempty : [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned)
+  (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ) :
+  let white_term := (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)
+  let lexer := BuildDetokLexer (v := vocab) spec
+  ∀ x, x ∈ { Ts | Ts = [] ∨
+           (∃ t tsfx,
+             ¬Ts.contains (ExtChar.char white_term) ∧
+             Ts = t :: tsfx ∧ t ∈ lexer.singleProducible (Unit.unit, q)) } →
+       x ∈ lexer.tailModdedRealizableSequences (Unit.unit, q) white_term := by
+  intro white_term lexer x h
+  have hlexer : lexer = (BuildDetokenizingFST.compose (BuildLexingFST spec)) := by
+    simp[BuildDetokLexer, lexer]
+  rw[Set.mem_setOf] at h
+  cases h
+  -- empty sequence is trivial
+  . rename_i h
+    simp[h]
+    simp[FST.tailModdedRealizableSequences]
+    rw[Set.mem_setOf]
+    exists []
+    simp[FST.realizableSequences]
+    rw[Set.mem_setOf]
+    exists ()
+    exists q
+    exists []
+  . rename_i h
+    have ⟨t, tsfx, h_no_white, h_eq, h_singleton⟩ := h
+    have ⟨w, hw⟩ := h_singleton
+    simp[white_term, h_eq] at h_no_white
+    -- our sequence will be to compute the first one as is
+    -- and then do whitespace, and then do whatever else via previous lemma
+    obtain ⟨w', hw'⟩ : ∃ w', (BuildDetokLexer (v := vocab) spec).evalFrom ((), q) w' = some (((), LexingState.id qwhite), [t]) := by
+      cases ht : t
+      case char ch =>
+        obtain ⟨w', hw'⟩ := exchange_nonwhitespace (vocab := vocab) spec hempty hwa q ch (by
+          simp[ht] at h_no_white
+          rw[eq_comm] at h_no_white
+          simp
+          constructor
+          exact h_no_white.left
+          simp[←ht]
+          exact h_singleton
+        )
+        exists w'
+      case eos =>
+        obtain ⟨w', hw'⟩ := exchange_eos (vocab := vocab) spec hwa q (by simp[h_singleton, lexer, ←ht])
+        exists w'
+    simp[FST.tailModdedRealizableSequences]
+    rw[Set.mem_setOf]
+    -- build rest of tail via previous lemma
+    have htail := detok_ws_rs_pfx spec hempty hpruned hwa (LexingState.id qwhite) (qwhite_prod_white (vocab := vocab) spec hwa)
+    have htsfx : tsfx ∈ (BuildDetokLexer spec (v := vocab)).moddedRealizableSequences ((), LexingState.id qwhite) (ExtChar.char white_term) := by
+      rw[←htail]
+      rw[Set.mem_setOf]
+      simp
+      exact h_no_white.right
+    simp[FST.moddedRealizableSequences] at htsfx
+    rw[Set.mem_setOf] at htsfx
+    obtain ⟨v, hv⟩ := htsfx
+    exists t :: v
+    simp[FST.realizableSequences]
+    rw[Set.mem_setOf]
+    simp[white_term]
+    constructor
+    . exists Unit.unit
+      simp[FST.realizableSequences] at hv
+      rw[Set.mem_setOf] at hv
+      obtain ⟨_, qf, wfinal, hwfinal⟩ := hv.left
+      exists qf
+      exists w' ++ wfinal
+      simp[FST.evalFrom_append, lexer, hw']
+      simp[hwfinal]
+    . constructor
+      exact h_no_white.left
+      simp[filter_cons]
+      have : (t != ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)) = true := by
+        simp
+        rw[eq_comm] at h_no_white
+        exact h_no_white.left
+      simp[this, h_eq]
+      simp[white_term] at hv
+      exact hv.right
+
+omit [BEq V] in
+lemma detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite tnonwhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+  (hempty : [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned)
+  (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ) :
+  let white_term := (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)
   let lexer := BuildDetokLexer (v := vocab) spec
   lexer.tailModdedRealizableSequences (Unit.unit, q) white_term =
     { Ts | Ts = [] ∨
@@ -1493,32 +2163,7 @@ lemma detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite qwhite } [vocab: V
   apply Iff.intro
   . intro h
     exact detok_rs_pfx_forward spec hempty hwa q x h
-  . rw[Set.mem_setOf]
-    intro h
-    cases h
-    -- empty sequence is trivial
-    . rename_i h
-      simp[h]
-      simp[FST.tailModdedRealizableSequences]
-      rw[Set.mem_setOf]
-      exists []
-      simp[FST.realizableSequences]
-      rw[Set.mem_setOf]
-      exists ()
-      exists q
-      exists []
-    . rename_i h
-      have ⟨t, tsfx, h_no_white, h_eq, h_singleton⟩ := h
-      -- since t is single producible, we can construct a sequence construction t followed by whitespace
-      -- this is painful as shit
-      -- produce each one via producing a token and a whitespace right after
-      sorry
-  -- backward
-    -- show that we can create anything afterwards basically
-    --
-
-def whitespace_tokens : List (Token Char Unit) :=
-  [ { symbol := Unit.unit, string := [' ', '\n', '\t'] } ]
-
+  . intro h
+    exact detok_rs_pfx_backward spec hempty hpruned hwa q x h
 
 end Detokenizing
