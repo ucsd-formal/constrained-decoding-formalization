@@ -1,0 +1,12 @@
+name = "«constrained-decoding-formalization»"
+version = "0.1.0"
+defaultTargets = ["ConstrainedDecodingFormalization"]
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+
+[[lean_lib]]
+name = "ConstrainedDecodingFormalization"
+
+moreLinkArgs = ["-L./.lake/packages/LeanCopilot/.lake/build/lib", "-lctranslate2"]
