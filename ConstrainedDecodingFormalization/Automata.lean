@@ -65,7 +65,7 @@ def accepts : Language α := A.acceptsFrom A.start
 def accepts_iff {w : List α} : w ∈ A.accepts ↔
   ∃ f, A.evalFrom A.start w = some f ∧ f ∈ A.accept := by
   simp [accepts, acceptsFrom]
-  rw[Set.mem_setOf]
+  rfl
 
 def prefixLanguage : Language α :=
   {x | ∃ y, x ++ y ∈ A.accepts }
@@ -683,7 +683,8 @@ lemma stepList_eval_take (s: σ) (w: List α) (j: Fin w.length) :
     rename_i tail_prod
     simp_all
     by_cases hj0 : j = 0
-    . simp[hj0]
+    .
+      simp_all; rfl
     . let j' := j.pred hj0
       have : j = j'.succ := (Fin.pred_eq_iff_eq_succ hj0).mp rfl
       simp[this, evalFrom, h]
@@ -695,17 +696,15 @@ lemma stepList_eval_take (s: σ) (w: List α) (j: Fin w.length) :
         exact this
       let j'' : Fin tail_prod.length := Fin.mk j' (by simp[j'.2, this])
       have : j''.toNat = j' := by simp[j'']
-      nth_rewrite 2 [←this] at ih
-      nth_rewrite 2 [←this]
-      have ⟨q'', hq''⟩ : ∃ s, Option.map (fun x => x.1) tail_prod[j''.toNat]? = some s := by
-        simp
-      rw[hq''] at ih ⊢
-      split
-      case h_1 heq => simp[heq] at ih
-      case h_2 heq =>
-        simp[heq] at ih
-        simp
-        exact ih
+      simp[←this] at ih
+      simp[←this]
+      rcases ih with ⟨T, hT⟩
+      rw [hT]
+      rename_i h0
+      have hrhs :
+          Option.map (fun x => x.1) ((s, head, val) :: tail_prod)[j'.succ]? = some (tail_prod[j''].1) := by
+        simp [j'', h0]
+      exact hrhs.symm
 
 lemma stepList_prefix_nil (s: σ) (p: List α) (a: List α) (h: p <+: a) :
   match M.stepList s p with
