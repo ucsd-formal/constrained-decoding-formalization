@@ -684,7 +684,7 @@ lemma stepList_eval_take (s: σ) (w: List α) (j: Fin w.length) :
     simp_all
     by_cases hj0 : j = 0
     .
-      simp_all; rfl
+      simp_all; exact ⟨head, val.1, val.2, rfl⟩
     . let j' := j.pred hj0
       have : j = j'.succ := (Fin.pred_eq_iff_eq_succ hj0).mp rfl
       simp[this, evalFrom, h]
