@@ -1,4 +1,5 @@
 import ConstrainedDecodingFormalization.Automata
+import ConstrainedDecodingFormalization.Producible
 import ConstrainedDecodingFormalization.Lexing
 import Mathlib.Data.FinEnum
 import Mathlib.Computability.NFA

@@ -11,6 +11,7 @@ import Mathlib.Data.Fintype.Basic
 import Mathlib.Data.Fintype.Sum
 
 import ConstrainedDecodingFormalization.Automata
+import ConstrainedDecodingFormalization.Producible
 import ConstrainedDecodingFormalization.Char
 import ConstrainedDecodingFormalization.Vocabulary
 

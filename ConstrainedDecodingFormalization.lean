@@ -3,6 +3,7 @@
 import «ConstrainedDecodingFormalization».Basic
 import «ConstrainedDecodingFormalization».Lexing
 import «ConstrainedDecodingFormalization».Automata
+import «ConstrainedDecodingFormalization».Producible
 import «ConstrainedDecodingFormalization».Vocabulary
 import «ConstrainedDecodingFormalization».GrammarConstrainedDecoding
 import «ConstrainedDecodingFormalization».Checker
