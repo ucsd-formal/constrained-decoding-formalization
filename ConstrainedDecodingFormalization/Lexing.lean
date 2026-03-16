@@ -145,6 +145,35 @@ inductive LexingState (σ : Type w) where
 | start : LexingState σ
 deriving DecidableEq, Repr
 
+instance {σ} [e : FinEnum σ] : FinEnum (LexingState σ) where
+  card := FinEnum.card σ + 1
+  equiv :=
+    let e := e.equiv
+    { toFun := fun x =>
+        match x with
+        | LexingState.start => ⟨FinEnum.card σ, Nat.lt_succ_self _⟩
+        | LexingState.id s => ⟨e s, Nat.lt_succ_of_lt (Fin.is_lt (e s))⟩
+      invFun := fun i =>
+        if h : i.val < FinEnum.card σ then LexingState.id (e.symm ⟨i.val, h⟩)
+        else LexingState.start
+      left_inv := by
+        intro x
+        cases x with
+        | start =>
+          simp
+        | id s =>
+          simp
+      right_inv := by
+        intro ⟨i, hi⟩
+        by_cases h : i < FinEnum.card σ
+        · simp [h]
+        · have : i = FinEnum.card σ := by
+            linarith
+          subst this
+          simp
+      }
+  decEq := by infer_instance
+
 def LexingState.src {σ : Type w} (spec: LexerSpec α Γ σ) : LexingState σ → σ
 | LexingState.id s => s
 | LexingState.start => spec.automaton.start
@@ -2012,19 +2041,24 @@ private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite
       rcases h_emptyq_first_trans with ⟨a, a₁, b, b₁, h_emptyq_first_trans⟩
       have h_emptyq_state : step_list[↑firstTransitionIdx].1.2 = emptyq' := by
         exact congrArg (fun x => x.1.2) h_emptyq_first_trans
-      rw[h_emptyq_state] at hq
+      have h_emptyq_src :
+          LexingState.src spec step_list[↑firstTransitionIdx].1.2 =
+            LexingState.src spec emptyq' := by
+        simpa using congrArg (LexingState.src spec) h_emptyq_state
+      have hq_empty : LexingState.src spec emptyq' ∈ spec.automaton.accept := by
+        exact h_emptyq_src ▸ hq
       simp[FST.evalFrom_append, hemptyq']
       exists Unit.unit
       simp[lexer, BuildDetokLexer]
       cases u
       simp[detokenizer_comp_step]
-      simp[vocab.fe, BuildLexingFST, Id.run, hq]
+      simp[vocab.fe, BuildLexingFST, Id.run, hq_empty]
       -- in accept so couldn't be start
       have hnstart : LexingState.src spec emptyq' ≠ spec.automaton.start := by
         intro h
-        rw[h] at hq
+        rw[h] at hq_empty
         simp[FSA.accepts_iff] at hempty
-        exact hempty hq
+        exact hempty hq_empty
       -- it couldn't be qwhite either, but the reason is more subtle
       -- basically if it was, then we would've produced white as the first token = impossible
       have hvhead : v.head hvne = t := by
@@ -2052,18 +2086,55 @@ private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite
           simp[hvhead, h_t_ne_white]
         simp[lem]
       have h_first_eq_prod : ExtChar.char ((spec.term (LexingState.src spec emptyq')).get
-          ((spec.hterm (LexingState.src spec emptyq')).mp hq)) = x.head he := by
+          ((spec.hterm (LexingState.src spec emptyq')).mp hq_empty)) = x.head he := by
         rw[hxhead_vhead]
         rw[hvhead]
         simp
-        simp[hflat, BuildLexingFST, Id.run] at hstep
-        have : step_list[firstTransitionIdx.val].1.2 = emptyq' := by
-          have h := congrArg Prod.snd h_emptyq_first_trans
-          simp at h
-          exact h.symm
-        rw[this] at hstep
-        simp[hq, ht] at hstep
-        exact hstep.right
+        have hs0 :
+            some
+              (LexingState.start,
+                [ExtChar.char
+                  ((spec.term (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).get
+                    ((spec.hterm (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).mp hq)),
+                 ExtChar.eos]) = some (q', [ExtChar.char t, ExtChar.eos]) := by
+          simpa [hq, hflat, BuildLexingFST, Id.run, ht] using hstep
+        have hp :
+            (LexingState.start,
+              [ExtChar.char
+                ((spec.term (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).get
+                  ((spec.hterm (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).mp hq)),
+               ExtChar.eos]) = (q', [ExtChar.char t, ExtChar.eos]) :=
+          Option.some.inj hs0
+        have hl :
+            [ExtChar.char
+              ((spec.term (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).get
+                ((spec.hterm (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).mp hq)),
+             ExtChar.eos] = [ExtChar.char t, ExtChar.eos] := by
+          exact congrArg Prod.snd hp
+        have hs_term :
+            (spec.term (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).get
+              ((spec.hterm (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).mp hq) = t := by
+          injection hl with hchar _
+          exact ExtChar.char.inj hchar
+        have h_term_eq :
+            spec.term (LexingState.src spec step_list[↑firstTransitionIdx].1.2) =
+              spec.term (LexingState.src spec emptyq') := by
+          exact congrArg spec.term h_emptyq_src
+        obtain ⟨u, hu⟩ :=
+          Option.isSome_iff_exists.mp ((spec.hterm (LexingState.src spec emptyq')).mp hq_empty)
+        have hu_old : spec.term (LexingState.src spec step_list[↑firstTransitionIdx].1.2) = some u := by
+          rw [h_term_eq]
+          exact hu
+        have hu_eq_t : u = t := by
+          have h_old_some :
+              (spec.term (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).isSome :=
+            Option.isSome_iff_exists.mpr ⟨u, hu_old⟩
+          have hu_old_get :
+              (spec.term (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).get
+                ((spec.hterm (LexingState.src spec step_list[↑firstTransitionIdx].1.2)).mp hq) = u := by
+            exact Option.get_of_mem h_old_some hu_old
+          exact hu_old_get.symm.trans hs_term
+        simp [hu, hu_eq_t]
       have hnqwhite : LexingState.src spec emptyq' ≠ qwhite := by
         simp[hxhead_vhead, hvhead] at h_first_eq_prod
         rw[←h_first_eq_prod] at h_t_ne_white
@@ -2168,12 +2239,20 @@ private lemma detok_rs_pfx_backward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite t
       simp[hwfinal]
     . constructor
       · simpa [white_term] using h_no_white.left
-      · simp[filter_cons]
-        have : (t != ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)) = true := by
+      · have : (t != ExtChar.char (whitespace_terminal spec tnonwhite twhite qnonwhite qwhite hwa)) = true := by
           simp
           rw[eq_comm] at h_no_white
           exact h_no_white.left
-        simpa [h_eq, this] using congrArg (List.cons t) hv.right
+        calc
+          filter (fun x => x != ExtChar.char white_term) (t :: v)
+              = t :: filter (fun x => x != ExtChar.char white_term) v := by
+                  rw [List.filter_cons]
+                  have ht_ne : t ≠ ExtChar.char white_term := by
+                    intro htw
+                    exact h_no_white.left htw.symm
+                  simp [ht_ne]
+          _ = t :: tsfx := congrArg (List.cons t) hv.right
+          _ = x := by simp [h_eq]
 
 omit [BEq V] in
 lemma detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite tnonwhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)

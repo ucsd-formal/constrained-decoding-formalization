@@ -6,7 +6,7 @@ import Mathlib.Tactic
 -- Example finite types
 abbrev Vocab := Fin 5
 abbrev Chr := Fin 3
-abbrev Digit := Fin 3
+abbrev Digit := Fin 2
 abbrev LexerState := Fin 3
 abbrev ParserState := Fin 2
 abbrev StackSym := Fin 2
@@ -43,13 +43,21 @@ def term_inj_proof : ∀ s₁ s₂ t, termMap s₁ = some t ∧ termMap s₂ = s
     fin_cases s₁ <;> (fin_cases s₂ <;> first | simp_all [termMap])
     all_goals (have ⟨u, v⟩ := h; rw[←u] at v; contradiction)
 
+def term_surj_proof : ∀ t, ∃ s, termMap s = some t :=
+  by
+    intro t
+    fin_cases t
+    · exact ⟨1, rfl⟩
+    · exact ⟨2, rfl⟩
+
 
 def simpleLexer : LexerSpec Chr Digit LexerState :=
 {
   automaton := simpleFSA,
   term := termMap,
   hterm := hterm_proof,
-  term_inj := term_inj_proof
+  term_inj := term_inj_proof,
+  term_surj := term_surj_proof
 }
 
 def simplePDA : PDA Digit StackSym ParserState :=
@@ -63,27 +71,27 @@ def simplePDA : PDA Digit StackSym ParserState :=
   accept := {0}
 }
 
-def tokens : List (Token (Ch Chr) (Ch Vocab)) := [
-  { symbol := ExtChar.char 0
-    string := [ExtChar.char 0]
-  },
-  { symbol := ExtChar.char 1
-    string := [ExtChar.char 1]
-  },
-  { symbol := ExtChar.char 2
-    string := [ExtChar.char 1, ExtChar.char 1]
-  },
-  { symbol := ExtChar.char 3
-    string := [ExtChar.char 2]
-  },
-  { symbol := ExtChar.eos
-    string := [ExtChar.eos]
-  },
-]
+instance : Vocabulary Chr Vocab where
+  flatten
+    | 0 => [0]
+    | 1 => [1]
+    | 2 => [1, 1]
+    | 3 => [2]
+    | 4 => [0, 0]
+  embed
+    | 0 => 0
+    | 1 => 1
+    | 2 => 3
+  fe := by
+    intro a
+    fin_cases a <;> rfl
+  empty := by
+    intro b
+    fin_cases b <;> simp
 
-def detok := Detokenizing.BuildDetokenizingFST tokens
-def full_fst := FST.compose detok (BuildLexingFST simpleLexer)
-def checker := GCDChecker simpleLexer tokens simplePDA
+def full_fst : FST (Ch Vocab) (Ch Digit) (Unit × LexingState LexerState) :=
+  Detokenizing.BuildDetokLexer (V := Ch Vocab) simpleLexer
+def checker : List Vocab → Ch Vocab → Bool := GCDChecker simpleLexer simplePDA
 def parser := ParserWithEOS simplePDA
 def pp := PreprocessParser full_fst parser
 
@@ -99,7 +107,7 @@ def pp := PreprocessParser full_fst parser
 #eval simplePDA.fullStep {(1, [0, 1])} (1)
 #eval full_fst.eval [.char 0, .char 0, .char 1, .eos]
 #eval (BuildInverseTokenSpannerTable full_fst).1
-#eval (BuildInverseTokenSpannerTable full_fst).2 [.char 0, .char 1] (.unit, 1)
+#eval (BuildInverseTokenSpannerTable full_fst).2 [.char 0, .char 1] (.unit, LexingState.id 1)
 #eval checkerAllows checker []
 #eval checkerAllows checker [0]
 #eval checkerAllows checker [1]
@@ -108,5 +116,5 @@ def pp := PreprocessParser full_fst parser
 #eval checkerAllows checker [1, 1, 0, 0, 0, 1, 1]
 #eval checkerAccepts checker [0, 1, 0]
 #eval checker [0] .eos
-#eval pp parser.start (.unit, 1)
+#eval pp parser.start (.unit, LexingState.id 1)
 #eval parser.step parser.start .eos

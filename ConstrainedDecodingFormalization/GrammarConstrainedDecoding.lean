@@ -85,11 +85,11 @@ def ComputeValidTokenMask (P : PDA Γ π σp) (itst : List Γ → σa → List �
    and then the parser
 -/
 def GCDChecker
-   [FinEnum (Ch β)] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
-   (spec: LexerSpec α Γ σa) (tokens: List (Token (Ch α) (Ch β))) (parser: PDA Γ π σp) : List β → Ch β → Bool :=
-  let detok := Detokenizing.BuildDetokenizingFST tokens
-  let fst := BuildLexingFST spec
-  let comb := FST.compose detok fst
+   [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+   [DecidableEq σa]
+   [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+   (spec: LexerSpec α Γ σa) (parser: PDA Γ π σp) : List β → Ch β → Bool :=
+  let comb : FST (Ch β) (Ch Γ) (Unit × LexingState σa) := Detokenizing.BuildDetokLexer (V := Ch β) spec
 
   let parser := ParserWithEOS parser
 
@@ -97,7 +97,7 @@ def GCDChecker
   let ⟨_, itst⟩ := BuildInverseTokenSpannerTable comb
 
   fun curr cand =>
-    match comb.eval curr with
+    match comb.eval (curr.map ExtChar.char) with
     | none => false
     | some (q_fst, terms) =>
       let q_pda := parser.evalFrom {(parser.start, [])} terms
@@ -109,17 +109,17 @@ def GCDChecker
 -- any thing that starts with a realizable sequence is producible
 -- and producible if and only if that's the case
 theorem realizableSequencesComplete [Vocabulary α β] (spec: LexerSpec α Γ σa) :
-  ∀ qa, ∃ := by
+  True := by
   sorry
 
 -- a token is accepted if and only if in the current state
 --
 theorem accept_if_ComputedValidTokenMask
-   [FinEnum (Ch β)] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
-   (P : PDA Γ π σp) (spec: LexerSpec α Γ σa) (tokens: List (Token (Ch α) (Ch β))) :
-  let detok := Detokenizing.BuildDetokenizingFST tokens
-  let fst := BuildLexingFST spec
-  let comb := FST.compose detok fst
+   [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+   [DecidableEq σa]
+   [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+   (P : PDA Γ π σp) (spec: LexerSpec α Γ σa) :
+  let comb : FST (Ch β) (Ch Γ) (Unit × LexingState σa) := Detokenizing.BuildDetokLexer (V := Ch β) spec
 
   let parser := ParserWithEOS P
 

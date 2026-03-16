@@ -10,6 +10,8 @@ inductive ExtChar (α : Type u)
 | eos  : ExtChar α
 deriving BEq, DecidableEq, Repr
 
+instance {α} : Inhabited (ExtChar α) := ⟨ExtChar.eos⟩
+
 instance {α} : Coe (α) (ExtChar α) := ⟨fun a => ExtChar.char a⟩
 instance {α} [e: FinEnum α] : FinEnum (ExtChar α) where
   card := FinEnum.card α + 1
