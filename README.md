@@ -8,6 +8,7 @@ This repo includes a CLI for generating and hosting a declaration dependency gra
 
 ```bash
 ./lean-dep-viz serve
+./lean-dep-viz build --output-dir site
 ```
 
 On startup, the CLI:
@@ -22,6 +23,7 @@ The first run can take a while because it needs to build both the project and th
 Useful options:
 
 ```bash
+./lean-dep-viz build --output-dir site
 ./lean-dep-viz serve --port 8765
 ./lean-dep-viz serve --host 0.0.0.0 --port 8765
 ./lean-dep-viz serve --open
@@ -29,4 +31,4 @@ Useful options:
 ./lean-dep-viz serve --lean4export-bin /path/to/lean4export
 ```
 
-The server exposes the visualizer at `/` and `/lean-dep-viz.html`, the generated graph at `/graph-data`, and a simple `/healthz` endpoint.
+The server exposes the visualizer at `/` and `/lean-dep-viz.html`, the generated graph at `/graph-data`, and a simple `/healthz` endpoint. The `build` command writes a static Pages-compatible site with `index.html`, `lean-dep-viz.html`, and `graph-data`.

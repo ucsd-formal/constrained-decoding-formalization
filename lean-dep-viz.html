@@ -1,0 +1,1824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>lean-dep-viz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2f1f8;
+  --bg-glow-1: rgba(112, 96, 235, 0.14);
+  --bg-glow-2: rgba(223, 118, 155, 0.12);
+  --panel: rgba(247, 246, 252, 0.92);
+  --panel-strong: rgba(251, 250, 255, 0.98);
+  --sidebar-surface: rgba(237, 236, 248, 0.88);
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-strong: rgba(255, 255, 255, 0.96);
+  --surface-soft: rgba(255, 255, 255, 0.78);
+  --ink: #0c006b;
+  --muted: #75718e;
+  --border: rgba(212, 208, 241, 0.92);
+  --line: rgba(12, 0, 107, 0.12);
+  --accent: #7060eb;
+  --accent-strong: #5c49e9;
+  --accent-soft: rgba(112, 96, 235, 0.14);
+  --accent-soft-strong: rgba(112, 96, 235, 0.2);
+  --accent-ghost: rgba(112, 96, 235, 0.08);
+  --accent-border: rgba(112, 96, 235, 0.28);
+  --warn: #df769b;
+  --danger: #e14191;
+  --success: #49e9a6;
+  --success-strong: #2b9b6d;
+  --success-soft: rgba(73, 233, 166, 0.18);
+  --danger-soft: rgba(225, 65, 145, 0.16);
+  --graph: linear-gradient(180deg, #faf9fe 0%, #ece9fb 100%);
+  --edge: rgba(117, 113, 142, 0.48);
+  --edge-arrow: rgba(117, 113, 142, 0.62);
+  --edge-selected: #7060eb;
+  --node-fill: rgba(255, 255, 255, 0.94);
+  --node-stroke: rgba(12, 0, 107, 0.18);
+  --scrollbar: rgba(117, 113, 142, 0.24);
+  --resizer-track: rgba(12, 0, 107, 0.04);
+  --resizer-glow: rgba(112, 96, 235, 0.08);
+  --resizer-thumb: rgba(12, 0, 107, 0.14);
+  --resizer-thumb-active: rgba(112, 96, 235, 0.45);
+  --kind-text: #f8f7ff;
+  --shadow: 0 18px 50px rgba(92, 73, 233, 0.1);
+
+  --kind-def: #5c49e9;
+  --kind-abbrev: #7060eb;
+  --kind-theorem: #169c6b;
+  --kind-lemma: #0c7489;
+  --kind-inductive: #ad567f;
+  --kind-structure: #df769b;
+  --kind-class: #8e80ff;
+  --kind-instance: #6750ff;
+  --kind-opaque: #af4d98;
+  --kind-axiom: #e14191;
+  --kind-default: #75718e;
+  --sidebar-width: 21rem;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #24273a;
+  --bg-glow-1: rgba(138, 173, 244, 0.16);
+  --bg-glow-2: rgba(198, 160, 246, 0.12);
+  --panel: rgba(54, 58, 79, 0.9);
+  --panel-strong: rgba(30, 32, 48, 0.98);
+  --sidebar-surface: rgba(30, 32, 48, 0.9);
+  --surface: rgba(54, 58, 79, 0.9);
+  --surface-strong: rgba(73, 77, 100, 0.98);
+  --surface-soft: rgba(54, 58, 79, 0.78);
+  --ink: #cad3f5;
+  --muted: #a5adcb;
+  --border: rgba(91, 96, 120, 0.92);
+  --line: rgba(202, 211, 245, 0.12);
+  --accent: #c6a0f6;
+  --accent-strong: #8aadf4;
+  --accent-soft: rgba(198, 160, 246, 0.16);
+  --accent-soft-strong: rgba(198, 160, 246, 0.22);
+  --accent-ghost: rgba(138, 173, 244, 0.12);
+  --accent-border: rgba(138, 173, 244, 0.34);
+  --warn: #f5a97f;
+  --danger: #ed8796;
+  --success: #a6da95;
+  --success-strong: #8bd5ca;
+  --success-soft: rgba(166, 218, 149, 0.16);
+  --danger-soft: rgba(237, 135, 150, 0.16);
+  --graph: linear-gradient(180deg, #1e2030 0%, #181926 100%);
+  --edge: rgba(165, 173, 203, 0.44);
+  --edge-arrow: rgba(165, 173, 203, 0.58);
+  --edge-selected: #8aadf4;
+  --node-fill: rgba(54, 58, 79, 0.94);
+  --node-stroke: rgba(202, 211, 245, 0.16);
+  --scrollbar: rgba(165, 173, 203, 0.28);
+  --resizer-track: rgba(202, 211, 245, 0.05);
+  --resizer-glow: rgba(138, 173, 244, 0.08);
+  --resizer-thumb: rgba(165, 173, 203, 0.22);
+  --resizer-thumb-active: rgba(138, 173, 244, 0.5);
+  --kind-text: #1e2030;
+  --shadow: 0 18px 50px rgba(12, 12, 18, 0.34);
+
+  --kind-def: #8aadf4;
+  --kind-abbrev: #7dc4e4;
+  --kind-theorem: #a6da95;
+  --kind-lemma: #8bd5ca;
+  --kind-inductive: #f5a97f;
+  --kind-structure: #ee99a0;
+  --kind-class: #c6a0f6;
+  --kind-instance: #f0c6c6;
+  --kind-opaque: #f5bde6;
+  --kind-axiom: #ed8796;
+  --kind-default: #b8c0e0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, var(--bg-glow-1), transparent 26rem),
+    radial-gradient(circle at bottom right, var(--bg-glow-2), transparent 24rem),
+    var(--bg);
+  color: var(--ink);
+  font-family: "Space Grotesk", sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+body.is-resizing-sidebar {
+  cursor: col-resize;
+  user-select: none;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: minmax(18rem, var(--sidebar-width)) 0.65rem minmax(0, 1fr);
+  height: 100dvh;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar {
+  padding: 1.25rem;
+  background: var(--sidebar-surface);
+  backdrop-filter: blur(18px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-width: 0;
+  min-height: 0;
+  container-type: inline-size;
+}
+
+.sidebar-resizer {
+  position: relative;
+  cursor: col-resize;
+  background:
+    linear-gradient(180deg, var(--resizer-glow), rgba(0, 0, 0, 0)),
+    var(--resizer-track);
+}
+
+.sidebar-resizer::before {
+  content: "";
+  position: absolute;
+  inset: 50% 50% auto auto;
+  width: 0.18rem;
+  height: 3.6rem;
+  border-radius: 999px;
+  background: var(--resizer-thumb);
+  transform: translate(50%, -50%);
+}
+
+.sidebar-resizer:hover::before,
+.sidebar-resizer:focus-visible::before,
+.sidebar-resizer.is-dragging::before {
+  background: var(--resizer-thumb-active);
+}
+
+.sidebar-resizer:focus-visible {
+  outline: 0;
+}
+
+.sidebar::-webkit-scrollbar,
+.detail-source pre::-webkit-scrollbar,
+#search-results::-webkit-scrollbar {
+  width: 0.45rem;
+  height: 0.45rem;
+}
+
+.sidebar::-webkit-scrollbar-thumb,
+.detail-source pre::-webkit-scrollbar-thumb,
+#search-results::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 999px;
+}
+
+.brand-eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.brand-title {
+  margin: 0;
+  font-size: 2rem;
+  line-height: 1.05;
+}
+
+.brand-subtitle {
+  margin: 0.55rem 0 1.1rem;
+  color: var(--muted);
+  font-size: 0.98rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.control-block,
+.meta-block,
+.stats-block,
+.section {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1.1rem;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.control-label,
+.section h2 {
+  margin: 0 0 0.7rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.search-shell {
+  position: relative;
+}
+
+#search-input {
+  width: 100%;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  padding: 0.8rem 1rem;
+  background: var(--surface-strong);
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+}
+
+#search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 0.2rem var(--accent-ghost);
+}
+
+#search-results {
+  display: none;
+  position: absolute;
+  z-index: 10;
+  inset: calc(100% + 0.45rem) 0 auto;
+  max-height: 18rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+}
+
+#search-results.visible {
+  display: block;
+}
+
+.search-result,
+.module-chip,
+.kind-chip,
+.toolbar-btn,
+.link-chip,
+.ghost-btn {
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+
+.search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+  padding: 0.75rem 0.9rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.search-result:hover,
+.search-result:focus-visible {
+  background: var(--accent-ghost);
+  outline: none;
+}
+
+.search-result-name {
+  display: block;
+  font-size: 0.94rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.search-result-meta {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-family: "IBM Plex Mono", monospace;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.search-empty {
+  padding: 0.85rem 0.95rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.meta-grid,
+.stats-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.meta-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stats-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.meta-card,
+.stat-card {
+  min-width: 0;
+  padding: 0.8rem;
+  border-radius: 0.95rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.meta-label,
+.stat-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.meta-value,
+.stat-value {
+  margin-top: 0.3rem;
+  font-size: 0.92rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.stat-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+#stat-filter {
+  font-size: 0.96rem;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ghost-btn,
+.toolbar-btn,
+.link-chip,
+.module-chip,
+.kind-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.ghost-btn,
+.toolbar-btn {
+  padding: 0.52rem 0.9rem;
+}
+
+.ghost-btn:hover,
+.toolbar-btn:hover,
+.link-chip:hover,
+.module-chip:hover,
+.kind-chip:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent-border);
+  background: var(--surface-strong);
+}
+
+.filter-list,
+.module-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.module-chip,
+.kind-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  padding: 0.55rem 0.85rem;
+  overflow: hidden;
+  text-align: left;
+}
+
+.module-chip.active,
+.kind-chip.active {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.kind-chip {
+  gap: 0.7rem;
+}
+
+.filter-chip-label,
+.module-chip-label {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.kind-chip-accent {
+  flex-shrink: 0;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 999px;
+  background: var(--kind-default);
+}
+
+.filter-chip-count,
+.module-chip-count {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.detail-empty {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.detail-card {
+  display: grid;
+  gap: 0.95rem;
+  min-width: 0;
+}
+
+.detail-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+}
+
+.detail-heading {
+  min-width: 0;
+  flex: 1;
+}
+
+.detail-name {
+  margin: 0.22rem 0 0.3rem;
+  font-size: 1.1rem;
+  line-height: 1.2;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.detail-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  color: var(--kind-text);
+  font-size: 0.78rem;
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+}
+
+.detail-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-family: "IBM Plex Mono", monospace;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.status-tag {
+  flex-shrink: 0;
+  max-width: 45%;
+  padding: 0.38rem 0.65rem;
+  border-radius: 999px;
+  background: var(--success-soft);
+  color: var(--success-strong);
+  font-size: 0.8rem;
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.status-tag.is-sorry {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.6rem;
+}
+
+.detail-summary-card {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--surface-soft);
+}
+
+.detail-summary-card strong {
+  display: block;
+  font-size: 1.05rem;
+}
+
+.detail-summary-card span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.detail-list-block h3,
+.detail-source-title {
+  margin: 0 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.detail-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: 0.45rem;
+}
+
+.link-chip {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  justify-content: flex-start;
+  padding: 0.42rem 0.7rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.detail-source {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--surface-strong);
+  overflow: hidden;
+}
+
+.detail-source-title {
+  margin: 0;
+  padding: 0.8rem 0.95rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-source pre {
+  margin: 0;
+  max-height: 16rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0.95rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  font-family: "IBM Plex Mono", monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.stage {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  overflow: hidden;
+  padding: 1.25rem;
+}
+
+.stage-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.82rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.status-pill.is-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  padding: 0.22rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.theme-btn {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.42rem 0.85rem;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.theme-btn:hover,
+.theme-btn:focus-visible {
+  background: var(--accent-ghost);
+  color: var(--ink);
+  outline: none;
+}
+
+.theme-btn.active {
+  background: var(--accent-soft-strong);
+  color: var(--accent-strong);
+}
+
+.canvas-shell {
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 1.35rem;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: var(--graph);
+  box-shadow: var(--shadow);
+}
+
+#graph {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 7.5rem);
+}
+
+.edge {
+  fill: none;
+  stroke: var(--edge);
+  stroke-width: 1.35px;
+}
+
+.edge.edge-selected {
+  stroke: var(--edge-selected);
+  stroke-width: 1.9px;
+}
+
+.edge.edge-muted {
+  stroke-opacity: 0.1;
+}
+
+.node text {
+  pointer-events: none;
+}
+
+.node rect {
+  fill: var(--node-fill);
+  stroke: var(--node-stroke);
+  stroke-width: 1.2px;
+  rx: 18px;
+  ry: 18px;
+}
+
+.node-title {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.node-subtitle {
+  fill: var(--muted);
+  font-size: 10px;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.node.selected {
+  filter: drop-shadow(0 0 0.45rem var(--accent-soft));
+}
+
+.node.selected rect {
+  stroke-width: 2.4px;
+}
+
+.node.muted {
+  opacity: 0.16;
+}
+
+.node.search-hit rect {
+  stroke-width: 2px;
+}
+
+@container (max-width: 26rem) {
+  .section-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .detail-name,
+  .detail-meta,
+  .status-tag,
+  .brand-subtitle {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .detail-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1024px) {
+  html,
+  body {
+    overflow: auto;
+  }
+
+  #app {
+    height: auto;
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .sidebar {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-resizer {
+    display: none;
+  }
+
+  #graph {
+    height: 68vh;
+  }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <p class="brand-eyebrow">Lean Dependency Graph</p>
+    <h1 class="brand-title" id="project-name">lean-dep-viz</h1>
+    <p class="brand-subtitle" id="project-subtitle">Loading graph data...</p>
+
+    <div class="control-block">
+      <label class="control-label" for="search-input">Search declarations</label>
+      <div class="search-shell">
+        <input id="search-input" type="text" placeholder="Type a declaration name">
+        <div id="search-results"></div>
+      </div>
+    </div>
+
+    <div class="meta-block">
+      <div class="control-label">Project Metadata</div>
+      <div class="meta-grid" id="project-meta"></div>
+    </div>
+
+    <div class="stats-block">
+      <div class="control-label">Visible Graph</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-declarations">0</div>
+          <div class="stat-label">Declarations</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-edges">0</div>
+          <div class="stat-label">Edges</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-modules">0</div>
+          <div class="stat-label">Modules</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-filter">all</div>
+          <div class="stat-label">Filter</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h2>Modules</h2>
+        <button id="clear-module-filter" class="ghost-btn" type="button">all</button>
+      </div>
+      <div class="module-list" id="module-list"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <h2>Declaration Types</h2>
+        <button id="clear-kind-filter" class="ghost-btn" type="button">all</button>
+      </div>
+      <div class="filter-list" id="kind-list"></div>
+    </div>
+
+    <div class="section">
+      <h2>Selection</h2>
+      <div id="detail-panel" class="detail-empty">
+        Select a node to inspect its source and local neighborhood.
+      </div>
+    </div>
+  </aside>
+
+  <div
+    id="sidebar-resizer"
+    class="sidebar-resizer"
+    role="separator"
+    aria-label="Resize sidebar"
+    aria-orientation="vertical"
+    tabindex="0"
+  ></div>
+
+  <main class="stage">
+    <div class="stage-topbar">
+      <div class="status-pill" id="status-pill">Loading graph...</div>
+      <div class="toolbar-actions">
+        <div class="theme-toggle" role="group" aria-label="Color theme">
+          <button class="theme-btn" id="theme-light-btn" type="button" data-theme-toggle="light">light</button>
+          <button class="theme-btn" id="theme-dark-btn" type="button" data-theme-toggle="dark">dark</button>
+        </div>
+        <button class="toolbar-btn" id="fit-btn" type="button">fit</button>
+        <button class="toolbar-btn" id="reset-view-btn" type="button">reset view</button>
+      </div>
+    </div>
+    <div class="canvas-shell">
+      <svg id="graph" aria-label="Declaration dependency graph"></svg>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+<script>
+let kindColorMap = {};
+
+const appState = {
+  data: null,
+  byName: new Map(),
+  moduleFilter: null,
+  kindFilter: null,
+  selectedName: null,
+  searchQuery: '',
+  zoomBehavior: null,
+  layoutNodes: new Map()
+};
+
+const kindOrder = [
+  'def',
+  'abbrev',
+  'theorem',
+  'lemma',
+  'inductive',
+  'structure',
+  'class',
+  'instance',
+  'opaque',
+  'axiom'
+];
+
+const SIDEBAR_WIDTH_KEY = 'lean-dep-viz.sidebarWidth';
+const SIDEBAR_DEFAULT_WIDTH = 336;
+const SIDEBAR_MIN_WIDTH = 288;
+const SIDEBAR_MAX_WIDTH = 640;
+const THEME_KEY = 'lean-dep-viz.theme';
+
+const svg = d3.select('#graph');
+const zoomLayer = svg.append('g').attr('class', 'zoom-layer');
+zoomLayer.append('g').attr('class', 'edges');
+zoomLayer.append('g').attr('class', 'nodes');
+
+const defs = svg.append('defs');
+defs.append('marker')
+  .attr('id', 'graph-arrow')
+  .attr('viewBox', '0 -5 10 10')
+  .attr('refX', 8)
+  .attr('refY', 0)
+  .attr('markerWidth', 6)
+  .attr('markerHeight', 6)
+  .attr('orient', 'auto')
+  .append('path')
+  .attr('d', 'M0,-5L10,0L0,5')
+  .attr('fill', getComputedStyle(document.documentElement).getPropertyValue('--edge-arrow').trim());
+
+const zoomBehavior = d3.zoom()
+  .scaleExtent([0.18, 3.5])
+  .on('zoom', (event) => {
+    zoomLayer.attr('transform', event.transform);
+  });
+
+svg.call(zoomBehavior);
+appState.zoomBehavior = zoomBehavior;
+applyTheme(preferredTheme(), false);
+
+svg.on('click', (event) => {
+  if (event.target === svg.node()) {
+    appState.selectedName = null;
+    renderAll(false);
+  }
+});
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function refreshKindColorMap() {
+  const styles = getComputedStyle(document.documentElement);
+  kindColorMap = {
+    def: styles.getPropertyValue('--kind-def').trim(),
+    abbrev: styles.getPropertyValue('--kind-abbrev').trim(),
+    theorem: styles.getPropertyValue('--kind-theorem').trim(),
+    lemma: styles.getPropertyValue('--kind-lemma').trim(),
+    inductive: styles.getPropertyValue('--kind-inductive').trim(),
+    structure: styles.getPropertyValue('--kind-structure').trim(),
+    class: styles.getPropertyValue('--kind-class').trim(),
+    instance: styles.getPropertyValue('--kind-instance').trim(),
+    opaque: styles.getPropertyValue('--kind-opaque').trim(),
+    axiom: styles.getPropertyValue('--kind-axiom').trim(),
+    default: styles.getPropertyValue('--kind-default').trim()
+  };
+}
+
+function preferredTheme() {
+  const storedTheme = window.localStorage.getItem(THEME_KEY);
+  if (storedTheme === 'light' || storedTheme === 'dark') {
+    return storedTheme;
+  }
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function syncThemeToggle() {
+  document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+    button.classList.toggle(
+      'active',
+      button.getAttribute('data-theme-toggle') === document.documentElement.dataset.theme
+    );
+  });
+}
+
+function applyTheme(theme, persist = true) {
+  const nextTheme = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = nextTheme;
+  if (persist) {
+    window.localStorage.setItem(THEME_KEY, nextTheme);
+  }
+  refreshKindColorMap();
+  defs.select('#graph-arrow path')
+    .attr('fill', getComputedStyle(document.documentElement).getPropertyValue('--edge-arrow').trim());
+  syncThemeToggle();
+  if (appState.data) {
+    renderAll(false);
+  }
+}
+
+function formatTime(value) {
+  if (!value) {
+    return 'n/a';
+  }
+  try {
+    return new Date(value).toLocaleString();
+  } catch (_) {
+    return value;
+  }
+}
+
+function shortHash(value) {
+  return value ? value.slice(0, 12) : 'n/a';
+}
+
+function leftEllipsis(value, maxChars) {
+  const text = String(value ?? '');
+  if (!text || maxChars < 4 || text.length <= maxChars) {
+    return text;
+  }
+  return `...${text.slice(-(maxChars - 3))}`;
+}
+
+function leftEllipsisByWidth(value, widthPx, averageCharWidth) {
+  const maxChars = Math.max(8, Math.floor(widthPx / averageCharWidth));
+  return leftEllipsis(value, maxChars);
+}
+
+function clampSidebarWidth(width) {
+  const app = document.getElementById('app');
+  const appWidth = app ? app.clientWidth : window.innerWidth;
+  const maxWidth = Math.min(SIDEBAR_MAX_WIDTH, Math.floor(appWidth * 0.6));
+  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(width, maxWidth));
+}
+
+function applySidebarWidth(width, persist = true) {
+  if (window.innerWidth <= 1024) {
+    document.documentElement.style.removeProperty('--sidebar-width');
+    return;
+  }
+  const clamped = clampSidebarWidth(width);
+  document.documentElement.style.setProperty('--sidebar-width', `${clamped}px`);
+  if (persist) {
+    window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(clamped));
+  }
+}
+
+function kindLabel(kind) {
+  switch (kind) {
+    case 'def': return 'definition';
+    case 'abbrev': return 'abbrev';
+    case 'theorem': return 'theorem';
+    case 'lemma': return 'lemma';
+    case 'inductive': return 'inductive';
+    case 'structure': return 'structure';
+    case 'class': return 'class';
+    case 'instance': return 'instance';
+    case 'opaque': return 'opaque';
+    case 'axiom': return 'axiom';
+    default: return kind || 'unknown';
+  }
+}
+
+function colorForKind(kind) {
+  return kindColorMap[kind] || kindColorMap.default;
+}
+
+function truncateModuleName(name) {
+  const parts = String(name || '').split('.');
+  const reduced = parts.length > 1 ? parts.slice(-2).join('.') : String(name || '');
+  return leftEllipsis(reduced, 28);
+}
+
+function fullDeclLocation(decl) {
+  return `${decl.module} - ${decl.file}:${decl.line}`;
+}
+
+function truncateDeclLocation(decl, moduleChars = 28, fileChars = 18) {
+  return `${leftEllipsis(decl.module, moduleChars)} - ${leftEllipsis(decl.file, fileChars)}:${decl.line}`;
+}
+
+function truncateNodeTitle(decl) {
+  return leftEllipsisByWidth(decl.name, decl.width - 34, 7.1);
+}
+
+function truncateNodeSubtitle(decl) {
+  const prefix = `${kindLabel(decl.kind)} · `;
+  const maxChars = Math.max(8, Math.floor((decl.width - 34) / 5.8));
+  const availableForModule = Math.max(6, maxChars - prefix.length);
+  return `${prefix}${leftEllipsis(truncateModuleName(decl.module), availableForModule)}`;
+}
+
+function declarationMatchesFilters(decl, options = {}) {
+  const { ignoreModule = false, ignoreKind = false } = options;
+  if (!ignoreModule && appState.moduleFilter && decl.module !== appState.moduleFilter) {
+    return false;
+  }
+  if (!ignoreKind && appState.kindFilter && decl.kind !== appState.kindFilter) {
+    return false;
+  }
+  return true;
+}
+
+function filteredDeclarations(options = {}) {
+  if (!appState.data) {
+    return [];
+  }
+  return appState.data.declarations.filter((decl) => declarationMatchesFilters(decl, options));
+}
+
+function visibleDeclarations() {
+  return filteredDeclarations();
+}
+
+function ensureSelectionVisible() {
+  if (!appState.selectedName) {
+    return;
+  }
+  const decl = appState.byName.get(appState.selectedName);
+  if (!decl || !declarationMatchesFilters(decl)) {
+    appState.selectedName = null;
+  }
+}
+
+function kindSortKey(kind) {
+  const index = kindOrder.indexOf(kind);
+  return index === -1 ? kindOrder.length : index;
+}
+
+function visibleDeclarationNames() {
+  return new Set(visibleDeclarations().map((decl) => decl.name));
+}
+
+function visibleEdges() {
+  if (!appState.data) {
+    return [];
+  }
+  const names = visibleDeclarationNames();
+  return appState.data.edges.filter((edge) => names.has(edge.from) && names.has(edge.to));
+}
+
+function selectedNeighborhood() {
+  if (!appState.selectedName) {
+    return null;
+  }
+  const decl = appState.byName.get(appState.selectedName);
+  if (!decl) {
+    return null;
+  }
+  return new Set([decl.name, ...decl.deps, ...decl.dependents]);
+}
+
+function shouldDimNode(name) {
+  const neighborhood = selectedNeighborhood();
+  return neighborhood ? !neighborhood.has(name) : false;
+}
+
+function shouldDimEdge(edge) {
+  const neighborhood = selectedNeighborhood();
+  return neighborhood ? !(neighborhood.has(edge.from) && neighborhood.has(edge.to)) : false;
+}
+
+function setStatus(message, isError = false) {
+  const pill = document.getElementById('status-pill');
+  pill.textContent = message;
+  pill.classList.toggle('is-error', isError);
+}
+
+function renderProjectMeta() {
+  const project = appState.data.project;
+  document.getElementById('project-name').textContent = project.name || 'lean-dep-viz';
+  document.title = `${project.name || 'lean-dep-viz'} - lean-dep-viz`;
+  const rootsText = (project.root_modules || []).join(', ') || 'n/a';
+  const subtitle = document.getElementById('project-subtitle');
+  subtitle.textContent = `Roots: ${leftEllipsis(rootsText, 26)}`;
+  subtitle.title = `Roots: ${rootsText}`;
+
+  const meta = [
+    ['Generated', formatTime(project.generated_at), 18],
+    ['Git', shortHash(project.git_hash), 12],
+    ['Lean', project.lean && project.lean.version ? project.lean.version : (project.lean_toolchain || 'n/a'), 14],
+    ['Exporter', project.exporter && project.exporter.version ? project.exporter.version : 'n/a', 14]
+  ];
+
+  document.getElementById('project-meta').innerHTML = meta.map(([label, value, maxChars]) => `
+    <div class="meta-card">
+      <div class="meta-label">${escapeHtml(label)}</div>
+      <div class="meta-value" title="${escapeHtml(value)}">${escapeHtml(leftEllipsis(value, maxChars))}</div>
+    </div>
+  `).join('');
+}
+
+function renderStats() {
+  const declarations = visibleDeclarations();
+  const edges = visibleEdges();
+  const visibleModules = new Set(declarations.map((decl) => decl.module));
+  document.getElementById('stat-declarations').textContent = String(declarations.length);
+  document.getElementById('stat-edges').textContent = String(edges.length);
+  document.getElementById('stat-modules').textContent = String(visibleModules.size);
+  const filterElement = document.getElementById('stat-filter');
+  const filterParts = [];
+  if (appState.moduleFilter) {
+    filterParts.push(truncateModuleName(appState.moduleFilter));
+  }
+  if (appState.kindFilter) {
+    filterParts.push(kindLabel(appState.kindFilter));
+  }
+  const filterText = [
+    appState.moduleFilter || null,
+    appState.kindFilter ? kindLabel(appState.kindFilter) : null
+  ].filter(Boolean).join(' · ') || 'all';
+  filterElement.textContent = filterParts.length ? leftEllipsis(filterParts.join(' · '), 16) : 'all';
+  filterElement.title = filterText;
+}
+
+function renderModules() {
+  const counts = new Map();
+  filteredDeclarations({ ignoreModule: true }).forEach((decl) => {
+    counts.set(decl.module, (counts.get(decl.module) || 0) + 1);
+  });
+
+  const modules = [...appState.data.modules]
+    .map((module) => ({
+      ...module,
+      visibleCount: counts.get(module.name) || 0
+    }))
+    .filter((module) => module.visibleCount > 0 || module.name === appState.moduleFilter)
+    .sort((left, right) => {
+      return (
+        Number(right.name === appState.moduleFilter) - Number(left.name === appState.moduleFilter)
+        || right.visibleCount - left.visibleCount
+        || right.count - left.count
+        || left.name.localeCompare(right.name)
+      );
+    });
+
+  const list = document.getElementById('module-list');
+  list.innerHTML = modules.map((module) => `
+    <button class="module-chip ${module.name === appState.moduleFilter ? 'active' : ''}" type="button" data-module="${escapeHtml(module.name)}" title="${escapeHtml(module.name)}">
+      <span class="module-chip-label">${escapeHtml(leftEllipsis(module.name, 24))}</span>
+      <span class="module-chip-count">${module.visibleCount}</span>
+    </button>
+  `).join('');
+
+  list.querySelectorAll('[data-module]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const nextModule = button.getAttribute('data-module');
+      appState.moduleFilter = nextModule === appState.moduleFilter ? null : nextModule;
+      ensureSelectionVisible();
+      renderAll(true);
+    });
+  });
+}
+
+function renderKinds() {
+  const counts = new Map();
+  filteredDeclarations({ ignoreKind: true }).forEach((decl) => {
+    counts.set(decl.kind, (counts.get(decl.kind) || 0) + 1);
+  });
+
+  const kinds = [...counts.keys()]
+    .sort((left, right) => kindSortKey(left) - kindSortKey(right) || left.localeCompare(right));
+
+  if (appState.kindFilter && !counts.has(appState.kindFilter)) {
+    kinds.unshift(appState.kindFilter);
+  }
+
+  const dedupedKinds = [...new Set(kinds)];
+  const list = document.getElementById('kind-list');
+  list.innerHTML = dedupedKinds.map((kind) => `
+    <button class="kind-chip ${kind === appState.kindFilter ? 'active' : ''}" type="button" data-kind="${escapeHtml(kind)}" title="${escapeHtml(kindLabel(kind))}">
+      <span class="kind-chip-accent" style="background:${escapeHtml(colorForKind(kind))}"></span>
+      <span class="filter-chip-label">${escapeHtml(kindLabel(kind))}</span>
+      <span class="filter-chip-count">${counts.get(kind) || 0}</span>
+    </button>
+  `).join('');
+
+  list.querySelectorAll('[data-kind]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const nextKind = button.getAttribute('data-kind');
+      appState.kindFilter = nextKind === appState.kindFilter ? null : nextKind;
+      ensureSelectionVisible();
+      renderAll(true);
+    });
+  });
+}
+
+function searchMatches() {
+  const query = appState.searchQuery.trim().toLowerCase();
+  if (!query) {
+    return [];
+  }
+  return visibleDeclarations()
+    .filter((decl) => decl.name.toLowerCase().includes(query) || decl.module.toLowerCase().includes(query))
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .slice(0, 14);
+}
+
+function renderSearchResults() {
+  const box = document.getElementById('search-results');
+  const query = appState.searchQuery.trim();
+  if (!query) {
+    box.classList.remove('visible');
+    box.innerHTML = '';
+    return;
+  }
+
+  const matches = searchMatches();
+  if (!matches.length) {
+    box.innerHTML = '<div class="search-empty">No declarations matched that search.</div>';
+    box.classList.add('visible');
+    return;
+  }
+
+  box.innerHTML = matches.map((decl) => `
+    <button class="search-result" type="button" data-name="${escapeHtml(decl.name)}" title="${escapeHtml(decl.name)}">
+      <span class="search-result-name" title="${escapeHtml(decl.name)}">${escapeHtml(leftEllipsis(decl.name, 42))}</span>
+      <span class="search-result-meta" title="${escapeHtml(fullDeclLocation(decl))}">${escapeHtml(truncateDeclLocation(decl, 24, 16))}</span>
+    </button>
+  `).join('');
+
+  box.querySelectorAll('[data-name]').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectDeclaration(button.getAttribute('data-name'), true);
+      box.classList.remove('visible');
+    });
+  });
+
+  box.classList.add('visible');
+}
+
+function renderDetails() {
+  const panel = document.getElementById('detail-panel');
+  const decl = appState.selectedName ? appState.byName.get(appState.selectedName) : null;
+  if (!decl) {
+    panel.className = 'detail-empty';
+    panel.textContent = 'Select a node to inspect its source and local neighborhood.';
+    return;
+  }
+
+  panel.className = 'detail-card';
+  panel.innerHTML = `
+    <div class="detail-top">
+      <div class="detail-heading">
+        <div class="detail-kind" style="background:${colorForKind(decl.kind)}">${escapeHtml(kindLabel(decl.kind))}</div>
+        <h3 class="detail-name" title="${escapeHtml(decl.name)}">${escapeHtml(leftEllipsis(decl.name, 48))}</h3>
+        <div class="detail-meta" title="${escapeHtml(fullDeclLocation(decl))}">${escapeHtml(truncateDeclLocation(decl, 28, 18))}</div>
+      </div>
+      <div class="status-tag ${decl.status === 'sorry' ? 'is-sorry' : ''}">${escapeHtml(decl.status)}</div>
+    </div>
+
+    <div class="detail-summary">
+      <div class="detail-summary-card">
+        <strong>${decl.deps.length}</strong>
+        <span>Direct dependencies</span>
+      </div>
+      <div class="detail-summary-card">
+        <strong>${decl.dependents.length}</strong>
+        <span>Dependents</span>
+      </div>
+      <div class="detail-summary-card">
+        <strong>${decl.external_dep_count}</strong>
+        <span>External references</span>
+      </div>
+    </div>
+
+    <div class="detail-list-block">
+      <h3>Depends on</h3>
+      <div class="detail-list">
+        ${decl.deps.length ? decl.deps.map((name) => `<button class="link-chip" type="button" data-target="${escapeHtml(name)}" title="${escapeHtml(name)}">${escapeHtml(leftEllipsis(name, 34))}</button>`).join('') : '<span class="detail-meta">None inside the visible project graph.</span>'}
+      </div>
+    </div>
+
+    <div class="detail-list-block">
+      <h3>Used by</h3>
+      <div class="detail-list">
+        ${decl.dependents.length ? decl.dependents.map((name) => `<button class="link-chip" type="button" data-target="${escapeHtml(name)}" title="${escapeHtml(name)}">${escapeHtml(leftEllipsis(name, 34))}</button>`).join('') : '<span class="detail-meta">No visible dependents.</span>'}
+      </div>
+    </div>
+
+    <div class="detail-source">
+      <div class="detail-source-title">Source</div>
+      <pre>${escapeHtml(decl.source || '// source unavailable')}</pre>
+    </div>
+  `;
+
+  panel.querySelectorAll('[data-target]').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectDeclaration(button.getAttribute('data-target'), true);
+    });
+  });
+}
+
+function nodeWidth(decl) {
+  return Math.max(180, Math.min(360, decl.name.length * 7.2 + 46));
+}
+
+function renderGraph(fitAfterRender) {
+  const declarations = visibleDeclarations();
+  const edges = visibleEdges();
+  const query = appState.searchQuery.trim().toLowerCase();
+
+  appState.layoutNodes = new Map();
+
+  const edgeLayer = zoomLayer.select('.edges');
+  const nodeLayer = zoomLayer.select('.nodes');
+
+  if (!declarations.length) {
+    edgeLayer.selectAll('*').remove();
+    nodeLayer.selectAll('*').remove();
+    return;
+  }
+
+  const graph = new dagre.graphlib.Graph();
+  graph.setGraph({
+    rankdir: 'LR',
+    align: 'UL',
+    ranksep: 108,
+    nodesep: 28,
+    marginx: 28,
+    marginy: 28
+  });
+  graph.setDefaultEdgeLabel(() => ({}));
+
+  declarations.forEach((decl) => {
+    graph.setNode(decl.name, {
+      width: nodeWidth(decl),
+      height: 58
+    });
+  });
+
+  edges.forEach((edge) => {
+    graph.setEdge(edge.from, edge.to);
+  });
+
+  dagre.layout(graph);
+
+  const nodes = declarations.map((decl) => {
+    const layout = graph.node(decl.name);
+    const node = { ...decl, ...layout };
+    appState.layoutNodes.set(decl.name, node);
+    return node;
+  });
+
+  const laidOutEdges = edges.map((edge) => ({
+    ...edge,
+    points: graph.edge({ v: edge.from, w: edge.to }).points
+  }));
+
+  const edgeLine = d3.line()
+    .x((point) => point.x)
+    .y((point) => point.y)
+    .curve(d3.curveBasis);
+
+  edgeLayer.selectAll('path')
+    .data(laidOutEdges, (edge) => `${edge.from}->${edge.to}`)
+    .join(
+      (enter) => enter.append('path').attr('class', 'edge'),
+      (update) => update,
+      (exit) => exit.remove()
+    )
+    .attr('d', (edge) => edgeLine(edge.points))
+    .attr('marker-end', 'url(#graph-arrow)')
+    .classed('edge-selected', (edge) => appState.selectedName && (edge.from === appState.selectedName || edge.to === appState.selectedName))
+    .classed('edge-muted', (edge) => shouldDimEdge(edge));
+
+  const nodeJoin = nodeLayer.selectAll('g.node')
+    .data(nodes, (decl) => decl.name)
+    .join(
+      (enter) => {
+        const group = enter.append('g').attr('class', 'node');
+        group.append('rect');
+        group.append('text').attr('class', 'node-title');
+        group.append('text').attr('class', 'node-subtitle');
+        group.append('title');
+        return group;
+      },
+      (update) => update,
+      (exit) => exit.remove()
+    );
+
+  nodeJoin
+    .attr('transform', (decl) => `translate(${decl.x - decl.width / 2}, ${decl.y - decl.height / 2})`)
+    .classed('selected', (decl) => decl.name === appState.selectedName)
+    .classed('muted', (decl) => shouldDimNode(decl.name))
+    .classed('search-hit', (decl) => query && decl.name.toLowerCase().includes(query))
+    .on('click', (event, decl) => {
+      event.stopPropagation();
+      selectDeclaration(decl.name, false);
+    });
+
+  nodeJoin.select('rect')
+    .attr('width', (decl) => decl.width)
+    .attr('height', (decl) => decl.height)
+    .attr('stroke', (decl) => colorForKind(decl.kind));
+
+  nodeJoin.select('.node-title')
+    .attr('x', 16)
+    .attr('y', 24)
+    .text((decl) => truncateNodeTitle(decl));
+
+  nodeJoin.select('.node-subtitle')
+    .attr('x', 16)
+    .attr('y', 42)
+    .text((decl) => truncateNodeSubtitle(decl));
+
+  nodeJoin.select('title')
+    .text((decl) => `${decl.name}\n${fullDeclLocation(decl)}`);
+
+  if (fitAfterRender) {
+    requestAnimationFrame(() => fitGraph());
+  }
+}
+
+function fitGraph() {
+  const zoomNode = zoomLayer.node();
+  if (!zoomNode) {
+    return;
+  }
+  const bbox = zoomNode.getBBox();
+  if (!bbox.width || !bbox.height) {
+    return;
+  }
+  const svgNode = svg.node();
+  const width = svgNode.clientWidth;
+  const height = svgNode.clientHeight;
+  const padding = 44;
+  const scale = Math.min(
+    (width - padding) / bbox.width,
+    (height - padding) / bbox.height,
+    1
+  );
+  const tx = (width - bbox.width * scale) / 2 - bbox.x * scale;
+  const ty = (height - bbox.height * scale) / 2 - bbox.y * scale;
+
+  svg.transition()
+    .duration(260)
+    .call(appState.zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+}
+
+function focusSelectedDeclaration() {
+  if (!appState.selectedName) {
+    return;
+  }
+  const node = appState.layoutNodes.get(appState.selectedName);
+  if (!node) {
+    return;
+  }
+  const svgNode = svg.node();
+  const width = svgNode.clientWidth;
+  const height = svgNode.clientHeight;
+  const scale = 1;
+  const tx = width / 2 - node.x * scale;
+  const ty = height / 2 - node.y * scale;
+  svg.transition()
+    .duration(240)
+    .call(appState.zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+}
+
+function renderAll(fitAfterRender) {
+  ensureSelectionVisible();
+  renderModules();
+  renderKinds();
+  renderStats();
+  renderSearchResults();
+  renderGraph(fitAfterRender);
+  renderDetails();
+
+  const visibleCount = visibleDeclarations().length;
+  const edgeCount = visibleEdges().length;
+  setStatus(`Loaded ${visibleCount} declarations and ${edgeCount} edges.`);
+}
+
+function selectDeclaration(name, focus) {
+  if (!name) {
+    return;
+  }
+  const decl = appState.byName.get(name);
+  if (!decl) {
+    return;
+  }
+  if (appState.moduleFilter && decl.module !== appState.moduleFilter) {
+    appState.moduleFilter = null;
+  }
+  if (appState.kindFilter && decl.kind !== appState.kindFilter) {
+    appState.kindFilter = null;
+  }
+  appState.selectedName = name;
+  renderAll(false);
+  if (focus) {
+    requestAnimationFrame(() => focusSelectedDeclaration());
+  }
+}
+
+async function loadGraph() {
+  try {
+    setStatus('Loading graph...');
+    const response = await fetch('graph-data', { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Request failed with ${response.status}`);
+    }
+    const payload = await response.json();
+    appState.data = payload;
+    appState.byName = new Map(payload.declarations.map((decl) => [decl.name, decl]));
+    renderProjectMeta();
+    renderAll(true);
+  } catch (error) {
+    console.error(error);
+    setStatus(`Failed to load graph data: ${error.message}`, true);
+    document.getElementById('project-subtitle').textContent = 'Graph generation failed.';
+  }
+}
+
+function setupSidebarResizer() {
+  const handle = document.getElementById('sidebar-resizer');
+  const storedWidth = Number.parseInt(window.localStorage.getItem(SIDEBAR_WIDTH_KEY) || '', 10);
+  applySidebarWidth(Number.isFinite(storedWidth) ? storedWidth : SIDEBAR_DEFAULT_WIDTH, false);
+
+  const stopDragging = () => {
+    handle.classList.remove('is-dragging');
+    document.body.classList.remove('is-resizing-sidebar');
+    if (appState.data) {
+      requestAnimationFrame(() => fitGraph());
+    }
+  };
+
+  handle.addEventListener('pointerdown', (event) => {
+    if (window.innerWidth <= 1024) {
+      return;
+    }
+    event.preventDefault();
+    handle.classList.add('is-dragging');
+    document.body.classList.add('is-resizing-sidebar');
+    handle.setPointerCapture(event.pointerId);
+
+    const appLeft = document.getElementById('app').getBoundingClientRect().left;
+    applySidebarWidth(event.clientX - appLeft);
+
+    const onPointerMove = (moveEvent) => {
+      applySidebarWidth(moveEvent.clientX - appLeft);
+    };
+
+    const onPointerUp = (upEvent) => {
+      handle.releasePointerCapture(upEvent.pointerId);
+      handle.removeEventListener('pointermove', onPointerMove);
+      handle.removeEventListener('pointerup', onPointerUp);
+      handle.removeEventListener('pointercancel', onPointerUp);
+      stopDragging();
+    };
+
+    handle.addEventListener('pointermove', onPointerMove);
+    handle.addEventListener('pointerup', onPointerUp);
+    handle.addEventListener('pointercancel', onPointerUp);
+  });
+
+  handle.addEventListener('dblclick', () => {
+    window.localStorage.removeItem(SIDEBAR_WIDTH_KEY);
+    applySidebarWidth(SIDEBAR_DEFAULT_WIDTH, false);
+    if (appState.data) {
+      requestAnimationFrame(() => fitGraph());
+    }
+  });
+
+  handle.addEventListener('keydown', (event) => {
+    if (window.innerWidth <= 1024) {
+      return;
+    }
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+      return;
+    }
+    event.preventDefault();
+    const currentWidth = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width')
+    ) || SIDEBAR_DEFAULT_WIDTH;
+    if (event.key === 'Home') {
+      applySidebarWidth(SIDEBAR_MIN_WIDTH);
+    } else if (event.key === 'End') {
+      applySidebarWidth(SIDEBAR_MAX_WIDTH);
+    } else {
+      const delta = event.key === 'ArrowLeft' ? -24 : 24;
+      applySidebarWidth(currentWidth + delta);
+    }
+    if (appState.data) {
+      requestAnimationFrame(() => fitGraph());
+    }
+  });
+}
+
+function setupThemeToggle() {
+  document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      applyTheme(button.getAttribute('data-theme-toggle') || 'light');
+    });
+  });
+}
+
+function setupWheelIsolation() {
+  const stopWheelPropagation = (event) => {
+    event.stopPropagation();
+  };
+
+  document.querySelector('.sidebar').addEventListener('wheel', stopWheelPropagation, {
+    passive: true
+  });
+  document.querySelector('.canvas-shell').addEventListener('wheel', stopWheelPropagation, {
+    passive: true
+  });
+  document.querySelectorAll('.detail-source pre, #search-results').forEach((element) => {
+    element.addEventListener('wheel', stopWheelPropagation, { passive: true });
+  });
+}
+
+document.getElementById('search-input').addEventListener('input', (event) => {
+  appState.searchQuery = event.target.value;
+  renderSearchResults();
+  renderGraph(false);
+});
+
+document.getElementById('search-input').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') {
+    return;
+  }
+  const [firstMatch] = searchMatches();
+  if (firstMatch) {
+    selectDeclaration(firstMatch.name, true);
+    document.getElementById('search-results').classList.remove('visible');
+  }
+});
+
+document.addEventListener('click', (event) => {
+  const shell = document.querySelector('.search-shell');
+  if (!shell.contains(event.target)) {
+    document.getElementById('search-results').classList.remove('visible');
+  }
+});
+
+document.getElementById('clear-module-filter').addEventListener('click', () => {
+  appState.moduleFilter = null;
+  renderAll(true);
+});
+
+document.getElementById('clear-kind-filter').addEventListener('click', () => {
+  appState.kindFilter = null;
+  renderAll(true);
+});
+
+document.getElementById('fit-btn').addEventListener('click', () => {
+  fitGraph();
+});
+
+document.getElementById('reset-view-btn').addEventListener('click', () => {
+  appState.moduleFilter = null;
+  appState.kindFilter = null;
+  appState.selectedName = null;
+  renderAll(true);
+});
+
+window.addEventListener('resize', () => {
+  applySidebarWidth(
+    parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width'))
+      || SIDEBAR_DEFAULT_WIDTH,
+    false
+  );
+  if (appState.data) {
+    fitGraph();
+  }
+});
+
+setupThemeToggle();
+setupSidebarResizer();
+setupWheelIsolation();
+loadGraph();
+</script>
+</body>
+</html>

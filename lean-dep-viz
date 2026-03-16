@@ -9,6 +9,7 @@ import json
 import mimetypes
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -140,14 +141,14 @@ class VizRequestHandler(http.server.BaseHTTPRequestHandler):
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="lean-dep-viz",
-        description="Host a Lean declaration dependency graph backed by lean4export.",
+        description="Generate or host a Lean declaration dependency graph backed by lean4export.",
     )
     parser.add_argument(
         "command",
         nargs="?",
         default="serve",
-        choices=["serve"],
-        help="Command to run. Only 'serve' is currently supported.",
+        choices=["serve", "build"],
+        help="Command to run.",
     )
     parser.add_argument(
         "--host",
@@ -188,6 +189,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--open",
         action="store_true",
         help="Open the page in a browser after the server starts.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=pathlib.Path,
+        default=REPO_ROOT / "site",
+        help="Directory where the static site is written for the 'build' command.",
     )
     return parser.parse_args(argv)
 
@@ -844,6 +851,21 @@ def generate_graph_payload(args: argparse.Namespace) -> bytes:
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
 
+def build_site(args: argparse.Namespace) -> int:
+    html_path = check_file(resolve_path(args.html), label="HTML file")
+    output_dir = resolve_path(args.output_dir)
+    graph_payload = generate_graph_payload(args)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(html_path, output_dir / "index.html")
+    shutil.copyfile(html_path, output_dir / html_path.name)
+    (output_dir / "graph-data").write_bytes(graph_payload)
+    (output_dir / ".nojekyll").write_text("", encoding="utf-8")
+
+    print(f"Wrote static site to {output_dir}")
+    return 0
+
+
 def serve(args: argparse.Namespace) -> int:
     port = ensure_port(args.port)
     html_path = check_file(resolve_path(args.html), label="HTML file")
@@ -875,6 +897,8 @@ def serve(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.command == "build":
+        return build_site(args)
     return serve(args)
 
 
