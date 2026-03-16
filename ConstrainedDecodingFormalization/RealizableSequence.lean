@@ -83,8 +83,46 @@ def BuildInverseTokenSpannerTable
 
   (re, tinv)
 
-def itst_fst_eq_rs (fst_comp : FST α Γ σ2) : (BuildInverseTokenSpannerTable fst_comp).fst.toFinset = RealizableSequences fst_comp := by
-  sorry
+omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+lemma mem_computeSingleProducible_iff_singleProducible
+  [LawfulBEq Γ] (fst_comp : FST α Γ σ2) (q0 : σ2) (T : Γ) :
+  T ∈ fst_comp.computeSingleProducible q0 ↔ T ∈ fst_comp.singleProducible q0 := by
+  have h :
+      T ∈ (↑((fst_comp.computeSingleProducible q0).toFinset) : Set Γ) ↔
+        T ∈ fst_comp.singleProducible q0 := by
+    rw [fst_comp.computeSingleProducible_correct q0]
+    simp [FST.singleProducible]
+  simpa using h
+
+def itst_fst_eq_rs [LawfulBEq Γ]
+  (fst_comp : FST α Γ σ2) : (BuildInverseTokenSpannerTable fst_comp).fst.toFinset = RealizableSequences fst_comp := by
+  ext rs
+  change rs ∈ (BuildInverseTokenSpannerTable fst_comp).fst.toFinset ↔ rs ∈ RealizableSequences fst_comp
+  constructor
+  · intro hrs
+    rw [List.mem_toFinset] at hrs
+    simp only [BuildInverseTokenSpannerTable, Id.run] at hrs
+    have hrsRaw := List.mem_eraseDups.mp hrs
+    simp only [List.mem_flatMap] at hrsRaw
+    rcases hrsRaw with ⟨q0, hq0, c, hc, hrs⟩
+    simp only [FinEnum.mem_toList] at hq0 hc
+    cases hstep : fst_comp.step q0 c with
+    | none => simp [hstep] at hrs
+    | some stepData =>
+        rcases stepData with ⟨q1, Ts⟩
+        simp only [hstep, List.mem_map] at hrs
+        rcases hrs with ⟨T, hT, hrsEq⟩
+        refine ⟨q0, c, Ts, q1, T, hstep, ?_, hrsEq.symm⟩
+        exact (mem_computeSingleProducible_iff_singleProducible (fst_comp := fst_comp) q1 T).1 hT
+  · rintro ⟨q0, c, Ts, q1, T, hstep, hT, rfl⟩
+    rw [List.mem_toFinset]
+    apply List.mem_eraseDups.2
+    apply List.mem_flatMap.mpr
+    refine ⟨q0, by simp, ?_⟩
+    apply List.mem_flatMap.mpr
+    refine ⟨c, by simp, ?_⟩
+    simp only [hstep, List.mem_map]
+    exact ⟨T, (mem_computeSingleProducible_iff_singleProducible (fst_comp := fst_comp) q1 T).2 hT, rfl⟩
 
 def itst_snd_eq_itst (fst_comp : FST α Γ σ2) :
     ∀ rs s, ((BuildInverseTokenSpannerTable fst_comp).snd rs s).toFinset = InverseTokenSpannerTable fst_comp rs s := by sorry
