@@ -1,5 +1,20 @@
 import ConstrainedDecodingFormalization.Automata
 
+/-!
+# Producible outputs for finite-state transducers
+
+This file relates two notions of output producibility for an `FST`.
+
+* `producible q` is the semantic language of output words obtainable from `q`.
+* `singleProducible q` is the semantic set of single tokens obtainable from `q`.
+* `computeSingleProducible q` is an executable depth-first search that follows
+  epsilon-output transitions and records singleton outputs.
+
+The main theorem `computeSingleProducible_correct` proves that the executable
+procedure computes exactly the singleton outputs that are semantically
+producible.
+-/
+
 universe u v w
 
 namespace FST
@@ -7,12 +22,16 @@ namespace FST
 variable {α : Type u} {Γ : Type v} {σ : Type w}
 variable (M : FST α Γ σ)
 
+/-- The language of output words producible from state `q`. -/
 def producible (q : σ) : Language Γ :=
     { t | ∃ w, (∃ r ∈ M.evalFrom q w, r.2 = t) }
 
+/-- The set of tokens producible from `q` as a singleton output word. -/
 def singleProducible (q : σ) : Set Γ :=
     { t | ∃ w, (∃ r ∈ M.evalFrom q w, r.2 = [t]) }
 
+/-- Adding a fresh state to the visited set strictly decreases the cardinality
+of its complement. This is the measure used to justify termination of `dfs`. -/
 lemma compl_card_lt_of_insert
   [Fintype σ] [DecidableEq σ]
   {vis : Finset σ} {s : σ} (h : s ∉ vis) :
@@ -24,6 +43,13 @@ lemma compl_card_lt_of_insert
   simp only[Finset.compl_union]
   exact h_goal
 
+/-- A depth-first search over states of `M` starting from `curr`.
+
+The search only recurses through transitions whose output is `[]`; whenever it
+encounters a transition with singleton output `[γ]`, it records `γ` in the
+accumulator. Transitions with longer outputs are ignored because they do not
+contribute to singleton producibility.
+-/
 def dfs
   [ Fintype Γ ] [ Fintype σ ] [ a: FinEnum α ]
   [DecidableEq σ ] [DecidableEq α ] [DecidableEq Γ ]
@@ -53,6 +79,7 @@ def dfs
   decreasing_by
     exact compl_card_lt_of_insert _h_vis
 
+/-- The executable list of singleton tokens producible from `q`. -/
 def computeSingleProducible
   [ Fintype Γ ] [ Fintype σ ] [ a: FinEnum α ]
   [DecidableEq σ ] [DecidableEq α ] [DecidableEq Γ ]
@@ -76,6 +103,8 @@ inductive DfsEpsReach : Finset σ → σ → σ → Prop where
       (hrest : DfsEpsReach (V ∪ {q}) q₁ s) :
       DfsEpsReach V q s
 
+/-- During the alphabet fold inside `dfs`, every token already present in the
+accumulator remains present afterwards. -/
 lemma mem_foldl_dfs_stepAccum_of_mem
   [Fintype Γ] [Fintype σ] [a : FinEnum α]
   [DecidableEq α] [DecidableEq Γ]
@@ -128,6 +157,7 @@ lemma mem_foldl_dfs_stepAccum_of_mem
                   | cons γ₂ tail₂ =>
                       exact ih (visacc, retacc) hmem
 
+/-- A singleton-output transition out of `q` is immediately recorded by `dfs`. -/
 lemma mem_dfs_of_singleton_step
   [Fintype Γ] [Fintype σ] [a : FinEnum α]
   [DecidableEq α] [DecidableEq Γ]
@@ -182,6 +212,11 @@ lemma mem_dfs_of_singleton_step
   exact hfold
 
 omit [DecidableEq σ] in
+/-- Enlarging the seed list of tokens for `dfs` can only enlarge the output.
+
+The proof uses strong recursion on the number of states that have not yet been
+visited, matching the recursion scheme of `dfs`.
+-/
 lemma dfs_seed_subset
   [Fintype σ] [Fintype Γ] [FinEnum α]
   [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
@@ -198,6 +233,8 @@ lemma dfs_seed_subset
         t ∈ (M.dfs (a := a) q vis ret₁).2 →
         t ∈ (M.dfs (a := a) q vis ret₂).2
 
+  -- Mirror the recursive structure of `dfs` by recurring on the remaining
+  -- number of unvisited states.
   have step : ∀ n, (∀ m, m < n → P m) → P n := by
     intro n IH q vis ret₁ ret₂ hcard hsubset t hmem
     unfold dfs at hmem ⊢
@@ -238,6 +275,9 @@ lemma dfs_seed_subset
                 (visacc, retacc)
       let alph : List α := (a : FinEnum α).toList
 
+      -- Compare the two folds pointwise. In the epsilon case, the recursive
+      -- call is controlled by the induction hypothesis on the smaller
+      -- complement `(baseᶜ).card`.
       have fold_subset :
         ∀ (L : List α) (acc₁ acc₂ : Finset σ × List Γ),
           (∀ {x : Γ}, x ∈ acc₁.2 → x ∈ acc₂.2) →
@@ -329,6 +369,8 @@ lemma dfs_seed_subset
   intro t ht
   exact H q vis ret₁ ret₂ rfl hsubset ht
 
+/-- If `dfs` can find `t` after taking an epsilon-output step from `q`, then it
+also finds `t` when started from `q` itself. -/
 lemma mem_dfs_of_eps_step
   [Fintype Γ] [Fintype σ] [a : FinEnum α]
   [DecidableEq α] [DecidableEq Γ]
@@ -389,6 +431,12 @@ lemma mem_dfs_of_eps_step
   exact hfold
 
 omit [DecidableEq σ] in
+/-- Completeness of `dfs` from a DFS-compatible epsilon reachability witness.
+
+If `s` can be reached from `q` by following only epsilon-output transitions in
+the precise way that `dfs` explores them, and `s` has a singleton-output
+transition producing `t`, then `dfs` started at `q` records `t`.
+-/
 lemma dfs_complete_from_reach
   [Fintype Γ] [Fintype σ] [a : FinEnum α]
   [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
@@ -411,6 +459,8 @@ lemma dfs_complete_from_reach
 
 end
 
+/-- Unfold `evalFrom` on a nonempty input word into its first step and the
+evaluation of the remaining suffix. -/
 lemma evalFrom_cons_some_iff {s s'' : σ} {a : α} {as : List α} {U : List Γ} :
   M.evalFrom s (a :: as) = some (s'', U)
     ↔ ∃ s' S T,
@@ -491,6 +541,9 @@ lemma evalFrom_cons_some_iff {s s'' : σ} {a : α} {as : List α} {U : List Γ} 
               simp_all
             simp [h₁, hs, this]
 
+/-- A run on a nonempty word produces `[t]` exactly when the first transition
+either produces `[t]` and the tail produces `[]`, or the first transition
+produces `[]` and the tail produces `[t]`. -/
 lemma evalFrom_cons_singleton_iff
   (M : FST α Γ σ) {s s'' : σ} {a : α} {as : List α} {t : Γ} :
   M.evalFrom s (a :: as) = some (s'', [t])
@@ -529,6 +582,9 @@ lemma evalFrom_cons_singleton_iff
         (evalFrom_cons_some_iff (M := M) (s := s) (s'' := s'') (a := a) (as := as) (U := [t])).mpr
           ⟨s', [], [t], hstep, by simpa using heval, by simp⟩
 
+/-- Any run that produces the singleton output `[t]` has a distinguished
+transition where `[t]` is emitted, with only epsilon-output transitions before
+and after it. -/
 lemma evalFrom_singleton_decompose
   [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
   {q qf : σ} {w : List α} {t : Γ} :
@@ -584,6 +640,9 @@ lemma evalFrom_singleton_decompose
               have hne : (head :: (tail ++ T)) ≠ ([] : List Γ) := by simp
               contradiction
 
+/-- Soundness core for `dfs`: every token recorded by the search either comes
+from the initial seed `ret`, or it is witnessed by a genuine singleton-output
+run from `s`. -/
 lemma dfs_sound_core_or
   (M : FST α Γ σ)
   [Fintype σ] [Fintype Γ] [FinEnum α]
@@ -597,6 +656,8 @@ lemma dfs_sound_core_or
       t ∈ (M.dfs (a := a) s vis ret).2 →
       t ∈ ret ∨ ∃ w qf, M.evalFrom s w = some (qf, [t])
 
+  -- As in `dfs_seed_subset`, recurse on the number of states still outside the
+  -- visited set so that epsilon-recursive calls are strictly smaller.
   have step : ∀ n, (∀ m, m < n → P m) → P n := by
     intro n IH s vis ret t hcard hmem
     unfold dfs at hmem
@@ -623,6 +684,9 @@ lemma dfs_sound_core_or
                 (visacc, retacc)
       let alph : List α := (a : FinEnum α).toList
 
+      -- Analyse the fold over the alphabet. Each branch either preserves the
+      -- accumulator, adds a directly produced singleton, or delegates to a
+      -- smaller recursive call reached by an epsilon-output transition.
       have fold_ind :
         ∀ (L : List α) (acc : Finset σ × List Γ),
           t ∈ (L.foldl stepAccum acc).2 →
@@ -733,6 +797,7 @@ lemma dfs_sound_core_or
   have H : P ((visᶜ).card) := Nat.strongRecOn (motive := P) ((visᶜ).card) step
   exact H s vis ret rfl h
 
+/-- Soundness of `dfs` with empty seed list. -/
 lemma dfs_sound_core
   (M : FST α Γ σ) [Fintype σ] [Fintype Γ] [FinEnum α]
   [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
@@ -744,6 +809,8 @@ lemma dfs_sound_core
   · cases h_in_seed
   · exact hex
 
+/-- Every token returned by `dfs` from the initial state is semantically
+singleton-producible. -/
 lemma dfs_sound {q : σ} {t : Γ}
   [ Fintype Γ ] [ Fintype σ ] [ a: FinEnum α ]
   [DecidableEq σ ] [DecidableEq α ] [DecidableEq Γ ]
@@ -751,9 +818,11 @@ lemma dfs_sound {q : σ} {t : Γ}
   ∃ w qf, M.evalFrom q w = some (qf, [t]) :=
   dfs_sound_core (M := M) (a := a) q ∅ ht
 
+/-- The relation of taking a single transition whose output is empty. -/
 def EpsStep (q q' : σ) : Prop :=
   ∃ a, M.step q a = some (q', [])
 
+/-- An evaluation whose total output is empty induces an epsilon-output path. -/
 lemma evalFrom_empty_to_epsReach
   {q s : σ} {u : List α}
   (hu : M.evalFrom q u = some (s, [])) :
@@ -779,6 +848,8 @@ lemma evalFrom_empty_to_epsReach
         simpa [hST.2] using htail
       exact Relation.ReflTransGen.head ⟨a, hstep_eps⟩ (ih htail_eps)
 
+/-- Turn a cycle-free epsilon chain into a `DfsEpsReach` witness by replaying it
+with the visited-set discipline used by `dfs`. -/
 lemma epsChain_to_dfsReach
   [DecidableEq σ]
   : ∀ {V : Finset σ} {q : σ} {l : List σ},
@@ -816,6 +887,7 @@ lemma epsChain_to_dfsReach
       simpa using DfsEpsReach.next (M := M) (V := V) (q := q) (q₁ := q₁)
         (s := ((q₁ :: rest).getLast (List.cons_ne_nil _ _))) hq_notV hstep hrest
 
+/-- Split a membership proof `x ∈ l` into a prefix and suffix around `x`. -/
 lemma mem_split
   [DecidableEq σ]
   {x : σ} {l : List σ}
@@ -830,6 +902,8 @@ lemma mem_split
       · rcases ih htail with ⟨pre, post, hsplit⟩
         exact ⟨y :: pre, post, by simp [hsplit]⟩
 
+/-- Decompose a duplicate occurrence of `x` into two explicit copies of `x`
+separated by a middle segment. -/
 lemma duplicate_decompose
   [DecidableEq σ]
   {x : σ} {l : List σ}
@@ -843,6 +917,8 @@ lemma duplicate_decompose
       rcases ih with ⟨pre, mid, post, hsplit⟩
       exact ⟨y :: pre, mid, post, by simp [hsplit]⟩
 
+/-- Removing a repeated state from the middle of an epsilon chain preserves the
+chain property. -/
 lemma epsChain_remove_cycle
   {pre mid post : List σ} {x : σ}
   (hchain : List.IsChain (M.EpsStep) (pre ++ x :: mid ++ x :: post)) :
@@ -859,11 +935,15 @@ lemma epsChain_remove_cycle
     hleft.append_overlap hright (by simp)
   simpa [List.singleton_append, List.append_assoc] using this
 
+/-- Removing a repeated cycle from the middle of a list does not change its
+head. -/
 lemma head?_remove_cycle
   {pre mid post : List σ} {x : σ} :
   (pre ++ x :: mid ++ x :: post).head? = (pre ++ x :: post).head? := by
   cases pre <;> simp [List.append_assoc]
 
+/-- Removing a repeated cycle from the middle of a list does not change its
+last element. -/
 lemma getLast?_remove_cycle
   {pre mid post : List σ} {x : σ} :
   (pre ++ x :: mid ++ x :: post).getLast? = (pre ++ x :: post).getLast? := by
@@ -889,6 +969,8 @@ lemma getLast?_remove_cycle
           (List.getLast?_append_of_ne_nil (pre ++ [x]) (by simp : y :: ys ≠ []))
       exact h1.trans h2.symm
 
+/-- Every epsilon-reachable state can be connected to the source by a nodup
+epsilon chain. The proof chooses a shortest chain and removes cycles. -/
 lemma epsReach_exists_nodup_chain
   [DecidableEq σ]
   {q s : σ}
@@ -911,6 +993,8 @@ lemma epsReach_exists_nodup_chain
   let n := Nat.find hex
   have hn : P n := Nat.find_spec hex
   rcases hn with ⟨m, hhead, hchain, hlast, hlen⟩
+  -- Minimality of `m.length` rules out duplicates: removing a repeated state
+  -- would give a strictly shorter epsilon chain with the same endpoints.
   have hmin :
       ∀ {m' : List σ},
         m'.head? = some q →
@@ -962,6 +1046,8 @@ lemma epsReach_exists_nodup_chain
         simpa [List.getLast?_eq_getLast_of_ne_nil] using hlast
       simpa using this
 
+/-- Convert semantic epsilon reachability into the DFS-specific reachability
+witness starting from an empty visited set. -/
 lemma epsReach_to_dfsReach_empty
   [DecidableEq σ]
   {q s : σ}
@@ -972,6 +1058,8 @@ lemma epsReach_to_dfsReach_empty
     epsChain_to_dfsReach (M := M) (V := ∅) (q := q) (l := l)
       hchain hnodup (by intro x hx; simp)
 
+/-- Completeness of `dfs` for singleton outputs. Any semantic witness of
+singleton producibility is discovered by the search. -/
 lemma dfs_complete
   [Fintype σ] [Fintype Γ] [FinEnum α]
   [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
@@ -987,6 +1075,8 @@ lemma dfs_complete
     epsReach_to_dfsReach_empty (M := M) hreach_eps
   exact dfs_complete_from_reach (M := M) (a := a) hreach_dfs ⟨a₀, s', hstep⟩
 
+/-- The executable procedure `computeSingleProducible` computes exactly the set
+of singleton outputs semantically producible from `q`. -/
 theorem computeSingleProducible_correct
   [ Fintype Γ ] [ Fintype σ ] [ a: FinEnum α ]
   [DecidableEq σ ] [DecidableEq α ] [DecidableEq Γ ] (q : σ) :
