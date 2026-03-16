@@ -2,18 +2,43 @@ import ConstrainedDecodingFormalization.PDA
 import ConstrainedDecodingFormalization.Lexing
 import ConstrainedDecodingFormalization.RealizableSequence
 import ConstrainedDecodingFormalization.Vocabulary
--- Actual implementation of grammar constrained decoding
+
+/-!
+# Grammar-constrained decoding
+
+This file assembles the main constructions of the development. It combines a
+detokenizing lexer FST with a pushdown parser, precomputes one-step parser/FST
+interaction tables, and turns them into an executable valid-token checker.
+
+The central flow is:
+
+`LexerSpec` + `Vocabulary` + `PDA`
+→ `PreprocessParser`
+→ `ComputeValidTokenMask`
+→ `MaskChecker` / `GCDChecker`.
+-/
 
 universe u v w x y z
-variable { α : Type u } { β : Type x } { Γ : Type y } { π : Type v } { σp : Type w } { σa : Type z }
+variable {α : Type u} {β : Type x} {Γ : Type y} {π : Type v} {σp : Type w} {σa : Type z}
 
 variable
-  [ FinEnum σp ] [ FinEnum Γ ] [ FinEnum α ] [ FinEnum σa ] [ FinEnum π ]
-  [ DecidableEq σp ] [DecidableEq β] [DecidableEq Γ ] [ DecidableEq α ] [ DecidableEq π ]
+  [FinEnum σp] [FinEnum Γ] [FinEnum α] [FinEnum σa] [FinEnum π]
+  [DecidableEq σp] [DecidableEq β] [DecidableEq Γ] [DecidableEq α] [DecidableEq π]
 
+/-- The preprocessing table indexed by parser state and automaton state.
+
+For each pair of states it stores:
+
+* accepted next tokens,
+* dependent realizable sequences,
+* all realizable sequences accepted from the parser state with empty stack.
+-/
 abbrev PPTable (α σp σa Γ) := (σp → σa → (List α × List (List Γ) × List (List Γ)))
--- todo use a better solution for extending the number of states by 1
-def ParserWithEOS  (p: PDA Γ π σp) : PDA (Ch Γ) π (Ch σp) :=
+
+-- TODO: replace this ad hoc EOS-extension with a cleaner construction.
+/-- Extend a token PDA with EOS so it can be composed with lexer outputs over
+`Ch Γ`. -/
+def ParserWithEOS (p : PDA Γ π σp) : PDA (Ch Γ) π (Ch σp) :=
   let start := ExtChar.char p.start
   let accept := ExtChar.eos
   let step := fun s c =>
@@ -33,14 +58,17 @@ def ParserWithEOS  (p: PDA Γ π σp) : PDA (Ch Γ) π (Ch σp) :=
 -- TODO is there a better way to avoid this mess?
 namespace FinsetNFA
 
+/-- One NFA-style step on the control-state projection of a PDA. -/
 def stepSet (p: PDA Γ π σp) (q : Finset σp) (s : Γ) : Finset σp :=
-    Finset.biUnion q (fun q' => (p.step q' s).image fun x => x.2.2)
+  Finset.biUnion q (fun q' => (p.step q' s).image fun x => x.2.2)
 
-def evalFrom (p: PDA Γ π σp) (q : Finset σp) (s : List Γ) : Finset σp
-  :=
+/-- Fold `stepSet` over a word. This is the finite-set presentation of the
+parser overapproximation. -/
+def evalFrom (p : PDA Γ π σp) (q : Finset σp) (s : List Γ) : Finset σp :=
   List.foldl (stepSet p) q s
 
 omit [DecidableEq Γ] [DecidableEq π]
+/-- The finite-set evaluator agrees with the NFA obtained from `PDA.toNFA`. -/
 theorem finsetEvalFrom_iff_evalFrom (p: PDA Γ π σp) (q : Finset σp) (s : List Γ) :
   ∀ u, u ∈ FinsetNFA.evalFrom p q s ↔ u ∈ p.toNFA.evalFrom q s := by
   intro u
@@ -56,6 +84,8 @@ theorem finsetEvalFrom_iff_evalFrom (p: PDA Γ π σp) (q : Finset σp) (s : Lis
     exact Finset.coe_biUnion
 end FinsetNFA
 
+/-- Characterize membership in a left fold of list concatenation with an
+arbitrary initial accumulator. -/
 lemma mem_foldl_append_iff_acc {δ : Type _} (x : δ) :
   ∀ acc : List δ, ∀ xs : List (List δ),
     x ∈ xs.foldl List.append acc ↔ x ∈ acc ∨ ∃ ys ∈ xs, x ∈ ys := by
@@ -83,6 +113,7 @@ lemma mem_foldl_append_if_iff {δ ε : Type _} (x : δ) (f : ε → List δ) (p 
       · simp [List.foldl_cons, hy, ih, List.mem_append, or_assoc]
       · simp [List.foldl_cons, hy, ih]
 
+/-- Removing an element from a nodup list removes that element. -/
 lemma not_mem_erase_of_nodup {δ : Type _} [BEq δ] [LawfulBEq δ] {x : δ} {l : List δ}
   (h : l.Nodup) : x ∉ l.erase x := by
   induction l with
@@ -143,6 +174,13 @@ lemma nodup_eraseDups {δ : Type _} [BEq δ] [LawfulBEq δ] :
   have hP : P l.length := Nat.strongRecOn l.length hstep
   exact hP l rfl
 
+/-- Precompute the parser/FST interaction table for grammar-constrained
+decoding.
+
+For each parser state `qp` and automaton state `qa`, this separates realizable
+output sequences into immediately accepted ones, immediately rejected ones, and
+dependent ones whose acceptance depends on the current stack.
+-/
 def PreprocessParser (fst_comp : FST α Γ σa) (p : PDA Γ π σp) : PPTable α σp σa Γ :=
   let (re, tist) := BuildInverseTokenSpannerTable fst_comp
   fun qp =>
@@ -157,6 +195,8 @@ def PreprocessParser (fst_comp : FST α Γ σa) (p : PDA Γ π σp) : PPTable α
       let dependent_a := dependent_a.dedup
       (accepted_a, dependent_a, accepted)
 
+/-- Characterize the realizable sequences that land in the "accepted" part of
+`PreprocessParser`. -/
 lemma mem_preprocess_accepted_sequences_iff
   (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (qa : σa) (d : List Γ) :
   d ∈ (PreprocessParser fst_comp p qp qa).2.2 ↔
@@ -203,6 +243,7 @@ lemma mem_rejected_sequences_iff
       ⟨(mem_re_iff (fst_comp := fst_comp) (d := d)).2 hd, hrej⟩
     simpa [List.mem_filter] using hmem
 
+/-- Characterize the accepted next tokens extracted by `PreprocessParser`. -/
 lemma mem_preprocess_accepted_tokens_iff
   [BEq α] [ReflBEq α] [LawfulBEq α]
   (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (qa : σa) (tok : α) :
@@ -262,6 +303,8 @@ lemma mem_preprocess_accepted_tokens_iff
       exact htok
     simpa [PreprocessParser] using hdedup
 
+/-- Characterize the "dependent" realizable sequences whose acceptance depends
+on the current stack contents. -/
 lemma mem_preprocess_dependent_sequences_iff
   (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (qa : σa) (d : List Γ) :
   d ∈ (PreprocessParser fst_comp p qp qa).2.1 ↔
@@ -328,6 +371,8 @@ lemma mem_preprocess_dependent_sequences_iff
       simpa [List.mem_filter] using And.intro hdep hitst
     simpa [PreprocessParser, re, accepted, rejected, dependent, List.mem_filter, List.mem_dedup] using hdepf
 
+/-- Compute the valid next-token mask for a given parser state, automaton state,
+and current parser stack. -/
 def ComputeValidTokenMask (P : PDA Γ π σp) (itst : List Γ → σa → List α)
   (table : PPTable α σp σa Γ) (qa : σa) (qp : σp) (st : List π) : List α :=
   let accepted := (table qp qa).fst
@@ -343,6 +388,9 @@ def ComputeValidTokenMask (P : PDA Γ π σp) (itst : List Γ → σa → List �
   accepted.dedup
 
 omit [FinEnum α] [FinEnum σa] [DecidableEq Γ] in
+/-- Membership in `ComputeValidTokenMask` is exactly membership in either the
+preaccepted token list or a dependent sequence that succeeds on the current
+stack. -/
 lemma mem_ComputeValidTokenMask_iff
   [BEq α] [ReflBEq α] [LawfulBEq α]
   (P : PDA Γ π σp) (itst : List Γ → σa → List α) (table : PPTable α σp σa Γ)
@@ -359,6 +407,8 @@ lemma mem_ComputeValidTokenMask_iff
       ((table qp qa).fst)
       ((table qp qa).2.1))
 
+/-- Specialize `mem_ComputeValidTokenMask_iff` to the preprocessing table built
+from an FST and a PDA. -/
 lemma mem_ComputeValidTokenMask_preprocess_iff
   [BEq α] [ReflBEq α] [LawfulBEq α]
   (fst_comp : FST α Γ σa) (P : PDA Γ π σp) (qa : σa) (qp : σp) (st : List π) (tok : α) :
@@ -406,21 +456,27 @@ lemma mem_ComputeValidTokenMask_preprocess_iff
         ((mem_itst_iff (fst_comp := fst_comp) (d := d) (qa := qa) (tok := tok)).2 htok)
       simp at this
 
+/-- The combined detokenizing lexer FST used by grammar-constrained decoding. -/
 abbrev GCDComb [Vocabulary α β] (spec : LexerSpec α Γ σa) :
     FST (Ch β) (Ch Γ) (Unit × LexingState σa) :=
   Detokenizing.BuildDetokLexer (V := Ch β) spec
 
+/-- The EOS-augmented parser used by grammar-constrained decoding. -/
 abbrev GCDParser (P : PDA Γ π σp) : PDA (Ch Γ) π (Ch σp) :=
   ParserWithEOS P
 
+/-- The preprocessing table used by the full GCD checker. -/
 abbrev GCDPPTable [Vocabulary α β] [FinEnum β] (P : PDA Γ π σp) (spec : LexerSpec α Γ σa) :
     PPTable (Ch β) (Ch σp) (Unit × LexingState σa) (Ch Γ) :=
   PreprocessParser (GCDComb (α := α) (β := β) spec) (GCDParser P)
 
+/-- The inverse token-spanner table specialized to the full GCD construction. -/
 abbrev GCDItst [Vocabulary α β] [FinEnum β] (spec : LexerSpec α Γ σa) :
     List (Ch Γ) → (Unit × LexingState σa) → List (Ch β) :=
   (BuildInverseTokenSpannerTable (GCDComb (α := α) (β := β) spec)).snd
 
+/-- The generic mask checker built from a lexer/parser combination together
+with its preprocessing artifacts. -/
 def MaskChecker
    [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa]
    (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
@@ -436,10 +492,8 @@ def MaskChecker
       Finset.fold Bool.or false id in_curr
 
 -- TODO use more consistent notions of variable names
-/- lexer spec is the automata in terms of the characters
-   we also have the actual tokens
-   and then the parser
--/
+/-- The end-to-end grammar-constrained checker associated to a lexer
+specification and a parser. -/
 def GCDChecker
    [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
    [DecidableEq σa]
@@ -456,6 +510,8 @@ def GCDChecker
     (BuildInverseTokenSpannerTable comb).snd
   MaskChecker comb parser pp_table itst
 
+/-- Folding `Bool.or` over a finite set is true exactly when the set contains
+`true`. -/
 lemma Finset.fold_or_eq_true_iff (s : Finset Bool) :
   Finset.fold Bool.or false id s = true ↔ true ∈ s := by
   induction s using Finset.induction_on with
@@ -468,6 +524,7 @@ lemma Finset.fold_or_eq_true_iff (s : Finset Bool) :
       | true =>
           simp [Finset.fold_insert, ha]
 
+/-- Semantic viable-prefix predicate for the full GCD construction. -/
 def GCDViablePrefix
   [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
   [DecidableEq σa]
@@ -483,6 +540,7 @@ def GCDViablePrefix
 -- want to say that for any lexer state
 -- any thing that starts with a realizable sequence is producible
 omit [FinEnum Γ] [FinEnum α] [FinEnum σa] [DecidableEq Γ] [DecidableEq α] in
+/-- Unfold `singleProducible` into an explicit singleton-output run. -/
 lemma mem_singleProducible_iff_exists_evalFrom_singleton
   (fst_comp : FST α Γ σa) (q : σa) (T : Γ) :
   T ∈ fst_comp.singleProducible q ↔
@@ -490,6 +548,8 @@ lemma mem_singleProducible_iff_exists_evalFrom_singleton
   simp [FST.singleProducible]
 
 omit [FinEnum Γ] [FinEnum α] [FinEnum σa] [DecidableEq Γ] [DecidableEq α] in
+/-- Any token found in the inverse token-spanner table extends to a concrete FST
+run realizing the corresponding output sequence. -/
 theorem realizableSequencesComplete (fst_comp : FST α Γ σa) :
   ∀ qa t gammas,
     t ∈ InverseTokenSpannerTable fst_comp gammas qa →
@@ -514,6 +574,8 @@ theorem realizableSequencesComplete (fst_comp : FST α Γ σa) :
         (List.dropLast_append_getLast hne).symm⟩
 
 omit [DecidableEq Γ] in
+/-- Nonemptiness from the empty stack lifts to nonemptiness from any larger
+stack by stack invariance. -/
 lemma evalFrom_empty_stack_nonempty_any_stack
   (p : PDA Γ π σp) (q : σp) (w : List Γ) (st : List π) :
   p.evalFrom {(q, [])} w ≠ ∅ → p.evalFrom {(q, st)} w ≠ ∅ := by
@@ -522,6 +584,8 @@ lemma evalFrom_empty_stack_nonempty_any_stack
   have hlift := p.stackInvariance_lem q [] qf stf st w (by simp) hmem
   simp [hempty] at hlift
 
+/-- Every token admitted by the computed valid-token mask extends to a concrete
+FST run whose emitted terminals remain parseable by `P`. -/
 theorem accept_if_ComputedValidTokenMask
   (fst_comp : FST α Γ σa) (P : PDA Γ π σp) :
   ∀ qp st qa t,

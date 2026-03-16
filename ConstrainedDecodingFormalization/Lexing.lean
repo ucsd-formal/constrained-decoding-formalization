@@ -15,6 +15,24 @@ import ConstrainedDecodingFormalization.Producible
 import ConstrainedDecodingFormalization.Char
 import ConstrainedDecodingFormalization.Vocabulary
 
+/-!
+# Lexing transducers
+
+This file connects deterministic character-level lexing with the finite-state
+transducer model used by the rest of the development.
+
+Its main ingredients are:
+
+* `LexerSpec`, which packages a character automaton together with token labels
+  on accepting states;
+* `PartialLexRel` and `PartialLex`, relational and executable formulations of
+  incremental lexing;
+* `BuildLexingFST`, which turns a lexer specification into an FST over
+  EOS-extended characters;
+* the `Detokenizing` namespace, which lifts token vocabularies into FSTs and
+  composes them with lexers.
+-/
+
 open List
 
 universe u v w
@@ -24,7 +42,12 @@ variable
   [DecidableEq α] [DecidableEq σ]
   [BEq α] [BEq σ] [LawfulBEq σ]
 
+/-- A lexer specification given by a character automaton together with token
+labels on accepting states.
 
+This is the interface from which the lexing FST and the grammar-constrained
+decoding checker are built.
+-/
 structure LexerSpec (α Γ σ) where
   automaton : FSA α σ
   term: σ → Option Γ
@@ -32,11 +55,14 @@ structure LexerSpec (α Γ σ) where
   term_inj: ∀ s₁ s₂ t, term s₁ = some t ∧ term s₂ = some t → s₁ = s₂
   term_surj: ∀ t, ∃ s, term s = some t
 
+/-- Evaluate a character sequence and, if it is accepted, return the token
+attached to its accepting state. -/
 def LexerSpec.seq_term (spec: LexerSpec α Γ σ) (seq: List α) : Option Γ :=
   match spec.automaton.eval seq with
   | some s => spec.term s
   | none => none
 
+/-- Extract the token attached to an accepted character sequence. -/
 def LexerSpec.accept_seq_term (spec: LexerSpec α Γ σ) (seq: List α) (h: seq ∈ spec.automaton.accepts) : Γ :=
   let s := (spec.automaton.eval seq).get <| by
     simp[FSA.accepts, FSA.acceptsFrom] at h
@@ -51,8 +77,16 @@ def LexerSpec.accept_seq_term (spec: LexerSpec α Γ σ) (seq: List α) (h: seq 
   let term := spec.term s
   term.get ((spec.hterm s).mp sa)
 
+/-- An executable lexer from EOS-extended characters to EOS-extended tokens,
+also returning the residual unlexed suffix of the current token candidate. -/
 def Lexer (α : Type u) (Γ : Type v) := List (Ch α) -> Option (List (Ch Γ) × List α)
 
+/-- Relational semantics of incremental lexing.
+
+`PartialLexRel spec w tokens unlexed` means that after reading `w`, the lexer
+has committed `tokens` and retained `unlexed` as the unfinished suffix of the
+current token candidate.
+-/
 inductive PartialLexRel (spec: LexerSpec α Γ σ)
   : List (Ch α) → List (Ch Γ) → List α → Prop
   -- base case
@@ -140,7 +174,8 @@ private def PartialLex_seed (spec: LexerSpec α Γ σ) (seed: Option (List (Ch �
 def PartialLex (spec: LexerSpec α Γ σ) : Lexer α Γ :=
   PartialLex_seed spec (some ([], []))
 
-
+/-- States of the lexing FST: either the distinguished start state or a state
+tracking an underlying lexer-automaton state. -/
 inductive LexingState (σ : Type w) where
 | id : σ → LexingState σ
 | start : LexingState σ
@@ -175,6 +210,8 @@ instance {σ} [e : FinEnum σ] : FinEnum (LexingState σ) where
       }
   decEq := by infer_instance
 
+/-- Recover the underlying lexer-automaton state represented by a lexing-FST
+state. -/
 def LexingState.src {σ : Type w} (spec: LexerSpec α Γ σ) : LexingState σ → σ
 | LexingState.id s => s
 | LexingState.start => spec.automaton.start
@@ -185,8 +222,13 @@ def LexingState_src_id [DecidableEq α] [BEq α]{σ : Type w} (spec: LexerSpec �
   simp[LexingState.src]
 
 
-/-- Given a lexing automaton `A`, build a character-to-token lexing FST with output over `Γ`
-    For the lexing FSA, we'll use the convention that each terminal symbol is attached to an accept state (see Fig. 1) -/
+/-- Build the character-to-token lexing FST associated to a lexer
+specification.
+
+The construction follows the convention that tokens are attached to accepting
+states of the lexer automaton. This is the central machine-level object that is
+later composed with detokenization and parser preprocessing.
+-/
 def BuildLexingFST [BEq α] [DecidableEq α] (spec: LexerSpec α Γ σ) :
     FST (Ch α) (Ch Γ) (LexingState σ) := Id.run do
   let ⟨A, term, hterm, _, _⟩ := spec
@@ -222,6 +264,9 @@ def LexingFST_start (spec: LexerSpec α Γ σ) : (BuildLexingFST spec).start = L
   simp[BuildLexingFST, Id.run]
 
 omit [DecidableEq α] [DecidableEq σ] [BEq α] in
+/-- Under pruning, the seeded executable lexer and the relational semantics are
+equivalent in both directions. This is the technical core behind the later
+equivalence theorems. -/
 lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
     (∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) → PartialLex_seed spec (some ([], [])) w = some (tokens, unlexed)) ∧
     (∀ wp ws seed_f seed_s tokens unlexed, (PartialLexRel spec wp seed_f seed_s) ∧ PartialLex_seed spec (some (seed_f, seed_s)) ws = some (tokens, unlexed) → PartialLexRel spec (wp ++ ws) tokens unlexed)
@@ -468,6 +513,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
                 exact append_cons wp (ExtChar.char ch) tail
 
 omit [DecidableEq α] [DecidableEq σ] [BEq α] in
+/-- Pruning lets us identify `PartialLex` with the relational lexer semantics. -/
 theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
     ∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) ↔ PartialLex spec w = some (tokens, unlexed)
       := by
@@ -810,6 +856,7 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
         simp at ih
         exact ih
 
+/-- The executable lexer and the lexing FST agree on successful executions. -/
 theorem PartialLex_to_LexingFST (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) :
   ∀ w, match PartialLex spec w with
        | some (ts', wr) =>
@@ -851,6 +898,7 @@ theorem PartialLex_to_LexingFST (spec: LexerSpec α Γ σ) (he: [] ∉ spec.auto
   assumption
 
 
+/-- A relational lexing derivation yields a corresponding FST execution. -/
 theorem PartialLexRel_to_LexingFST (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned) :
   ∀ w terminals unlexed,
     PartialLexRel spec w terminals unlexed →
@@ -863,6 +911,8 @@ theorem PartialLexRel_to_LexingFST (spec: LexerSpec α Γ σ) (he: [] ∉ spec.a
   obtain ⟨q', heval_w, heval_unlexed⟩ := this
   exists q'
 
+/-- Any successful lexing-FST execution can be reinterpreted as a relational
+lexing derivation with some residual unlexed suffix. -/
 theorem LexingFST_to_PartialLexRel (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned) :
   ∀ w q' terminals,
     (BuildLexingFST spec).eval w = some (q', terminals) →
@@ -895,6 +945,8 @@ theorem LexingFST_to_PartialLexRel (spec: LexerSpec α Γ σ) (he: [] ∉ spec.a
     simp only [hpl, heq] at hrel
     simp[hrel]
 
+/-- Every transition of the lexing FST emits either no tokens, a singleton
+token, or the special two-symbol output `[t, eos]` used on finalization. -/
 lemma LexingFst_smallStep (spec: LexerSpec α Γ σ) :
   ∀ q a q' terminals,
     (BuildLexingFST spec).step q a = some (q', terminals) →
@@ -916,14 +968,18 @@ lemma LexingFst_smallStep (spec: LexerSpec α Γ σ) :
 
 namespace Detokenizing
 
+/-! ## Detokenizing -/
 universe x
 variable { V : Type x }
 variable [BEq V]
 
+/-- The FST that replaces each token by its flattened character sequence. -/
 def BuildDetokenizingFST [v: Vocabulary α V] : FST V α Unit :=
   let step := fun _ s => some (Unit.unit, v.flatten s)
   FST.mk Unit.unit step [Unit.unit]
 
+/-- Detokenize a token list by flattening each token and concatenating the
+results. -/
 def detokenize [v: Vocabulary α V] (w : List V) : List α :=
   match w with
   | [] => []
@@ -949,6 +1005,8 @@ lemma detokenize_app [v: Vocabulary α V] (s1 s2 : List V) :
     rw[←ih]
 
 omit [DecidableEq α] [BEq V] in
+/-- Executing `BuildDetokenizingFST` is equivalent to plain list
+detokenization. -/
 theorem detokenizerFST_eq_detokenizer [v: Vocabulary α V] :
   ∀ ( w : List V ), some ((Unit.unit, detokenize w,)) = (BuildDetokenizingFST (v := v)).eval w := by
   intro w
@@ -974,6 +1032,8 @@ theorem detokenizerFST_eq_detokenizer [v: Vocabulary α V] :
     exact ih
 
 omit [DecidableEq α] [BEq V] in
+/-- A single step of the detokenizer composed with an FST equals evaluating the
+second FST on the flattened token. -/
 lemma detokenizer_comp_step [v: Vocabulary α V] { σ0 } (f : FST α Γ σ0) (q: σ0) :
   ∀ a, ((FST.compose (BuildDetokenizingFST (v := v)) f).step (Unit.unit, q) a) =
     (f.evalFrom q (v.flatten a)).map (fun (q, out) => ((Unit.unit, q), out)) := by
@@ -982,6 +1042,8 @@ lemma detokenizer_comp_step [v: Vocabulary α V] { σ0 } (f : FST α Γ σ0) (q:
   split <;> simp_all
 
 omit [DecidableEq α] [BEq V] in
+/-- Composing the detokenizer with an FST is equivalent to first detokenizing
+and then evaluating the FST. -/
 theorem detokenizer_comp [v: Vocabulary α V] { σ0 } (f : FST α Γ σ0) (q: σ0) :
   ∀ w, ((FST.compose (BuildDetokenizingFST (v := v)) f).evalFrom (Unit.unit, q) w) =
     (f.evalFrom q (detokenize (v := v) w)).map (fun (q, out) => ((Unit.unit, q), out)) := by
@@ -999,6 +1061,8 @@ theorem detokenizer_comp [v: Vocabulary α V] { σ0 } (f : FST α Γ σ0) (q: σ
 
 -- if two words detokenize to the same thing, then their compositions with any fst are equal
 omit [DecidableEq α] [BEq V] in
+/-- If two token words detokenize to the same character word, then any
+detokenizer-composed FST evaluates them identically. -/
 theorem detokenize_eq_comp [v: Vocabulary α V] { σ0 } (w1: List V) (w2: List V) (f : FST α Γ σ0) (q: σ0) :
   detokenize (v := v) w1 = detokenize (v := v) w2 → (FST.compose (BuildDetokenizingFST (v := v) ) f).evalFrom (Unit.unit, q) w1 = (FST.compose (BuildDetokenizingFST (v := v)) f).evalFrom (Unit.unit, q) w2 := by
   intro h
@@ -1012,6 +1076,8 @@ theorem detokenize_eq_comp [v: Vocabulary α V] { σ0 } (w1: List V) (w2: List V
 -- via the singleton assumption on the vocabulary, this means
 -- that if something is realizable, it is realizable via singletons
 omit [DecidableEq α] [BEq V] in
+/-- Any detokenized run can be replaced by one using only singleton-flattening
+tokens, thanks to the vocabulary axioms. -/
 theorem detokenize_singleton [v: Vocabulary α V] { σ0 } (f: FST α Γ σ0) (q: σ0) :
   ∀ ( w : List V ), ∃ ( ws : List V ),
     (FST.compose (BuildDetokenizingFST (v := v) ) f).evalFrom (Unit.unit, q) w = (FST.compose (BuildDetokenizingFST (v := v)) f).evalFrom (Unit.unit, q) ws
@@ -1038,7 +1104,8 @@ theorem detokenize_singleton [v: Vocabulary α V] { σ0 } (f: FST α Γ σ0) (q:
   intro t x hx x_1 _ hx_1
   simp[←hx_1, v.fe]
 
-
+/-- Compose detokenization with the lexing FST to obtain the token-level lexer
+used by grammar-constrained decoding. -/
 def BuildDetokLexer [v: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ) : FST V (Ch Γ) (Unit × LexingState σ) :=
   let lex_fst := BuildLexingFST spec
   let detok := Detokenizing.BuildDetokenizingFST (v := v)
@@ -1050,6 +1117,12 @@ def BuildDetokLexer [v: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ) : FST V
 -- but this is not necessary
 -- this assumption also does allow whitespace to be formed by going to another state and back to the start
 -- and then appending whitespace, but this doesn't hurt the proof
+/-- Assumptions isolating a distinguished whitespace character and token in the
+lexer automaton.
+
+These hypotheses drive the whitespace-specific exchange arguments in the later
+part of the file.
+-/
 def whitespace_assumption (spec: LexerSpec α Γ σ) (tnonwhite : α) (twhite : α) (qnonwhite : σ) (qwhite : σ) : Prop :=
   qwhite ∈ spec.automaton.accept ∧
   (∀ s t, spec.automaton.step s t = some qwhite ↔ ((s = qwhite ∨ s = spec.automaton.start) ∧ t = twhite)) ∧
@@ -1059,6 +1132,7 @@ def whitespace_assumption (spec: LexerSpec α Γ σ) (tnonwhite : α) (twhite : 
   spec.automaton.step spec.automaton.start tnonwhite = some qnonwhite ∧
   tnonwhite ≠ twhite
 
+/-- The token emitted by the distinguished whitespace accepting state. -/
 def whitespace_terminal (spec: LexerSpec α Γ σ) (tnonwhite : α) (twhite : α) (qnonwhite : σ) (qwhite : σ) (hw: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) : Γ :=
   let ret := spec.term qwhite
   have := (spec.hterm qwhite).mp hw.left

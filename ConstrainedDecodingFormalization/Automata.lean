@@ -9,11 +9,26 @@ import Std.Data.HashSet.Basic
 import Mathlib.Data.FinEnum
 import Mathlib.Data.List.Nodup
 
+/-!
+# Automata and transducers
+
+This file contains the core state-machine semantics used throughout the
+development.
+
+* `FSA` models deterministic finite-state acceptors over an input alphabet.
+* `FST` models deterministic finite-state transducers with list-valued outputs.
+
+The later lexer, producibility, realizable-sequence, and grammar-constrained
+decoding files all build on the execution semantics and language notions defined
+here.
+-/
+
 universe u v w y
 
 variable
   {α : Type u} {Γ : Type v} {σ : Type w}
 
+/-- A deterministic finite-state acceptor over input alphabet `α`. -/
 structure FSA (α σ) where
   start : σ
   step : σ → α → Option σ
@@ -23,6 +38,12 @@ namespace FSA
 
 variable (A : FSA α σ)
 
+/-- Evaluate an FSA from state `s` on input word `l`.
+
+The result is the final state when every transition is defined, and `none`
+otherwise. This is the basic operational semantics used to define the accepted
+and intermediate languages of the automaton.
+-/
 def evalFrom (s : σ) (l : List α) : Option σ :=
   match s, l with
   | s, [] => s
@@ -53,13 +74,16 @@ theorem evalFrom_append (s : σ) (xs ys : List α) : A.evalFrom s (xs ++ ys) =
     | some sp =>
       simp[evalFrom, h, ih]
 
+/-- Evaluate the automaton from its start state. -/
 @[simp]
 def eval : List α → Option σ :=
   A.evalFrom A.start
 
+/-- The language accepted when the automaton starts in state `s`. -/
 def acceptsFrom (s : σ) : Language α :=
   { w | ∃ f, A.evalFrom s w = some f ∧ f ∈ A.accept }
 
+/-- The language accepted from the designated start state. -/
 def accepts : Language α := A.acceptsFrom A.start
 
 def accepts_iff {w : List α} : w ∈ A.accepts ↔
@@ -67,17 +91,26 @@ def accepts_iff {w : List α} : w ∈ A.accepts ↔
   simp [accepts, acceptsFrom]
   rfl
 
+/-- The prefix closure of the accepted language.
+
+This describes the words that have not yet been ruled out by the automaton, and
+is later used to express incremental lexing properties.
+-/
 def prefixLanguage : Language α :=
   {x | ∃ y, x ++ y ∈ A.accepts }
 
--- no dead states
+/-- An automaton is `pruned` if every state is both reachable from the start
+and can still reach an accepting state. -/
 def pruned : Prop :=
   ∀ σ, (∃ w f, some f = A.evalFrom σ w ∧ f ∈ A.accept) ∧
        (∃ w, some σ = A.evalFrom A.start w)
 
+/-- The language of inputs that have not yet failed from the start state. -/
 def intermediateLanguage : Language α :=
   {w | A.eval w ≠ none }
 
+/-- For a pruned automaton, "not yet rejected" coincides with being a prefix of
+some accepted word. -/
 def pruned_prefixLanguage (h : A.pruned) : A.intermediateLanguage = A.prefixLanguage := by
   ext w
   simp[intermediateLanguage, prefixLanguage]
@@ -130,6 +163,7 @@ theorem mem_accepts {x : List α} (h : (A.eval x).isSome) : x ∈ A.accepts ↔ 
     · simp [eval]
     · exact ha
 
+/-- The set of states reachable from `q` in one input step. -/
 def adj (q : σ) [FinEnum α] [FinEnum σ] : Finset σ :=
     { p | ∃ a, (∃ s ∈ A.step q a, s = p) }
 
@@ -162,6 +196,9 @@ instance [BEq σ] [LawfulBEq σ] (l : List α) : Decidable (l ∈ A.accepts) :=
 --instance [BEq σ] [LawfulBEq σ] (l : List α) : Decidable (l ∈ A.prefixLanguage) :=
   --sorry
 
+/-- View a deterministic FSA as a DFA whose extra `none` state represents
+failure. This is the version used when relating the development to mathlib's
+`DFA` interface. -/
 def toDFA : DFA α (Option σ) :=
   let step : Option σ → α → Option σ := fun s a =>
     match s, a with
@@ -221,6 +258,8 @@ theorem toDFA_eval_correct : ∀ (l : List α), A.toDFA.eval l = A.eval l := by
   have : A.toDFA.start = some (A.start) := by exact rfl
   simp_all only [toDFA_evalFrom_correct]
 
+/-- The DFA obtained from `toDFA` accepts exactly the same language as the
+original FSA. -/
 theorem toDFA_correct : A.toDFA.accepts = A.accepts := by
   ext x
   simp only [DFA.mem_accepts]
@@ -277,14 +316,20 @@ instance : DecidableEq (FSA α σ) := fun M N =>
   else
     isFalse (by intro hMN; apply h; simp [toProd, hMN])
 
+/-- Apply one input symbol to a list of states and deduplicate the resulting
+optional successor states. -/
 def stepList (S : List σ) (a : α) : List (Option σ) :=
   (S.map (fun s => A.step s a)).eraseDups
 
-/-- A word ` w ` is accepted at ` q ` if there is ` q' ` such that ` evalFrom q w = q' `-/
+/-- A word is accepted from `s` when some run from `s` succeeds. This is the
+`Prop`-valued counterpart to `acceptsFrom`. -/
 def accepted (s : σ) (w : List α) : Prop := A.evalFrom s w ≠ none
 
+/-- View a deterministic FSA as an NFA with singleton transition sets.
 
-
+This lets later files reuse mathlib's NFA language and reachability interface
+without changing the underlying automaton.
+-/
 def toNFA : NFA α σ where
   step s a := (A.step s a).elim ∅ (fun s => {s})
   start := {A.start}
@@ -350,6 +395,8 @@ lemma toNFA_evalFrom_Subsingleton (A : FSA α σ) (s : σ) (l : List α) :
 
 end FSA
 
+/-- A deterministic finite-state transducer from inputs `α` to output words
+over `Γ`. -/
 structure FST (α Γ σ) where
   start : σ
   step : σ → α → Option (σ × List Γ)
@@ -374,12 +421,21 @@ def evalFrom (s : σ) (l : List α) : Option (σ × List Γ) :=
       | none => none
       | some (s'', T) => (s'', S ++ T)
 
+/-- Evaluate `M` from `s` and prepend an existing output seed.
+
+This is useful when comparing the recursive semantics of `evalFrom` with fold-
+based or compositional formulations.
+-/
 def evalFrom_seed (s : σ) (l : List α) (seed: List Γ) :=
       match M.evalFrom s l with
       | none => none
       | some (s', S) => some (s', seed ++ S)
 
-/-- retain this version for comparison with lexers, which typically use foldl -/
+/-- One step of the fold-based evaluator for `FST`.
+
+This version is retained because later lexer constructions are more naturally
+expressed with `List.foldl`.
+-/
 def evalFrom_fold_step (acc: Option (σ × List Γ)) (a : α) : Option (σ × List Γ) :=
   match acc with
   | none => none
@@ -394,6 +450,7 @@ lemma evalFrom_nil_seed (s : σ) (l : List α) :
   simp [evalFrom_seed]
   split <;> simp_all
 
+/-- Fold-based evaluation with an explicit initial output seed. -/
 def evalFrom_fold_seed (s: σ) (l: List α) (seed: List Γ) : Option (σ × List Γ) :=
   List.foldl M.evalFrom_fold_step (some (s, seed)) l
 
@@ -402,14 +459,17 @@ lemma evalFrom_fold_seed_nil (l : List α) :
   List.foldl M.evalFrom_fold_step none l = none := by
   exact List.foldl_fixed' (congrFun rfl) l
 
+/-- Fold-based evaluation without an explicit initial output seed. -/
 @[simp]
-def evalFrom_fold (s: σ) (l: List α) : Option (σ × List Γ) :=
+def evalFrom_fold (s : σ) (l : List α) : Option (σ × List Γ) :=
   M.evalFrom_fold_seed s l []
 
+/-- Evaluate the transducer from its designated start state. -/
 @[simp]
 def eval (input : List α) : Option (σ × List Γ) :=
   M.evalFrom M.start input
 
+/-- Fold-based evaluation from the designated start state. -/
 @[simp]
 def eval_fold (input : List α) : Option (σ × List Γ) :=
   M.evalFrom_fold M.start input
@@ -510,6 +570,11 @@ theorem evalFrom_append (s : σ) (xs ys : List α) : M.evalFrom s (xs ++ ys) =
         simp
         cases h2 : M.evalFrom sp2.1 ys <;> simp
 
+/-- Recover the concrete transition trace taken by a successful run.
+
+This is mainly used in proof arguments that need to inspect runs step by step
+rather than only through the aggregate output of `evalFrom`.
+-/
 def stepList (s : σ) (a : List α) : Option (List (σ × α × σ × List Γ)) :=
   match a with
   | [] => some ([])
@@ -797,17 +862,24 @@ lemma stepList_zip (s: σ) (a: List α) :
       simp[h, hl]
       exact ih' src char dst tok hl
 
+/-- The language accepted when the transducer starts in state `s`, ignoring the
+actual output word. -/
 def acceptsFrom (s : σ) : Language α :=
   { w | ∃ f ∈ M.evalFrom s w, f.1 ∈ M.accept }
 
+/-- The accepted input language of the transducer. -/
 def accepts : Language α := M.acceptsFrom M.start
 
+/-- `M.transducesTo w v` means that `M` reads `w`, emits `v`, and finishes in an
+accepting state. This is the machine-level transduction relation used by later
+semantic constructions. -/
 def transducesTo (w : List α) (v : List Γ) : Prop :=
   if h : ((M.eval w).isSome) then
     ((M.eval w).get h).2 = v ∧ ((M.eval w).get h).1 ∈ M.accept
   else
     False
 
+/-- The set of output sequences realizable from a given starting state. -/
 def realizableSequences (q: σ) : Language Γ :=
   { v | ∃ q' w, M.evalFrom q w = some (q', v) }
 
@@ -815,9 +887,16 @@ def realizableSequences (q: σ) : Language Γ :=
 -- that "mods" to it. Here, mod means deleting all instances of a character
 -- unless it starts with that character (usually whitespace)
 -- this is a rather unnatural definition, but is crucial to the proof
+/-- Realizable sequences modulo deletion of a distinguished symbol away from the
+head position.
+
+This is a whitespace-oriented normalization used later in the lexing proofs.
+-/
 def tailModdedRealizableSequences [BEq Γ] (q: σ) (mod: Γ) : Language Γ :=
   { v | ∃ v' ∈ M.realizableSequences q, ¬[mod] <+: v' ∧ v'.filter (fun x => x != mod) = v }
 
+/-- Realizable sequences modulo deletion of all copies of a distinguished
+symbol. -/
 def moddedRealizableSequences [BEq Γ] (q: σ) (mod: Γ) : Language Γ :=
   { v | ∃ v' ∈ M.realizableSequences q, v'.filter (fun x => x != mod) = v }
 
@@ -845,12 +924,15 @@ theorem mem_accepts {x : List α} (h : (M.eval x).isSome) : x ∈ M.accepts ↔ 
     · simp [eval]
     · exact ha
 
+/-- Reconstruct a step function from an explicit transition table. -/
 def mkStep [DecidableEq α] [DecidableEq σ] (transitions : List (σ × α × Option (σ × List Γ))) : σ → α → Option (σ × List Γ) :=
   fun s a =>
     transitions.find? (fun (s', a', _) => s = s' ∧ a = a')
     |>.map (fun (_, _, ts) => ts)
     |>.getD (none)
 
+/-- The set of states reachable from `q` by one input symbol, forgetting
+outputs. -/
 def adj (q : σ) [FinEnum α] [FinEnum σ] : Finset σ :=
     { p | ∃ a, (∃ s ∈ M.step q a, s.1 = p)}
 
@@ -858,6 +940,11 @@ def adj (q : σ) [FinEnum α] [FinEnum σ] : Finset σ :=
 universe u_1 u_2
 
 
+/-- Execute one input symbol of `M₁` and immediately feed the emitted output
+through `M₂`.
+
+This is the local step relation underlying transducer composition.
+-/
 def compose_fun_step { β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (s₁ : σ) (s₂ : τ) (x : α) : Option ((σ × τ) × List β) :=
   match M₁.step s₁ x with
   | none => none
@@ -881,6 +968,7 @@ def compose {β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M₂ : FST
 
   ⟨ start, step, accept⟩
 
+/-- A direct semantic evaluator for the composition of `M₁` and `M₂`. -/
 def compose_fun_evalFrom { β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (s₁ : σ) (s₂ : τ) (w : List α) : Option ((σ × τ) × List β) :=
   match M₁.evalFrom s₁ w with
   | none => none
@@ -934,6 +1022,8 @@ lemma compose_fun_step_cons { β : Type u_1 } { τ : Type u_2 }
 def compose_fun_eval {β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (w : List α) : Option ((σ × τ) × List β) :=
   (compose_fun_evalFrom M₁ M₂ M₁.start M₂.start w)
 
+/-- The operational composition `M₁.compose M₂` agrees with the direct
+semantic formulation `compose_fun_evalFrom`. -/
 def compose_correct { β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (w : List α) (q1 : σ) (q2 : τ) :
   ((M₁.compose M₂).evalFrom (q1, q2) w) = compose_fun_evalFrom M₁ M₂ q1 q2 w := by
   simp[compose_fun_evalFrom]

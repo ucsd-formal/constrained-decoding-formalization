@@ -10,16 +10,29 @@ import Mathlib.Data.Set.Basic
 import Mathlib.Data.List.Basic
 import Mathlib.Data.Finset.Range
 
+/-!
+# Realizable one-step sequences
+
+This file packages the one-step lookahead information extracted from a finite-
+state transducer. It turns the semantic notion of singleton producibility from
+`Producible.lean` into an explicit table that later feeds the parser
+preprocessing and valid-token-mask computation in
+`GrammarConstrainedDecoding.lean`.
+-/
+
 open Classical List RegularExpression
 
-
 universe u v w x
-variable {α : Type u} {Γ : Type v} { V : Type x } { σ0 σ1 σ2 : Type w}
+variable {α : Type u} {Γ : Type v} {V : Type x} {σ0 σ1 σ2 : Type w}
 
+/-- States of an explicit path description, written as input prefixes. -/
 abbrev State (α : Type u) := List α
+/-- Successor-state lists for explicit path descriptions. -/
 abbrev Next (α : Type u) := List (State α)
-abbrev Output (α : Type u):= List (List α)
+/-- Output words attached to explicit path descriptions. -/
+abbrev Output (α : Type u) := List (List α)
 
+/-- A finite list of realizable output sequences. -/
 abbrev Re (Γ : Type v) := List (List Γ)
 
 
@@ -33,6 +46,8 @@ variable
 
 #check Language (Ch α)
 
+/-- The set of output sequences obtainable by taking one transition of
+`fst_comp` and then finishing with a singleton-producible token. -/
 def RealizableSequences (fst_comp : FST α Γ σ2) : Set (List Γ) :=
   -- all possible transitions, adjoined with singleton transitions afterwards
   { Ts' | ∃ q_0 t Ts q_1 T,
@@ -40,6 +55,8 @@ def RealizableSequences (fst_comp : FST α Γ σ2) : Set (List Γ) :=
           T ∈ fst_comp.singleProducible q_1 ∧
           Ts' = Ts ++ [T] }
 
+/-- For a realizable output sequence `rs` and FST state `st`, the set of input
+symbols that could start a run producing `rs` from `st`. -/
 def InverseTokenSpannerTable (fst_comp : FST α Γ σ2) : List Γ → σ2 → (Set α) :=
   fun rs st =>
     if h : rs ≠ [] then
@@ -51,8 +68,13 @@ def InverseTokenSpannerTable (fst_comp : FST α Γ σ2) : List Γ → σ2 → (S
     else ∅
 
 
-variable [ q: FinEnum σ2 ] [ a: FinEnum α ] [ t: FinEnum Γ ]
+variable [q : FinEnum σ2] [a : FinEnum α] [t : FinEnum Γ]
 
+/-- Compute both the finite list of realizable output sequences and the
+corresponding inverse token-spanner table.
+
+This is the executable object consumed later by parser preprocessing.
+-/
 def BuildInverseTokenSpannerTable
   (fst_comp : FST α Γ σ2) : Re Γ × (List Γ → σ2 → (List α)) := Id.run do
   let Q := q.toList
@@ -84,6 +106,8 @@ def BuildInverseTokenSpannerTable
   (re, tinv)
 
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+/-- The executable list `computeSingleProducible` agrees with the semantic set
+`singleProducible`. -/
 lemma mem_computeSingleProducible_iff_singleProducible
   [LawfulBEq Γ] (fst_comp : FST α Γ σ2) (q0 : σ2) (T : Γ) :
   T ∈ fst_comp.computeSingleProducible q0 ↔ T ∈ fst_comp.singleProducible q0 := by
@@ -94,6 +118,8 @@ lemma mem_computeSingleProducible_iff_singleProducible
     simp [FST.singleProducible]
   simpa using h
 
+/-- The first component of `BuildInverseTokenSpannerTable` enumerates exactly
+the realizable one-step output sequences. -/
 def itst_fst_eq_rs [LawfulBEq Γ]
   (fst_comp : FST α Γ σ2) : (BuildInverseTokenSpannerTable fst_comp).fst.toFinset = RealizableSequences fst_comp := by
   ext rs
@@ -125,6 +151,8 @@ def itst_fst_eq_rs [LawfulBEq Γ]
     exact ⟨T, (mem_computeSingleProducible_iff_singleProducible (fst_comp := fst_comp) q1 T).2 hT, rfl⟩
 
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+/-- Membership in the computed list of realizable sequences is equivalent to
+semantic realizability. -/
 lemma mem_re_iff [LawfulBEq Γ]
   (fst_comp : FST α Γ σ2) (d : List Γ) :
   d ∈ (BuildInverseTokenSpannerTable fst_comp).fst ↔ d ∈ RealizableSequences fst_comp := by
@@ -132,6 +160,7 @@ lemma mem_re_iff [LawfulBEq Γ]
   simpa using congrArg (fun s => d ∈ s) (itst_fst_eq_rs (fst_comp := fst_comp))
 
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+/-- Unfold the second component of `BuildInverseTokenSpannerTable`. -/
 lemma BuildInverseTokenSpannerTable_snd
   (fst_comp : FST α Γ σ2) (rs : List Γ) (s : σ2) :
   (BuildInverseTokenSpannerTable fst_comp).snd rs s =
@@ -146,6 +175,8 @@ lemma BuildInverseTokenSpannerTable_snd
   rfl
 
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+/-- The executable second component of `BuildInverseTokenSpannerTable` agrees
+with the semantic inverse token-spanner table. -/
 def itst_snd_eq_itst [LawfulBEq Γ] (fst_comp : FST α Γ σ2) :
     ∀ rs s, ((BuildInverseTokenSpannerTable fst_comp).snd rs s).toFinset = InverseTokenSpannerTable fst_comp rs s := by
   intro rs s
@@ -180,6 +211,8 @@ def itst_snd_eq_itst [LawfulBEq Γ] (fst_comp : FST α Γ σ2) :
           simpa [hstep, hTs] using And.intro hmem hTs
 
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+/-- Membership in the computed inverse table is equivalent to membership in the
+semantic inverse token-spanner table. -/
 lemma mem_itst_iff [LawfulBEq Γ]
   (fst_comp : FST α Γ σ2) (d : List Γ) (qa : σ2) (tok : α) :
   tok ∈ (BuildInverseTokenSpannerTable fst_comp).snd d qa ↔ tok ∈ InverseTokenSpannerTable fst_comp d qa := by
@@ -188,5 +221,7 @@ lemma mem_itst_iff [LawfulBEq Γ]
 
 end Symbols
 
+/-- The empty sequence is never realizable in the one-step sense, since a final
+singleton token is always appended. -/
 theorem rs_ne_empty (fst_comp : FST α Γ σ2) : [] ∉ RealizableSequences fst_comp := by
   simp_all[RealizableSequences]

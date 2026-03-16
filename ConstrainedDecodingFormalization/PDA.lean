@@ -4,12 +4,24 @@ import Mathlib.Computability.Language
 import Mathlib.Data.Set.Basic
 import Mathlib.Computability.ContextFreeGrammar
 
--- helpers related to prefixes
+/-!
+# Pushdown automata
+
+This file defines the pushdown-automaton model used on the parser side of the
+grammar-constrained decoding pipeline. It provides both the operational stack
+semantics and an NFA-based overapproximation used later in preprocessing and
+checker correctness arguments.
+-/
+
+/-! ## Prefix helper lemmas -/
 section PrefixHelper
 universe u
 variable { α : Type u }
 open List
 
+/-- If `xs` is a prefix of `ys` and `ys` is a prefix of `zs`, then the witness
+returned by `isPrefixOf?` for `xs` and `zs` is obtained by extending the
+corresponding witness for `xs` and `ys`. -/
 theorem isPrefix_merge [ BEq α ] [ LawfulBEq α] ( xs ys zs : List α ) (h : ys <+: zs) :
       match xs.isPrefixOf? ys with
       | some rem => xs.isPrefixOf? zs = rem ++ zs.drop ys.length
@@ -44,6 +56,13 @@ theorem isPrefix_merge [ BEq α ] [ LawfulBEq α] ( xs ys zs : List α ) (h : ys
 
 end PrefixHelper
 
+/-- A pushdown automaton over terminals `Γ`, stack alphabet `π`, and control
+states `σ`.
+
+On input symbol `a`, a transition `(top, replace, dst)` may fire when `top` is
+a prefix of the current stack, replacing that prefix by `replace` and moving to
+state `dst`.
+-/
 structure PDA (Γ : Type u) ( π : Type v) ( σ : Type w) [Fintype Γ] [Fintype π] [Fintype σ] where
   start : σ
   step : σ → Γ → Finset (List π × List π × σ)
@@ -55,9 +74,11 @@ variable { Γ π σ } [ DecidableEq σ ] [ DecidableEq π ] [Fintype Γ] [Fintyp
 variable ( P : PDA Γ π σ )
 
 
+/-- A default empty PDA, used only to satisfy typeclass requirements. -/
 instance [Inhabited σ] [Inhabited π] : Inhabited (PDA Γ π σ) :=
   ⟨PDA.mk default (fun _ _=> ∅) default⟩
 
+/-- Execute one input symbol from a set of parser configurations. -/
 def fullStep (S : Finset (σ × List π)) (t : Γ) : Finset (σ × List π) :=
   S.biUnion fun (s, st) =>
     (P.step s t).biUnion fun (top, replace, dst) =>
@@ -89,6 +110,7 @@ private theorem fullStep_stackInvariance [ LawfulBEq π  ] : ∀ s st sn stn st'
   simp[p2]
 
 
+/-- Evaluate a PDA from a set of initial configurations on an input word. -/
 def evalFrom ( s: Finset ( σ × List π ) ) : List Γ → Finset (σ × List π) :=
   List.foldl ( fun s a => fullStep P s a) s
 
@@ -125,33 +147,42 @@ theorem evalFrom_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) 
     have := P.fullStep_subset u v h head
     simp[this, ih]
 
+/-- Evaluate the PDA from its designated start configuration `(start, [])`. -/
 def evalFull : List Γ → Finset (σ × List π) :=
   fun w => (P.evalFrom {(P.start, [])} w)
 
+/-- Forget final stack contents and retain only reachable control states. -/
 def eval : List Γ → Finset σ :=
   fun w => (P.evalFrom {(P.start, [])} w).image Prod.fst
 
+/-- The language accepted when starting from state `s` with initial stack
+`st`. -/
 def acceptsFrom ( s: σ ) (st : List π ) : Language Γ :=
   { w | ∃ f, f ∈ (P.evalFrom {(s, st)} w).image Prod.fst ∧ f ∈ P.accept }
 
+/-- The language accepted from the start state and empty stack. -/
 def accepts : Language Γ := P.acceptsFrom P.start []
 
--- strings that are not rejected early
+/-- The words that are not rejected early from the initial configuration. -/
 def intermediate : Language Γ :=
   { w | P.eval w ≠ ∅ }
 
+/-- A pruned PDA is one whose reachable configurations can still reach an
+accepting state. -/
 def pruned : Prop :=
   -- for all states that are reachable,
   -- can we eventually reach an accepting state?
   ∀ s st, (∃ w, (s, st) ∈ P.evalFull w) → (∃ v, v ∈ P.acceptsFrom s st)
 
--- removes all stack operations
+/-- Forget the stack discipline and keep only the induced control-state NFA. -/
 def toNFA : NFA Γ σ :=
   NFA.mk
     (fun st a => ((P.step st a).image (fun q => q.2.2)))
     {P.start}
     P.accept
 
+/-- Any run of `P` from a set of configurations comes from one of those
+initial configurations. -/
 lemma evalFrom_iff_exists :
   ∀ S s w, s ∈ P.evalFrom S w ↔ ∃ u, u ∈ S ∧ s ∈ P.evalFrom {u} w :=
   by
@@ -199,6 +230,8 @@ lemma evalFrom_iff_exists :
     exact h.right
 
 
+/-- Every one-step PDA successor projects to a one-step NFA successor after
+forgetting the stack. -/
 lemma fullStep_evalFrom :
   ∀ S s' st' t,
     (s', st') ∈ P.fullStep S t →
@@ -219,6 +252,7 @@ lemma fullStep_evalFrom :
   exists top
   exists replace
 
+/-- Every PDA run projects to an NFA run after erasing stack contents. -/
 lemma overApproximationLemma :
   ∀ w S s' st',
     (s', st') ∈ P.evalFrom S w →
@@ -272,6 +306,7 @@ lemma overApproximationLemma :
           (ih (P.fullStep S head) s' st' h)
     exact ih'
 
+/-- If the NFA overapproximation rejects a word, then so does the PDA. -/
 theorem overApproximation  :
   ∀ w, w ∉ P.toNFA.accepts → w ∉ P.accepts := by
   intro w
@@ -289,6 +324,8 @@ theorem overApproximation  :
   simp[NFA.eval]
   exact dst_nfa
 
+/-- Extending the initial stack by a suffix extends every run by the same
+suffix. This is the core stack-invariance lemma. -/
 lemma stackInvariance_lem  : ∀ s st sn stn st' w, st <+: st' →
    (sn, stn) ∈ P.evalFrom {(s, st)} w →
    (sn, stn ++ st'.drop st.length) ∈ P.evalFrom {(s, st')} w := by
@@ -314,6 +351,7 @@ lemma stackInvariance_lem  : ∀ s st sn stn st' w, st <+: st' →
     exact Finset.singleton_subset_iff.mpr fs_si
     exact ih'
 
+/-- Acceptance is monotone under extension of the initial stack. -/
 theorem stackInvariance  : ∀ w s st st',
   st <+: st' → w ∈ P.acceptsFrom s st → w ∈ P.acceptsFrom s st'  := by
   intro w s st st' pfx wap
@@ -335,11 +373,14 @@ theorem acceptEmptyStk_acceptAll : ∀ w s st,
   simp
 
 
+/-- Split an evaluation from the start configuration across concatenation. -/
 lemma evalFull_append :
   ∀ w x, P.evalFull (w ++ x) = P.evalFrom (P.evalFull w) x := by
   intro w x
   simp[evalFull, evalFrom]
 
+/-- For a pruned PDA, the unrejected words are exactly the prefixes of accepted
+words. This is the parser-side analogue of the automaton theorem. -/
 theorem pruned_intermediate_eq_prefix ( h : P.pruned ) :
   P.intermediate = P.accepts.prefixes := by
   simp[pruned, evalFull] at h

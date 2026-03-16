@@ -4,15 +4,26 @@ import Mathlib.Data.Fintype.Sum
 import Mathlib.Data.FinEnum
 import Mathlib.Tactic.Linarith
 
-/-- Extend character alphabet with EOS symbol-/
+/-- Extend an alphabet with an explicit end-of-sequence symbol.
+
+This is the ambient character type used throughout the development to model
+inputs and outputs that may be terminated by `eos`. Higher-level lexer and
+checker constructions work over `Ch α` rather than bare `α` for exactly this
+reason.
+-/
 inductive ExtChar (α : Type u)
 | char : α → ExtChar α
 | eos  : ExtChar α
 deriving BEq, DecidableEq, Repr
 
+/-- `ExtChar α` is inhabited by the EOS symbol. -/
 instance {α} : Inhabited (ExtChar α) := ⟨ExtChar.eos⟩
 
+/-- Coerce a plain symbol into the corresponding non-EOS extended symbol. -/
 instance {α} : Coe (α) (ExtChar α) := ⟨fun a => ExtChar.char a⟩
+
+/-- If `α` is finite and enumerable, then so is `ExtChar α`, with one extra
+element representing EOS. -/
 instance {α} [e: FinEnum α] : FinEnum (ExtChar α) where
   card := FinEnum.card α + 1
   equiv :=
@@ -42,4 +53,5 @@ instance {α} [e: FinEnum α] : FinEnum (ExtChar α) where
       }
   decEq := by infer_instance
 
+/-- Notation for the EOS-extended version of an alphabet. -/
 abbrev Ch := ExtChar
