@@ -43,6 +43,23 @@
   --node-fill: rgba(255, 255, 255, 0.94);
   --node-stroke: rgba(12, 0, 107, 0.18);
   --scrollbar: rgba(117, 113, 142, 0.24);
+  --code-bg: #fcfbff;
+  --code-gutter: #f1effd;
+  --code-border: rgba(112, 96, 235, 0.12);
+  --code-row-hover: rgba(112, 96, 235, 0.04);
+  --code-line-highlight: rgba(112, 96, 235, 0.08);
+  --code-number: #8f8aa7;
+  --code-text: #20197c;
+  --tok-keyword: #5c49e9;
+  --tok-directive: #af4d98;
+  --tok-type: #0c7489;
+  --tok-string: #169c6b;
+  --tok-number: #ad567f;
+  --tok-comment: #908ea4;
+  --tok-attribute: #df769b;
+  --tok-operator: #7060eb;
+  --tok-tactic: #8e80ff;
+  --tok-constant: #0c7489;
   --resizer-track: rgba(12, 0, 107, 0.04);
   --resizer-glow: rgba(112, 96, 235, 0.08);
   --resizer-thumb: rgba(12, 0, 107, 0.14);
@@ -98,6 +115,23 @@
   --node-fill: rgba(54, 58, 79, 0.94);
   --node-stroke: rgba(202, 211, 245, 0.16);
   --scrollbar: rgba(165, 173, 203, 0.28);
+  --code-bg: #181926;
+  --code-gutter: #1e2030;
+  --code-border: rgba(138, 173, 244, 0.14);
+  --code-row-hover: rgba(138, 173, 244, 0.06);
+  --code-line-highlight: rgba(198, 160, 246, 0.1);
+  --code-number: #8087a2;
+  --code-text: #cad3f5;
+  --tok-keyword: #c6a0f6;
+  --tok-directive: #f5bde6;
+  --tok-type: #8bd5ca;
+  --tok-string: #a6da95;
+  --tok-number: #f5a97f;
+  --tok-comment: #8087a2;
+  --tok-attribute: #f0c6c6;
+  --tok-operator: #91d7e3;
+  --tok-tactic: #8aadf4;
+  --tok-constant: #8bd5ca;
   --resizer-track: rgba(202, 211, 245, 0.05);
   --resizer-glow: rgba(138, 173, 244, 0.08);
   --resizer-thumb: rgba(165, 173, 203, 0.22);
@@ -142,6 +176,10 @@ body {
 body.is-resizing-sidebar {
   cursor: col-resize;
   user-select: none;
+}
+
+body.is-source-modal-open {
+  overflow: hidden;
 }
 
 #app {
@@ -193,14 +231,14 @@ body.is-resizing-sidebar {
 }
 
 .sidebar::-webkit-scrollbar,
-.detail-source pre::-webkit-scrollbar,
+.code-scroll::-webkit-scrollbar,
 #search-results::-webkit-scrollbar {
   width: 0.45rem;
   height: 0.45rem;
 }
 
 .sidebar::-webkit-scrollbar-thumb,
-.detail-source pre::-webkit-scrollbar-thumb,
+.code-scroll::-webkit-scrollbar-thumb,
 #search-results::-webkit-scrollbar-thumb {
   background: var(--scrollbar);
   border-radius: 999px;
@@ -343,21 +381,19 @@ body.is-resizing-sidebar {
 .meta-grid,
 .stats-grid {
   display: grid;
-  gap: 0.75rem;
-}
-
-.meta-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.stats-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
 }
 
 .meta-card,
 .stat-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "label value";
+  align-items: baseline;
+  gap: 0.75rem;
   min-width: 0;
-  padding: 0.8rem;
+  padding: 0.72rem 0.85rem;
   border-radius: 0.95rem;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -365,29 +401,35 @@ body.is-resizing-sidebar {
 
 .meta-label,
 .stat-label {
+  grid-area: label;
   color: var(--muted);
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-family: "IBM Plex Mono", monospace;
+  white-space: nowrap;
 }
 
 .meta-value,
 .stat-value {
-  margin-top: 0.3rem;
-  font-size: 0.92rem;
-  overflow: hidden;
-  white-space: nowrap;
+  grid-area: value;
+  min-width: 0;
+  margin-top: 0;
+  font-size: 0.98rem;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .stat-value {
-  font-size: 1.35rem;
+  font-size: 1.05rem;
   font-weight: 700;
+  line-height: 1.2;
 }
 
 #stat-filter {
-  font-size: 0.96rem;
-  line-height: 1.2;
+  font-size: 0.94rem;
+  line-height: 1.28;
   font-weight: 600;
 }
 
@@ -611,23 +653,336 @@ body.is-resizing-sidebar {
   overflow: hidden;
 }
 
+.detail-source-preview {
+  cursor: zoom-in;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.detail-source-preview:hover,
+.detail-source-preview:focus-visible {
+  border-color: var(--accent-border);
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(92, 73, 233, 0.08);
+  outline: none;
+}
+
+.detail-source-preview:active {
+  transform: scale(0.992);
+}
+
 .detail-source-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin: 0;
   padding: 0.8rem 0.95rem;
   border-bottom: 1px solid var(--line);
 }
 
-.detail-source pre {
-  margin: 0;
-  max-height: 16rem;
+.detail-source-hint {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.source-frame {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  background: var(--code-bg);
+}
+
+.source-frame.is-compact .source-frame-toolbar {
+  padding: 0.58rem 0.8rem;
+}
+
+.source-frame.is-compact .source-frame-tab,
+.source-frame.is-compact .source-frame-meta {
+  font-size: 0.72rem;
+}
+
+.source-frame-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--code-border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--code-bg) 92%, var(--surface) 8%), var(--code-bg)),
+    var(--code-bg);
+}
+
+.source-frame-tab {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.38rem 0.7rem;
+  border: 1px solid var(--code-border);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--code-gutter) 78%, transparent);
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-family: "IBM Plex Mono", monospace;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.source-frame-meta {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-family: "IBM Plex Mono", monospace;
+  white-space: nowrap;
+}
+
+.code-scroll {
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 0.95rem;
-  font-size: 0.84rem;
-  line-height: 1.45;
+  background: var(--code-bg);
+}
+
+.code-scroll:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+}
+
+.detail-source .code-scroll {
+  max-height: 16rem;
+}
+
+.code-lines {
+  width: max-content;
+  min-width: 100%;
+  color: var(--code-text);
+  font-size: 0.9rem;
+  line-height: 1.6;
   font-family: "IBM Plex Mono", monospace;
-  white-space: pre-wrap;
+}
+
+.source-frame.is-compact .code-lines {
+  font-size: 0.8rem;
+  line-height: 1.52;
+}
+
+.code-row {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, max-content);
+}
+
+.source-frame.is-compact .code-row {
+  grid-template-columns: 4rem minmax(0, max-content);
+}
+
+.code-row:hover {
+  background: var(--code-row-hover);
+}
+
+.code-row.is-anchor {
+  background: var(--code-line-highlight);
+}
+
+.code-line-no,
+.code-line-content {
+  padding-top: 0.08rem;
+  padding-bottom: 0.08rem;
+}
+
+.code-line-no {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-left: 0.95rem;
+  padding-right: 0.95rem;
+  text-align: right;
+  color: var(--code-number);
+  user-select: none;
+  border-right: 1px solid var(--code-border);
+  background:
+    linear-gradient(90deg, var(--code-gutter) 0%, var(--code-gutter) 88%, transparent 100%),
+    var(--code-gutter);
+}
+
+.code-line-content {
+  min-width: max-content;
+  padding-left: 1rem;
+  padding-right: 1.25rem;
+  white-space: pre;
+}
+
+.code-line-content .tok-keyword {
+  color: var(--tok-keyword);
+  font-weight: 600;
+}
+
+.code-line-content .tok-directive {
+  color: var(--tok-directive);
+  font-weight: 600;
+}
+
+.code-line-content .tok-type,
+.code-line-content .tok-constant {
+  color: var(--tok-type);
+}
+
+.code-line-content .tok-string {
+  color: var(--tok-string);
+}
+
+.code-line-content .tok-number {
+  color: var(--tok-number);
+}
+
+.code-line-content .tok-comment {
+  color: var(--tok-comment);
+  font-style: italic;
+}
+
+.code-line-content .tok-attribute {
+  color: var(--tok-attribute);
+}
+
+.code-line-content .tok-operator {
+  color: var(--tok-operator);
+}
+
+.code-line-content .tok-tactic {
+  color: var(--tok-tactic);
+}
+
+.code-line-content .tok-ident {
+  color: var(--code-text);
+}
+
+.code-more {
+  padding: 0.65rem 1rem 0.85rem 5.55rem;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-family: "IBM Plex Mono", monospace;
+  border-top: 1px solid var(--code-border);
+  background: color-mix(in srgb, var(--code-gutter) 50%, transparent);
+}
+
+.source-modal[hidden] {
+  display: none;
+}
+
+.source-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 2vw, 1.75rem);
+}
+
+.source-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 16, 26, 0.42);
+  backdrop-filter: blur(16px);
+}
+
+.source-modal-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(72rem, calc(100vw - 2.5rem));
+  max-height: min(84vh, 54rem);
+  min-height: min(34rem, calc(100vh - 3rem));
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  background:
+    linear-gradient(180deg, var(--panel-strong), var(--panel)),
+    var(--panel-strong);
+  box-shadow: 0 32px 80px rgba(15, 16, 26, 0.24);
+  overflow: hidden;
+  animation: source-modal-in 0.18s ease-out;
+}
+
+.source-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.2rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.source-modal-heading {
+  min-width: 0;
+}
+
+.source-modal-topline {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.55rem;
+}
+
+.source-modal-name {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(1.2rem, 1.6vw, 1.7rem);
+  line-height: 1.14;
   overflow-wrap: anywhere;
+}
+
+.source-modal-meta {
+  padding: 0 1.2rem 0.95rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-family: "IBM Plex Mono", monospace;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.source-modal-body {
+  min-height: 0;
+  padding: 0;
+  background: var(--code-bg);
+}
+
+.source-modal-body .source-frame {
+  height: 100%;
+}
+
+.source-modal-body .code-scroll {
+  height: 100%;
+}
+
+.source-modal-body .source-frame-toolbar {
+  padding: 0.8rem 1rem;
+}
+
+.source-modal-body .source-frame-tab {
+  font-size: 0.8rem;
+}
+
+.source-modal-body .source-frame-meta {
+  font-size: 0.76rem;
+}
+
+.source-modal-close {
+  flex-shrink: 0;
+}
+
+@keyframes source-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .stage {
@@ -761,6 +1116,11 @@ body.is-resizing-sidebar {
   font-family: "IBM Plex Mono", monospace;
 }
 
+.node-kind-dot {
+  stroke: color-mix(in srgb, var(--node-fill) 60%, transparent);
+  stroke-width: 2.4px;
+}
+
 .node.selected {
   filter: drop-shadow(0 0 0.45rem var(--accent-soft));
 }
@@ -824,6 +1184,30 @@ body.is-resizing-sidebar {
     height: 68vh;
   }
 }
+
+@media (max-width: 720px) {
+  .source-modal {
+    padding: 0.75rem;
+  }
+
+  .source-modal-panel {
+    width: min(100%, calc(100vw - 1.5rem));
+    min-height: min(28rem, calc(100vh - 1.5rem));
+    max-height: calc(100vh - 1.5rem);
+  }
+
+  .source-modal-header {
+    flex-wrap: wrap;
+  }
+
+  .source-frame-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .source-frame-meta {
+    white-space: normal;
+  }
+}
 </style>
 </head>
 <body>
@@ -841,9 +1225,11 @@ body.is-resizing-sidebar {
       </div>
     </div>
 
-    <div class="meta-block">
-      <div class="control-label">Project Metadata</div>
-      <div class="meta-grid" id="project-meta"></div>
+    <div class="section">
+      <h2>Selection</h2>
+      <div id="detail-panel" class="detail-empty">
+        Select a node to inspect its source and local neighborhood.
+      </div>
     </div>
 
     <div class="stats-block">
@@ -884,11 +1270,9 @@ body.is-resizing-sidebar {
       <div class="filter-list" id="kind-list"></div>
     </div>
 
-    <div class="section">
-      <h2>Selection</h2>
-      <div id="detail-panel" class="detail-empty">
-        Select a node to inspect its source and local neighborhood.
-      </div>
+    <div class="meta-block">
+      <div class="control-label">Project Metadata</div>
+      <div class="meta-grid" id="project-meta"></div>
     </div>
   </aside>
 
@@ -919,6 +1303,26 @@ body.is-resizing-sidebar {
   </main>
 </div>
 
+<div id="source-modal" class="source-modal" hidden aria-hidden="true">
+  <div class="source-modal-backdrop" data-close-source-modal></div>
+  <section class="source-modal-panel" role="dialog" aria-modal="true" aria-labelledby="source-modal-name">
+    <div class="source-modal-header">
+      <div class="source-modal-heading">
+        <div class="source-modal-topline">
+          <div id="source-modal-kind" class="detail-kind"></div>
+          <div id="source-modal-status" class="status-tag"></div>
+        </div>
+        <h2 id="source-modal-name" class="source-modal-name"></h2>
+      </div>
+      <button id="source-modal-close" class="toolbar-btn source-modal-close" type="button">close</button>
+    </div>
+    <div id="source-modal-meta" class="source-modal-meta"></div>
+    <div class="source-modal-body">
+      <div id="source-modal-code"></div>
+    </div>
+  </section>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
 <script>
@@ -930,6 +1334,7 @@ const appState = {
   moduleFilter: null,
   kindFilter: null,
   selectedName: null,
+  sourceModalName: null,
   searchQuery: '',
   zoomBehavior: null,
   layoutNodes: new Map()
@@ -953,6 +1358,39 @@ const SIDEBAR_DEFAULT_WIDTH = 336;
 const SIDEBAR_MIN_WIDTH = 288;
 const SIDEBAR_MAX_WIDTH = 640;
 const THEME_KEY = 'lean-dep-viz.theme';
+const NODE_DOT_X = 26;
+const NODE_DOT_Y = 29;
+const NODE_DOT_RADIUS = 7.5;
+const NODE_TEXT_X = 42;
+const NODE_TEXT_RIGHT_PADDING = 18;
+const LEAN_KEYWORDS = new Set([
+  'abbrev', 'axiom', 'by', 'class', 'def', 'deriving', 'do', 'else', 'end',
+  'example', 'export', 'from', 'fun', 'have', 'if', 'import', 'in', 'inductive',
+  'infix', 'infixl', 'infixr', 'instance', 'let', 'macro', 'match', 'mutual',
+  'namespace', 'noncomputable', 'notation', 'opaque', 'open', 'outParam',
+  'postfix', 'prefix', 'private', 'protected', 'section', 'set_option', 'show',
+  'structure', 'syntax', 'term', 'termination_by', 'theorem', 'universe',
+  'unsafe', 'variable', 'where', 'with'
+]);
+const LEAN_TACTICS = new Set([
+  'aesop', 'apply', 'assumption', 'case', 'cases', 'change', 'constructor',
+  'contradiction', 'conv', 'decide', 'exact', 'ext', 'first', 'guard_hyp',
+  'guard_target', 'have', 'induction', 'infer_instance', 'intro', 'intros',
+  'linarith', 'omega', 'rfl', 'rename_i', 'repeat', 'rewrite', 'ring', 'rw',
+  'simp', 'simpa', 'solve_by_elim', 'subst', 'tauto', 'trivial'
+]);
+const LEAN_BUILTINS = new Set([
+  'Array', 'Bool', 'Char', 'Fin', 'Float', 'IO', 'Int', 'List', 'Nat', 'Option',
+  'Ordering', 'Prop', 'Rat', 'Sort', 'String', 'Subtype', 'Type', 'UInt8',
+  'UInt16', 'UInt32', 'UInt64', 'Unit'
+]);
+const LEAN_DIRECTIVE_PREFIXES = new Set([
+  '#check', '#eval', '#guard', '#print', '#reduce', '#synth', '#where', '#help'
+]);
+const LEAN_OPERATOR_RE = /[:=<>+\-*/\\^|&%!?~@#$`→←↦≤≥¬⊢⟨⟩∈∉∪∩⊆⊂⊇⊃∘·]/u;
+const LEAN_IDENTIFIER_START_RE = /[A-Za-z_\p{L}]/u;
+const LEAN_IDENTIFIER_PART_RE = /[0-9A-Za-z_\p{L}\p{N}_'!?]/u;
+let lastSourceTrigger = null;
 
 const svg = d3.select('#graph');
 const zoomLayer = svg.append('g').attr('class', 'zoom-layer');
@@ -996,6 +1434,226 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function isLeanIdentifierStart(char) {
+  return Boolean(char) && LEAN_IDENTIFIER_START_RE.test(char);
+}
+
+function isLeanIdentifierPart(char) {
+  return Boolean(char) && LEAN_IDENTIFIER_PART_RE.test(char);
+}
+
+function readLeanIdentifier(line, start) {
+  let cursor = start + 1;
+  while (cursor < line.length) {
+    const char = line[cursor];
+    if (char === '.' && isLeanIdentifierStart(line[cursor + 1])) {
+      cursor += 1;
+      while (cursor < line.length && isLeanIdentifierPart(line[cursor])) {
+        cursor += 1;
+      }
+      continue;
+    }
+    if (!isLeanIdentifierPart(char)) {
+      break;
+    }
+    cursor += 1;
+  }
+  return {
+    end: cursor,
+    value: line.slice(start, cursor)
+  };
+}
+
+function classifyLeanIdentifier(token) {
+  const leaf = token.split('.').filter(Boolean).pop() || token;
+  if (LEAN_KEYWORDS.has(token) || LEAN_KEYWORDS.has(leaf)) {
+    return 'tok-keyword';
+  }
+  if (LEAN_TACTICS.has(token) || LEAN_TACTICS.has(leaf)) {
+    return 'tok-tactic';
+  }
+  if (LEAN_BUILTINS.has(leaf)) {
+    return 'tok-type';
+  }
+  if (/^\p{Lu}/u.test(leaf)) {
+    return 'tok-constant';
+  }
+  return 'tok-ident';
+}
+
+function tokenizeLeanLine(line, state) {
+  let cursor = 0;
+  let html = '';
+
+  while (cursor < line.length) {
+    if (state.blockCommentDepth > 0) {
+      const start = cursor;
+      while (cursor < line.length && state.blockCommentDepth > 0) {
+        if (line.startsWith('/-', cursor)) {
+          state.blockCommentDepth += 1;
+          cursor += 2;
+          continue;
+        }
+        if (line.startsWith('-/', cursor)) {
+          state.blockCommentDepth -= 1;
+          cursor += 2;
+          continue;
+        }
+        cursor += 1;
+      }
+      html += `<span class="tok-comment">${escapeHtml(line.slice(start, cursor))}</span>`;
+      continue;
+    }
+
+    if (line.startsWith('--', cursor)) {
+      html += `<span class="tok-comment">${escapeHtml(line.slice(cursor))}</span>`;
+      break;
+    }
+
+    if (line.startsWith('/-', cursor)) {
+      const start = cursor;
+      state.blockCommentDepth = 1;
+      cursor += 2;
+      while (cursor < line.length && state.blockCommentDepth > 0) {
+        if (line.startsWith('/-', cursor)) {
+          state.blockCommentDepth += 1;
+          cursor += 2;
+          continue;
+        }
+        if (line.startsWith('-/', cursor)) {
+          state.blockCommentDepth -= 1;
+          cursor += 2;
+          continue;
+        }
+        cursor += 1;
+      }
+      html += `<span class="tok-comment">${escapeHtml(line.slice(start, cursor))}</span>`;
+      continue;
+    }
+
+    if (line.startsWith('@[', cursor)) {
+      let end = cursor + 2;
+      let depth = 1;
+      while (end < line.length && depth > 0) {
+        if (line[end] === '[') {
+          depth += 1;
+        } else if (line[end] === ']') {
+          depth -= 1;
+        }
+        end += 1;
+      }
+      html += `<span class="tok-attribute">${escapeHtml(line.slice(cursor, end))}</span>`;
+      cursor = end;
+      continue;
+    }
+
+    if (line[cursor] === '#') {
+      let end = cursor + 1;
+      while (end < line.length && /[A-Za-z_]/.test(line[end])) {
+        end += 1;
+      }
+      const directive = line.slice(cursor, end);
+      if (LEAN_DIRECTIVE_PREFIXES.has(directive)) {
+        html += `<span class="tok-directive">${escapeHtml(directive)}</span>`;
+        cursor = end;
+        continue;
+      }
+    }
+
+    if (line[cursor] === '"') {
+      let end = cursor + 1;
+      while (end < line.length) {
+        if (line[end] === '\\') {
+          end += 2;
+          continue;
+        }
+        end += 1;
+        if (line[end - 1] === '"') {
+          break;
+        }
+      }
+      html += `<span class="tok-string">${escapeHtml(line.slice(cursor, end))}</span>`;
+      cursor = end;
+      continue;
+    }
+
+    if (/\d/.test(line[cursor])) {
+      let end = cursor + 1;
+      while (end < line.length && /[\d_]/.test(line[end])) {
+        end += 1;
+      }
+      if (line[end] === '.' && /\d/.test(line[end + 1] || '')) {
+        end += 1;
+        while (end < line.length && /[\d_]/.test(line[end])) {
+          end += 1;
+        }
+      }
+      html += `<span class="tok-number">${escapeHtml(line.slice(cursor, end))}</span>`;
+      cursor = end;
+      continue;
+    }
+
+    if (isLeanIdentifierStart(line[cursor])) {
+      const identifier = readLeanIdentifier(line, cursor);
+      html += `<span class="${classifyLeanIdentifier(identifier.value)}">${escapeHtml(identifier.value)}</span>`;
+      cursor = identifier.end;
+      continue;
+    }
+
+    if (LEAN_OPERATOR_RE.test(line[cursor])) {
+      let end = cursor + 1;
+      while (end < line.length && LEAN_OPERATOR_RE.test(line[end])) {
+        end += 1;
+      }
+      html += `<span class="tok-operator">${escapeHtml(line.slice(cursor, end))}</span>`;
+      cursor = end;
+      continue;
+    }
+
+    html += escapeHtml(line[cursor]);
+    cursor += 1;
+  }
+
+  return html || '&nbsp;';
+}
+
+function renderSourceFrame(decl, options = {}) {
+  const { compact = false, maxLines = null } = options;
+  const source = String(decl.source || '// source unavailable').replace(/\r\n?/g, '\n');
+  const lines = source.split('\n');
+  const visibleCount = maxLines ? Math.min(lines.length, maxLines) : lines.length;
+  const startLine = Number(decl.line) || 1;
+  const visibleEndLine = startLine + visibleCount - 1;
+  const totalEndLine = startLine + lines.length - 1;
+  const state = { blockCommentDepth: 0 };
+  const rows = [];
+
+  for (let index = 0; index < visibleCount; index += 1) {
+    rows.push(`
+      <div class="code-row ${index === 0 ? 'is-anchor' : ''}">
+        <div class="code-line-no">${startLine + index}</div>
+        <div class="code-line-content">${tokenizeLeanLine(lines[index], state)}</div>
+      </div>
+    `);
+  }
+
+  const more = visibleCount < lines.length
+    ? `<div class="code-more">+${lines.length - visibleCount} more lines. ${compact ? 'Click to open the full source view.' : 'Scroll to inspect the rest of the declaration.'}</div>`
+    : '';
+
+  return `
+    <div class="source-frame ${compact ? 'is-compact' : ''}">
+      <div class="source-frame-toolbar">
+        <div class="source-frame-tab" title="${escapeHtml(decl.file || decl.module || 'source')}">${escapeHtml(leftEllipsis(decl.file || decl.module || 'source', compact ? 28 : 56))}</div>
+        <div class="source-frame-meta">${escapeHtml(`L${startLine}-${compact && visibleCount < lines.length ? visibleEndLine : totalEndLine} · ${lines.length} line${lines.length === 1 ? '' : 's'}`)}</div>
+      </div>
+      <div class="code-scroll" tabindex="0" aria-label="Lean source code">
+        <div class="code-lines">${rows.join('')}${more}</div>
+      </div>
+    </div>
+  `;
 }
 
 function refreshKindColorMap() {
@@ -1129,12 +1787,12 @@ function truncateDeclLocation(decl, moduleChars = 28, fileChars = 18) {
 }
 
 function truncateNodeTitle(decl) {
-  return leftEllipsisByWidth(decl.name, decl.width - 34, 7.1);
+  return leftEllipsisByWidth(decl.name, decl.width - NODE_TEXT_X - NODE_TEXT_RIGHT_PADDING, 7.1);
 }
 
 function truncateNodeSubtitle(decl) {
   const prefix = `${kindLabel(decl.kind)} · `;
-  const maxChars = Math.max(8, Math.floor((decl.width - 34) / 5.8));
+  const maxChars = Math.max(8, Math.floor((decl.width - NODE_TEXT_X - NODE_TEXT_RIGHT_PADDING) / 5.8));
   const availableForModule = Math.max(6, maxChars - prefix.length);
   return `${prefix}${leftEllipsis(truncateModuleName(decl.module), availableForModule)}`;
 }
@@ -1225,16 +1883,16 @@ function renderProjectMeta() {
   subtitle.title = `Roots: ${rootsText}`;
 
   const meta = [
-    ['Generated', formatTime(project.generated_at), 18],
-    ['Git', shortHash(project.git_hash), 12],
-    ['Lean', project.lean && project.lean.version ? project.lean.version : (project.lean_toolchain || 'n/a'), 14],
-    ['Exporter', project.exporter && project.exporter.version ? project.exporter.version : 'n/a', 14]
+    ['Generated', formatTime(project.generated_at)],
+    ['Git', shortHash(project.git_hash)],
+    ['Lean', project.lean && project.lean.version ? project.lean.version : (project.lean_toolchain || 'n/a')],
+    ['Exporter', project.exporter && project.exporter.version ? project.exporter.version : 'n/a']
   ];
 
-  document.getElementById('project-meta').innerHTML = meta.map(([label, value, maxChars]) => `
+  document.getElementById('project-meta').innerHTML = meta.map(([label, value]) => `
     <div class="meta-card">
       <div class="meta-label">${escapeHtml(label)}</div>
-      <div class="meta-value" title="${escapeHtml(value)}">${escapeHtml(leftEllipsis(value, maxChars))}</div>
+      <div class="meta-value" title="${escapeHtml(value)}">${escapeHtml(value)}</div>
     </div>
   `).join('');
 }
@@ -1247,18 +1905,11 @@ function renderStats() {
   document.getElementById('stat-edges').textContent = String(edges.length);
   document.getElementById('stat-modules').textContent = String(visibleModules.size);
   const filterElement = document.getElementById('stat-filter');
-  const filterParts = [];
-  if (appState.moduleFilter) {
-    filterParts.push(truncateModuleName(appState.moduleFilter));
-  }
-  if (appState.kindFilter) {
-    filterParts.push(kindLabel(appState.kindFilter));
-  }
   const filterText = [
     appState.moduleFilter || null,
     appState.kindFilter ? kindLabel(appState.kindFilter) : null
   ].filter(Boolean).join(' · ') || 'all';
-  filterElement.textContent = filterParts.length ? leftEllipsis(filterParts.join(' · '), 16) : 'all';
+  filterElement.textContent = filterText;
   filterElement.title = filterText;
 }
 
@@ -1384,6 +2035,7 @@ function renderDetails() {
   if (!decl) {
     panel.className = 'detail-empty';
     panel.textContent = 'Select a node to inspect its source and local neighborhood.';
+    closeSourceModal(false);
     return;
   }
 
@@ -1427,9 +2079,12 @@ function renderDetails() {
       </div>
     </div>
 
-    <div class="detail-source">
-      <div class="detail-source-title">Source</div>
-      <pre>${escapeHtml(decl.source || '// source unavailable')}</pre>
+    <div class="detail-source detail-source-preview" data-open-source tabindex="0" role="button" aria-label="Open focused source view">
+      <div class="detail-source-title">
+        <span>Source</span>
+        <span class="detail-source-hint">Click to focus</span>
+      </div>
+      ${renderSourceFrame(decl, { compact: true, maxLines: 12 })}
     </div>
   `;
 
@@ -1438,10 +2093,22 @@ function renderDetails() {
       selectDeclaration(button.getAttribute('data-target'), true);
     });
   });
+
+  const sourcePreview = panel.querySelector('[data-open-source]');
+  if (sourcePreview) {
+    const openSource = () => openSourceModal(decl.name, sourcePreview);
+    sourcePreview.addEventListener('click', openSource);
+    sourcePreview.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openSource();
+      }
+    });
+  }
 }
 
 function nodeWidth(decl) {
-  return Math.max(180, Math.min(360, decl.name.length * 7.2 + 46));
+  return Math.max(196, Math.min(376, decl.name.length * 7.2 + NODE_TEXT_X + 28));
 }
 
 function renderGraph(fitAfterRender) {
@@ -1519,6 +2186,7 @@ function renderGraph(fitAfterRender) {
       (enter) => {
         const group = enter.append('g').attr('class', 'node');
         group.append('rect');
+        group.append('circle').attr('class', 'node-kind-dot');
         group.append('text').attr('class', 'node-title');
         group.append('text').attr('class', 'node-subtitle');
         group.append('title');
@@ -1543,13 +2211,19 @@ function renderGraph(fitAfterRender) {
     .attr('height', (decl) => decl.height)
     .attr('stroke', (decl) => colorForKind(decl.kind));
 
+  nodeJoin.select('.node-kind-dot')
+    .attr('cx', NODE_DOT_X)
+    .attr('cy', NODE_DOT_Y)
+    .attr('r', NODE_DOT_RADIUS)
+    .attr('fill', (decl) => colorForKind(decl.kind));
+
   nodeJoin.select('.node-title')
-    .attr('x', 16)
+    .attr('x', NODE_TEXT_X)
     .attr('y', 24)
     .text((decl) => truncateNodeTitle(decl));
 
   nodeJoin.select('.node-subtitle')
-    .attr('x', 16)
+    .attr('x', NODE_TEXT_X)
     .attr('y', 42)
     .text((decl) => truncateNodeSubtitle(decl));
 
@@ -1614,6 +2288,7 @@ function renderAll(fitAfterRender) {
   renderSearchResults();
   renderGraph(fitAfterRender);
   renderDetails();
+  renderSourceModal();
 
   const visibleCount = visibleDeclarations().length;
   const edgeCount = visibleEdges().length;
@@ -1635,10 +2310,66 @@ function selectDeclaration(name, focus) {
     appState.kindFilter = null;
   }
   appState.selectedName = name;
+  if (appState.sourceModalName) {
+    appState.sourceModalName = name;
+  }
   renderAll(false);
   if (focus) {
     requestAnimationFrame(() => focusSelectedDeclaration());
   }
+}
+
+function renderSourceModal() {
+  const modal = document.getElementById('source-modal');
+  if (!appState.sourceModalName) {
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('is-source-modal-open');
+    return;
+  }
+
+  const decl = appState.byName.get(appState.sourceModalName);
+  if (!decl) {
+    closeSourceModal(false);
+    return;
+  }
+
+  document.getElementById('source-modal-kind').textContent = kindLabel(decl.kind);
+  document.getElementById('source-modal-kind').style.background = colorForKind(decl.kind);
+  const status = document.getElementById('source-modal-status');
+  status.textContent = decl.status;
+  status.classList.toggle('is-sorry', decl.status === 'sorry');
+  document.getElementById('source-modal-name').textContent = decl.name;
+  document.getElementById('source-modal-meta').textContent = fullDeclLocation(decl);
+  document.getElementById('source-modal-code').innerHTML = renderSourceFrame(decl);
+  modal.hidden = false;
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('is-source-modal-open');
+}
+
+function openSourceModal(name, trigger) {
+  const decl = appState.byName.get(name || appState.selectedName);
+  if (!decl) {
+    return;
+  }
+  lastSourceTrigger = trigger || document.activeElement;
+  appState.sourceModalName = decl.name;
+  renderSourceModal();
+  requestAnimationFrame(() => {
+    document.getElementById('source-modal-close').focus();
+  });
+}
+
+function closeSourceModal(restoreFocus = true) {
+  if (!appState.sourceModalName) {
+    return;
+  }
+  appState.sourceModalName = null;
+  renderSourceModal();
+  if (restoreFocus && lastSourceTrigger && typeof lastSourceTrigger.focus === 'function') {
+    requestAnimationFrame(() => lastSourceTrigger.focus());
+  }
+  lastSourceTrigger = null;
 }
 
 async function loadGraph() {
@@ -1780,6 +2511,22 @@ document.addEventListener('click', (event) => {
   const shell = document.querySelector('.search-shell');
   if (!shell.contains(event.target)) {
     document.getElementById('search-results').classList.remove('visible');
+  }
+});
+
+document.getElementById('source-modal-close').addEventListener('click', () => {
+  closeSourceModal();
+});
+
+document.getElementById('source-modal').addEventListener('click', (event) => {
+  if (event.target.hasAttribute('data-close-source-modal')) {
+    closeSourceModal();
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && appState.sourceModalName) {
+    closeSourceModal();
   }
 });
 

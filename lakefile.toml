@@ -11,6 +11,11 @@ name = "lean4export"
 git = "https://github.com/leanprover/lean4export"
 rev = "71f41350675895dda791b8ff9c1dfb77d18b3585"
 
+[[require]]
+name = "repl"
+git = "https://github.com/leanprover-community/repl"
+rev = "v4.29.0-rc6"
+
 [[lean_lib]]
 name = "ConstrainedDecodingFormalization"
 
