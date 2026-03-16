@@ -73,8 +73,7 @@ private theorem fullStep_stackInvariance [ LawfulBEq π  ] : ∀ s st sn stn st'
    (sn, stn) ∈ P.fullStep {(s, st)} t →
    (sn, stn ++ st'.drop st.length) ∈ P.fullStep {(s, st')} t
   := by
-  intro s st sn stn st' t
-  intro pfx
+  intro s st sn stn st' t pfx
   simp_all[fullStep]
   intro top rep dst _
   split <;> simp_all
@@ -230,7 +229,7 @@ lemma overApproximationLemma :
   have subset_lem1 : ∀ u v head, u ⊆ v →
     P.toNFA.stepSet u head ⊆ P.toNFA.stepSet v head := by
       intro u v head uh
-      simp[NFA.stepSet, uh]
+      simp[NFA.stepSet]
       exact fun i i_1 => Set.subset_iUnion₂_of_subset i (uh i_1) fun ⦃a⦄ a => a
 
   have subset_lem : ∀ u v w, u ⊆ v →
@@ -255,8 +254,8 @@ lemma overApproximationLemma :
     have ih' := ih _ _ _ h
     simp [NFA.evalFrom, List.foldl]
     let trans_pda := (P.fullStep S head).image Prod.fst
-    let trans_nfa := (P.toNFA.stepSet (S.toSet.image Prod.fst) head)
-    have p_s_n : trans_pda.toSet ⊆ trans_nfa := by
+    let trans_nfa := (P.toNFA.stepSet ((SetLike.coe S).image Prod.fst) head)
+    have p_s_n : SetLike.coe trans_pda ⊆ trans_nfa := by
       intro p h_p
       simp[trans_pda, fullStep] at h_p
       obtain ⟨st'', s0, st0, h0, top, replace, dst, h_s⟩ := h_p
@@ -269,15 +268,14 @@ lemma overApproximationLemma :
       split at g <;> simp_all
     have pda_sub := subset_lem trans_pda trans_nfa tail p_s_n
     suffices s' ∈ List.foldl P.toNFA.stepSet trans_pda tail by
-      exact subset_lem trans_pda (P.toNFA.stepSet (S.toSet.image Prod.fst) head) tail p_s_n
+      exact subset_lem trans_pda (P.toNFA.stepSet ((SetLike.coe S).image Prod.fst) head) tail p_s_n
           (ih (P.fullStep S head) s' st' h)
     exact ih'
 
 theorem overApproximation  :
   ∀ w, w ∉ P.toNFA.accepts → w ∉ P.accepts := by
   intro w
-  contrapose
-  simp
+  contrapose!
   intro wap
   simp[accepts, acceptsFrom] at wap
   obtain ⟨dst, ⟨⟨stk_f, h_eval⟩, h_accept⟩⟩ := wap
@@ -287,15 +285,14 @@ theorem overApproximation  :
   have : P.toNFA.accept = P.accept := by rfl
   simp[this, h_accept]
   have dst_nfa := P.overApproximationLemma w {(P.start, [])} dst stk_f h_eval
-  simp[Set.image] at dst_nfa
+  simp at dst_nfa
   simp[NFA.eval]
   exact dst_nfa
 
 lemma stackInvariance_lem  : ∀ s st sn stn st' w, st <+: st' →
    (sn, stn) ∈ P.evalFrom {(s, st)} w →
    (sn, stn ++ st'.drop st.length) ∈ P.evalFrom {(s, st')} w := by
-  intro s st sn stn st' w
-  intro pfx
+  intro s st sn stn st' w pfx
   induction w generalizing s st st'
   case nil =>
     simp
@@ -313,19 +310,17 @@ lemma stackInvariance_lem  : ∀ s st sn stn st' w, st <+: st' →
     have fs_si := P.fullStep_stackInvariance s st step.fst step.snd st' h pfx hstep.left
     simp at ih' ⊢
     apply evalFrom_subset
-    case intro.u => exact {(step.1, step.2 ++ List.drop st.length st')}
+    case u => exact {(step.1, step.2 ++ List.drop st.length st')}
     exact Finset.singleton_subset_iff.mpr fs_si
     exact ih'
 
 theorem stackInvariance  : ∀ w s st st',
   st <+: st' → w ∈ P.acceptsFrom s st → w ∈ P.acceptsFrom s st'  := by
-  intro w s st st'
-  intro pfx
-  intro wap
+  intro w s st st' pfx wap
   simp[acceptsFrom] at wap
   obtain ⟨dst, ⟨⟨stk_f, h_eval⟩, h_accept⟩⟩ := wap
   have := P.stackInvariance_lem s st dst stk_f st' w pfx h_eval
-  simp[h_eval] at this
+  simp at this
   simp[acceptsFrom]
   constructor
   case w => exact dst
@@ -363,7 +358,7 @@ theorem pruned_intermediate_eq_prefix ( h : P.pruned ) :
     obtain ⟨s'', ⟨⟨st'', h2⟩, s''_acc⟩⟩ := hfin
     -- so then x ++ fin is in accepts
     have x_fin_trans := P.evalFull_append x fin
-    simp[evalFull, h_u, h2] at x_fin_trans
+    simp[evalFull] at x_fin_trans
     have := P.evalFrom_subset {(s', st')} (P.evalFrom {(P.start, [])} x)
     simp at this
     have ss := this h_u fin
@@ -383,15 +378,17 @@ theorem pruned_intermediate_eq_prefix ( h : P.pruned ) :
     intro h_x
     simp[Language.prefixes] at h_x
     simp[intermediate, eval]
-    by_contra
+    by_contra h_empty
     obtain ⟨fin, ⟨fin_acc, x_pfx_fin⟩⟩ := h_x
     simp[accepts, acceptsFrom] at fin_acc
     obtain ⟨s'', ⟨⟨st'', h2⟩, s''_acc⟩⟩ := fin_acc
     obtain ⟨tail, htail⟩ := x_pfx_fin
-    have := P.evalFull_append x tail
-    expose_names
-    simp[evalFull, h_1, htail] at this
-    rw[this] at h2
-    contradiction
+    have happ := P.evalFull_append x tail
+    rw [htail] at happ
+    simp[evalFull] at happ
+    rw[h_empty] at happ
+    simp at happ
+    rw[happ] at h2
+    simp at h2
 
 end PDA

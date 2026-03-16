@@ -4,7 +4,6 @@ import «ConstrainedDecodingFormalization».Basic
 import «ConstrainedDecodingFormalization».Lexing
 import «ConstrainedDecodingFormalization».Automata
 import «ConstrainedDecodingFormalization».Vocabulary
-import «ConstrainedDecodingFormalization».ConstrainedDecoding
 import «ConstrainedDecodingFormalization».GrammarConstrainedDecoding
 import «ConstrainedDecodingFormalization».Checker
 import «ConstrainedDecodingFormalization».PDA

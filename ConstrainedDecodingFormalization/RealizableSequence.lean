@@ -1,6 +1,5 @@
 import ConstrainedDecodingFormalization.Automata
 import ConstrainedDecodingFormalization.Lexing
-import ConstrainedDecodingFormalization.RegularExpressionsToEpsilonNFA
 import Mathlib.Data.FinEnum
 import Mathlib.Computability.NFA
 import Mathlib.Computability.DFA
