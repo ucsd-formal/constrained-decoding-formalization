@@ -6,6 +6,8 @@
 
 This repo includes a CLI for generating and hosting a declaration dependency graph from `lean4export`:
 
+Live site: <https://ucsd-formal.github.io/constrained-decoding-formalization/>
+
 ```bash
 ./lean-dep-viz serve
 ./lean-dep-viz build --output-dir site
