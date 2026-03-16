@@ -124,8 +124,53 @@ def itst_fst_eq_rs [LawfulBEq Γ]
     simp only [hstep, List.mem_map]
     exact ⟨T, (mem_computeSingleProducible_iff_singleProducible (fst_comp := fst_comp) q1 T).2 hT, rfl⟩
 
-def itst_snd_eq_itst (fst_comp : FST α Γ σ2) :
-    ∀ rs s, ((BuildInverseTokenSpannerTable fst_comp).snd rs s).toFinset = InverseTokenSpannerTable fst_comp rs s := by sorry
+omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+lemma BuildInverseTokenSpannerTable_snd
+  (fst_comp : FST α Γ σ2) (rs : List Γ) (s : σ2) :
+  (BuildInverseTokenSpannerTable fst_comp).snd rs s =
+    if h : rs ≠ [] then
+      let Ts := rs.dropLast
+      let T := rs.getLast h
+      (a.toList).filter (fun c =>
+        match fst_comp.step s c with
+        | none => false
+        | some (q', Ts') => (fst_comp.computeSingleProducible q').contains T && Ts' = Ts)
+    else [] := by
+  rfl
+
+omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+def itst_snd_eq_itst [LawfulBEq Γ] (fst_comp : FST α Γ σ2) :
+    ∀ rs s, ((BuildInverseTokenSpannerTable fst_comp).snd rs s).toFinset = InverseTokenSpannerTable fst_comp rs s := by
+  intro rs s
+  ext tok
+  change tok ∈ ((BuildInverseTokenSpannerTable fst_comp).snd rs s).toFinset ↔ tok ∈ InverseTokenSpannerTable fst_comp rs s
+  by_cases hnil : rs = []
+  · subst hnil
+    rw [BuildInverseTokenSpannerTable_snd, List.mem_toFinset]
+    simp [InverseTokenSpannerTable]
+  · have hne : rs ≠ [] := hnil
+    rw [BuildInverseTokenSpannerTable_snd, List.mem_toFinset]
+    simp [InverseTokenSpannerTable, hne, List.mem_filter]
+    cases hstep : fst_comp.step s tok with
+    | none => simp
+    | some val =>
+        rcases val with ⟨q1, Ts'⟩
+        constructor
+        · intro h
+          have h' : rs.getLast hne ∈ fst_comp.computeSingleProducible q1 ∧ Ts' = rs.dropLast := by
+            simpa using h
+          rcases h' with ⟨hmem, hTs⟩
+          refine ⟨q1, ?_, ?_⟩
+          · simp [hTs]
+          · exact (mem_computeSingleProducible_iff_singleProducible (fst_comp := fst_comp) q1 (rs.getLast hne)).1 hmem
+        · rintro ⟨q1', hp, hprod⟩
+          have hpair : q1 = q1' ∧ Ts' = rs.dropLast := by
+            simpa [Prod.mk.injEq] using Option.some.inj hp
+          rcases hpair with ⟨hq, hTs⟩
+          subst q1'
+          have hmem : rs.getLast hne ∈ fst_comp.computeSingleProducible q1 :=
+            (mem_computeSingleProducible_iff_singleProducible (fst_comp := fst_comp) q1 (rs.getLast hne)).2 hprod
+          simpa [hstep, hTs] using And.intro hmem hTs
 
 end Symbols
 
