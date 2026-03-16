@@ -1,0 +1,882 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import contextlib
+import datetime as dt
+import http.server
+import json
+import mimetypes
+import pathlib
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
+from typing import Any, cast
+from urllib.parse import urlsplit
+import webbrowser
+
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parent
+DEFAULT_HTML = REPO_ROOT / "lean-dep-viz.html"
+LAKEFILE_TOML = REPO_ROOT / "lakefile.toml"
+LAKE_MANIFEST = REPO_ROOT / "lake-manifest.json"
+LEAN_TOOLCHAIN = REPO_ROOT / "lean-toolchain"
+LEAN4EXPORT_BIN = (
+    REPO_ROOT / ".lake" / "packages" / "lean4export" / ".lake" / "build" / "bin" / "lean4export"
+)
+
+IMPORT_LINE_RE = re.compile(r"^\s*import\s+(.+)$")
+MODULE_REF_RE = re.compile(r"(?:«[^»]+»|[A-Za-z_][\w']*)(?:\.(?:«[^»]+»|[A-Za-z_][\w']*))*")
+DECL_HEAD_RE = re.compile(
+    r"^\s*(?:unsafe\s+|partial\s+|noncomputable\s+|private\s+|protected\s+|local\s+|scoped\s+)*"
+    r"(abbrev|def|theorem|lemma|inductive|structure|class|instance|opaque)\s+([^\s:(\[{]+)"
+)
+NAMESPACE_RE = re.compile(r"^\s*namespace\s+([^\s]+)")
+SECTION_RE = re.compile(r"^\s*section(?:\s+[^\s]+)?\s*$")
+END_RE = re.compile(r"^\s*end(?:\s+[^\s]+)?\s*$")
+SORRY_RE = re.compile(r"\bsorry\b")
+
+
+@dataclass(frozen=True)
+class SourceDecl:
+    name: str
+    kind: str
+    module: str
+    file: str
+    line: int
+    source: str
+    status: str
+
+
+class VizHTTPServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        request_handler: type[http.server.BaseHTTPRequestHandler],
+        html_path: pathlib.Path,
+        graph_payload: bytes,
+    ) -> None:
+        super().__init__(server_address, request_handler)
+        self.html_path = html_path
+        self.graph_payload = graph_payload
+
+
+class VizRequestHandler(http.server.BaseHTTPRequestHandler):
+    server_version = "lean-dep-viz/0.2"
+
+    def do_GET(self) -> None:
+        self._dispatch_request(include_body=True)
+
+    def do_HEAD(self) -> None:
+        self._dispatch_request(include_body=False)
+
+    def _dispatch_request(self, *, include_body: bool) -> None:
+        path = urlsplit(self.path).path
+
+        if path in {"/", "/index.html", "/lean-dep-viz.html"}:
+            self._send_file(self.viz_server().html_path, include_body=include_body)
+            return
+
+        if path == "/graph-data":
+            self._send_bytes(
+                self.viz_server().graph_payload,
+                content_type="application/json; charset=utf-8",
+                include_body=include_body,
+            )
+            return
+
+        if path == "/healthz":
+            self._send_bytes(
+                b"ok\n",
+                content_type="text/plain; charset=utf-8",
+                include_body=include_body,
+            )
+            return
+
+        if path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        self.send_error(404, "Not Found")
+
+    def _send_file(self, html_path: pathlib.Path, *, include_body: bool) -> None:
+        try:
+            body = html_path.read_bytes()
+        except FileNotFoundError:
+            self.send_error(404, f"Missing file: {html_path.name}")
+            return
+
+        content_type = mimetypes.guess_type(html_path.name)[0] or "text/html"
+        self._send_bytes(
+            body,
+            content_type=f"{content_type}; charset=utf-8",
+            include_body=include_body,
+        )
+
+    def _send_bytes(
+        self,
+        body: bytes,
+        *,
+        content_type: str,
+        include_body: bool,
+    ) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if include_body:
+            self.wfile.write(body)
+
+    def viz_server(self) -> VizHTTPServer:
+        return cast(VizHTTPServer, self.server)
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="lean-dep-viz",
+        description="Host a Lean declaration dependency graph backed by lean4export.",
+    )
+    parser.add_argument(
+        "command",
+        nargs="?",
+        default="serve",
+        choices=["serve"],
+        help="Command to run. Only 'serve' is currently supported.",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Interface to bind to. Default: 127.0.0.1",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind to. Default: 8000",
+    )
+    parser.add_argument(
+        "--html",
+        type=pathlib.Path,
+        default=DEFAULT_HTML,
+        help="Path to the HTML file to serve. Default: ./lean-dep-viz.html",
+    )
+    parser.add_argument(
+        "--module",
+        action="append",
+        default=None,
+        help=(
+            "Root Lean module to export. Can be passed multiple times. "
+            "Defaults to the project's [[lean_lib]] entries."
+        ),
+    )
+    parser.add_argument(
+        "--lean4export-bin",
+        type=pathlib.Path,
+        default=None,
+        help=(
+            "Path to a prebuilt lean4export executable. "
+            "Default: ./.lake/packages/lean4export/.lake/build/bin/lean4export"
+        ),
+    )
+    parser.add_argument(
+        "--open",
+        action="store_true",
+        help="Open the page in a browser after the server starts.",
+    )
+    return parser.parse_args(argv)
+
+
+def format_url(host: str, port: int) -> str:
+    if ":" in host and not host.startswith("["):
+        return f"http://[{host}]:{port}/"
+    return f"http://{host}:{port}/"
+
+
+def resolve_path(path: pathlib.Path) -> pathlib.Path:
+    if path.is_absolute():
+        return path
+    return (pathlib.Path.cwd() / path).resolve()
+
+
+def ensure_port(port: int) -> int:
+    if 0 <= port <= 65535:
+        return port
+    raise SystemExit(f"Port must be between 0 and 65535, got {port}.")
+
+
+def check_file(path: pathlib.Path, *, label: str) -> pathlib.Path:
+    if not path.exists():
+        raise SystemExit(f"{label} does not exist: {path}")
+    if not path.is_file():
+        raise SystemExit(f"{label} is not a file: {path}")
+    return path
+
+
+def normalize_dotted_name(raw: str) -> str:
+    return ".".join(part.strip("«»") for part in raw.split("."))
+
+
+def run_command(
+    argv: list[str],
+    *,
+    cwd: pathlib.Path,
+    description: str,
+    capture_output: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            argv,
+            cwd=cwd,
+            check=True,
+            text=True,
+            capture_output=capture_output,
+        )
+    except FileNotFoundError as err:
+        raise SystemExit(f"{description} failed: {argv[0]!r} was not found.") from err
+    except subprocess.CalledProcessError as err:
+        detail = ""
+        if capture_output:
+            detail = (err.stderr or err.stdout or "").strip()
+        message = f"{description} failed with exit code {err.returncode}."
+        if detail:
+            message = f"{message}\n{detail}"
+        raise SystemExit(message) from err
+
+
+def capture_command(argv: list[str], *, cwd: pathlib.Path, description: str) -> str | None:
+    try:
+        completed = run_command(argv, cwd=cwd, description=description, capture_output=True)
+    except SystemExit:
+        return None
+    return completed.stdout.strip()
+
+
+def parse_package_name(lakefile_path: pathlib.Path) -> str:
+    if not lakefile_path.exists():
+        return REPO_ROOT.name
+    for line in lakefile_path.read_text(encoding="utf-8").splitlines():
+        match = re.match(r'\s*name\s*=\s*"([^"]+)"', line)
+        if match:
+            return match.group(1).strip("«»")
+    return REPO_ROOT.name
+
+
+def parse_root_modules(lakefile_path: pathlib.Path) -> list[str]:
+    if not lakefile_path.exists():
+        return []
+    modules: list[str] = []
+    in_lean_lib = False
+    for line in lakefile_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped == "[[lean_lib]]":
+            in_lean_lib = True
+            continue
+        if stripped.startswith("[[") and stripped != "[[lean_lib]]":
+            in_lean_lib = False
+        if not in_lean_lib:
+            continue
+        match = re.match(r'name\s*=\s*"([^"]+)"', stripped)
+        if match:
+            modules.append(match.group(1))
+            in_lean_lib = False
+    return modules
+
+
+def module_name_to_path(repo_root: pathlib.Path, module_name: str) -> pathlib.Path:
+    return repo_root / f"{module_name.replace('.', '/')}.lean"
+
+
+def parse_imports(source_path: pathlib.Path) -> list[str]:
+    imports: list[str] = []
+    for line in source_path.read_text(encoding="utf-8").splitlines():
+        match = IMPORT_LINE_RE.match(line)
+        if not match:
+            continue
+        body = match.group(1).split("--", 1)[0]
+        for item in MODULE_REF_RE.finditer(body):
+            imports.append(normalize_dotted_name(item.group(0)))
+    return imports
+
+
+def find_reachable_local_modules(repo_root: pathlib.Path, root_modules: list[str]) -> list[str]:
+    seen: set[str] = set()
+    pending = list(root_modules)
+
+    while pending:
+        module_name = pending.pop()
+        if module_name in seen:
+            continue
+        module_path = module_name_to_path(repo_root, module_name)
+        if not module_path.exists():
+            continue
+        seen.add(module_name)
+        for imported in parse_imports(module_path):
+            if imported not in seen and module_name_to_path(repo_root, imported).exists():
+                pending.append(imported)
+
+    return sorted(seen)
+
+
+def scan_source_declarations(
+    repo_root: pathlib.Path,
+    module_names: list[str],
+) -> dict[str, SourceDecl]:
+    declarations: dict[str, SourceDecl] = {}
+
+    for module_name in module_names:
+        source_path = module_name_to_path(repo_root, module_name)
+        if not source_path.exists():
+            continue
+        lines = source_path.read_text(encoding="utf-8").splitlines()
+        stack: list[tuple[str, str | None]] = []
+        headers: list[tuple[int, str, str]] = []
+
+        for line_number, line in enumerate(lines, start=1):
+            namespace_match = NAMESPACE_RE.match(line)
+            if namespace_match:
+                stack.append(("namespace", normalize_dotted_name(namespace_match.group(1))))
+                continue
+
+            if SECTION_RE.match(line):
+                stack.append(("section", None))
+                continue
+
+            if END_RE.match(line):
+                if stack:
+                    stack.pop()
+                continue
+
+            decl_match = DECL_HEAD_RE.match(line)
+            if not decl_match:
+                continue
+
+            kind, raw_name = decl_match.groups()
+            if kind == "instance" and raw_name[:1] in "{[(:":  # anonymous instances
+                continue
+
+            namespace_parts: list[str] = []
+            for entry_kind, entry_name in stack:
+                if entry_kind == "namespace" and entry_name:
+                    namespace_parts.extend(entry_name.split("."))
+
+            decl_name = normalize_dotted_name(raw_name)
+            full_name = ".".join(namespace_parts + [decl_name]) if namespace_parts else decl_name
+            headers.append((line_number, full_name, kind))
+
+        rel_file = str(source_path.relative_to(repo_root))
+        for index, (start_line, full_name, kind) in enumerate(headers):
+            end_line = headers[index + 1][0] - 1 if index + 1 < len(headers) else len(lines)
+            block = "\n".join(lines[start_line - 1 : end_line]).strip()
+            declarations[full_name] = SourceDecl(
+                name=full_name,
+                kind=kind,
+                module=module_name,
+                file=rel_file,
+                line=start_line,
+                source=block,
+                status="sorry" if SORRY_RE.search(block) else "formalized",
+            )
+
+    return declarations
+
+
+def ensure_lean4export(explicit_bin: pathlib.Path | None) -> pathlib.Path:
+    if explicit_bin is not None:
+        return check_file(resolve_path(explicit_bin), label="lean4export executable")
+
+    if not LEAN4EXPORT_BIN.exists():
+        print("Fetching lean4export via Lake...", file=sys.stderr)
+        run_command(
+            ["lake", "update", "lean4export"],
+            cwd=REPO_ROOT,
+            description="Fetching lean4export",
+        )
+
+    print("Building lean4export...", file=sys.stderr)
+    run_command(
+        ["lake", "build", "@lean4export/lean4export"],
+        cwd=REPO_ROOT,
+        description="Building lean4export",
+    )
+
+    return check_file(LEAN4EXPORT_BIN, label="lean4export executable")
+
+
+def run_lean4export(
+    lean4export_bin: pathlib.Path,
+    *,
+    root_modules: list[str],
+    declarations: list[str],
+) -> str:
+    completed = run_command(
+        ["lake", "env", str(lean4export_bin), *root_modules, "--", *declarations],
+        cwd=REPO_ROOT,
+        description="Running lean4export",
+        capture_output=True,
+    )
+    return completed.stdout
+
+
+def iter_payloads(obj: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    payload = obj.get(key)
+    if payload is None:
+        return []
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        return [payload]
+    return []
+
+
+def record_export(
+    records: dict[str, dict[str, Any]],
+    *,
+    name: str | None,
+    kind: str,
+    deps: list[str],
+) -> None:
+    if not name:
+        return
+    record = records.setdefault(name, {"kind": kind, "deps": []})
+    if record["kind"] == "unknown":
+        record["kind"] = kind
+    record["deps"].extend(dep for dep in deps if dep)
+
+
+def parse_export_output(export_text: str) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    meta: dict[str, Any] = {}
+    name_table: dict[int, str] = {0: ""}
+    expr_uses: dict[int, set[str]] = {}
+    records: dict[str, dict[str, Any]] = {}
+
+    def resolve_name(idx: Any) -> str | None:
+        if not isinstance(idx, int):
+            return None
+        return name_table.get(idx)
+
+    def get_expr_uses(idx: Any) -> set[str]:
+        if not isinstance(idx, int):
+            return set()
+        return set(expr_uses.get(idx, set()))
+
+    for raw_line in export_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        obj = json.loads(line)
+
+        if "meta" in obj:
+            meta = cast(dict[str, Any], obj["meta"])
+            continue
+
+        if "in" in obj and "str" in obj:
+            idx = cast(int, obj["in"])
+            entry = cast(dict[str, Any], obj["str"])
+            prefix = name_table.get(cast(int, entry["pre"]), "")
+            fragment = str(entry["str"])
+            name_table[idx] = f"{prefix}.{fragment}" if prefix else fragment
+            continue
+
+        if "in" in obj and "num" in obj:
+            idx = cast(int, obj["in"])
+            entry = cast(dict[str, Any], obj["num"])
+            prefix = name_table.get(cast(int, entry["pre"]), "")
+            fragment = str(entry["i"])
+            name_table[idx] = f"{prefix}.{fragment}" if prefix else fragment
+            continue
+
+        if "ie" in obj and "const" in obj:
+            idx = cast(int, obj["ie"])
+            const_obj = cast(dict[str, Any], obj["const"])
+            name = resolve_name(const_obj.get("name"))
+            expr_uses[idx] = {name} if name else set()
+            continue
+
+        if "ie" in obj and "app" in obj:
+            idx = cast(int, obj["ie"])
+            app_obj = cast(dict[str, Any], obj["app"])
+            expr_uses[idx] = get_expr_uses(app_obj.get("fn")) | get_expr_uses(app_obj.get("arg"))
+            continue
+
+        if "ie" in obj and "lam" in obj:
+            idx = cast(int, obj["ie"])
+            lam_obj = cast(dict[str, Any], obj["lam"])
+            expr_uses[idx] = get_expr_uses(lam_obj.get("type")) | get_expr_uses(lam_obj.get("body"))
+            continue
+
+        if "ie" in obj and "forallE" in obj:
+            idx = cast(int, obj["ie"])
+            forall_obj = cast(dict[str, Any], obj["forallE"])
+            expr_uses[idx] = get_expr_uses(forall_obj.get("type")) | get_expr_uses(forall_obj.get("body"))
+            continue
+
+        if "ie" in obj and "letE" in obj:
+            idx = cast(int, obj["ie"])
+            let_obj = cast(dict[str, Any], obj["letE"])
+            expr_uses[idx] = (
+                get_expr_uses(let_obj.get("type"))
+                | get_expr_uses(let_obj.get("value"))
+                | get_expr_uses(let_obj.get("body"))
+            )
+            continue
+
+        if "ie" in obj and "proj" in obj:
+            idx = cast(int, obj["ie"])
+            proj_obj = cast(dict[str, Any], obj["proj"])
+            deps = get_expr_uses(proj_obj.get("struct"))
+            type_name = resolve_name(proj_obj.get("typeName"))
+            if type_name:
+                deps.add(type_name)
+            expr_uses[idx] = deps
+            continue
+
+        if "ie" in obj and "mdata" in obj:
+            idx = cast(int, obj["ie"])
+            mdata_obj = cast(dict[str, Any], obj["mdata"])
+            expr_uses[idx] = get_expr_uses(mdata_obj.get("expr"))
+            continue
+
+        if "ie" in obj:
+            expr_uses[cast(int, obj["ie"])] = set()
+            continue
+
+        for payload in iter_payloads(obj, "axiom"):
+            record_export(
+                records,
+                name=resolve_name(payload.get("name")),
+                kind="axiom",
+                deps=sorted(get_expr_uses(payload.get("type"))),
+            )
+
+        for payload in iter_payloads(obj, "def"):
+            record_export(
+                records,
+                name=resolve_name(payload.get("name")),
+                kind="def",
+                deps=sorted(get_expr_uses(payload.get("type")) | get_expr_uses(payload.get("value"))),
+            )
+
+        for payload in iter_payloads(obj, "opaque"):
+            record_export(
+                records,
+                name=resolve_name(payload.get("name")),
+                kind="opaque",
+                deps=sorted(get_expr_uses(payload.get("type")) | get_expr_uses(payload.get("value"))),
+            )
+
+        for payload in iter_payloads(obj, "thm"):
+            record_export(
+                records,
+                name=resolve_name(payload.get("name")),
+                kind="theorem",
+                deps=sorted(get_expr_uses(payload.get("type")) | get_expr_uses(payload.get("value"))),
+            )
+
+        for payload in iter_payloads(obj, "inductive"):
+            type_payloads = payload.get("types") or payload.get("inductiveVals") or []
+            ctor_payloads = payload.get("ctors") or payload.get("constructorVals") or []
+            rec_payloads = payload.get("recs") or payload.get("recursorVals") or []
+            ctor_deps_by_induct: dict[str, set[str]] = {}
+
+            if isinstance(ctor_payloads, list):
+                for ctor_payload in ctor_payloads:
+                    if not isinstance(ctor_payload, dict):
+                        continue
+                    induct_name = resolve_name(ctor_payload.get("induct"))
+                    deps = get_expr_uses(ctor_payload.get("type"))
+                    if induct_name:
+                        deps.add(induct_name)
+                        ctor_deps_by_induct.setdefault(induct_name, set()).update(deps)
+                    record_export(
+                        records,
+                        name=resolve_name(ctor_payload.get("name")),
+                        kind="constructor",
+                        deps=sorted(deps),
+                    )
+
+            if isinstance(rec_payloads, list):
+                for rec_payload in rec_payloads:
+                    if not isinstance(rec_payload, dict):
+                        continue
+                    deps = get_expr_uses(rec_payload.get("type"))
+                    rules = rec_payload.get("rules")
+                    if isinstance(rules, list):
+                        for rule in rules:
+                            if isinstance(rule, dict):
+                                deps |= get_expr_uses(rule.get("rhs"))
+                    record_export(
+                        records,
+                        name=resolve_name(rec_payload.get("name")),
+                        kind="recursor",
+                        deps=sorted(deps),
+                    )
+
+            if isinstance(type_payloads, list):
+                for type_payload in type_payloads:
+                    if not isinstance(type_payload, dict):
+                        continue
+                    type_name = resolve_name(type_payload.get("name"))
+                    record_export(
+                        records,
+                        name=type_name,
+                        kind="inductive",
+                        deps=sorted(
+                            get_expr_uses(type_payload.get("type"))
+                            | ctor_deps_by_induct.get(type_name or "", set())
+                        ),
+                    )
+
+    for record in records.values():
+        record["deps"] = sorted(set(cast(list[str], record["deps"])))
+
+    return meta, records
+
+
+def map_dependency(dep_name: str, source_index: dict[str, SourceDecl]) -> str | None:
+    if dep_name in source_index:
+        return dep_name
+
+    candidate = dep_name
+    while "." in candidate:
+        candidate = candidate.rsplit(".", 1)[0]
+        owner = source_index.get(candidate)
+        if owner is None:
+            continue
+        if owner.kind in {"inductive", "structure", "class"}:
+            return candidate
+    return None
+
+
+def load_lake_dependencies() -> list[dict[str, str]]:
+    if not LAKE_MANIFEST.exists():
+        return []
+
+    try:
+        manifest = json.loads(LAKE_MANIFEST.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+
+    packages = manifest.get("packages")
+    if not isinstance(packages, list):
+        return []
+
+    deps: list[dict[str, str]] = []
+    for pkg in packages:
+        if not isinstance(pkg, dict):
+            continue
+        dep = {
+            key: str(value)
+            for key in ("name", "url", "rev", "inputRev")
+            if (value := pkg.get(key)) is not None
+        }
+        if dep:
+            deps.append(dep)
+    return deps
+
+
+def build_project_meta(
+    *,
+    package_name: str,
+    root_modules: list[str],
+    local_modules: list[str],
+    export_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "name": package_name,
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "root_modules": root_modules,
+        "local_modules": local_modules,
+        "exporter": export_meta.get("exporter", {}),
+        "lean": export_meta.get("lean", {}),
+        "format": export_meta.get("format", {}),
+        "lean_toolchain": LEAN_TOOLCHAIN.read_text(encoding="utf-8").strip()
+        if LEAN_TOOLCHAIN.exists()
+        else "",
+        "git_branch": capture_command(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=REPO_ROOT,
+            description="Reading git branch",
+        )
+        or "",
+        "git_hash": capture_command(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            description="Reading git hash",
+        )
+        or "",
+        "lake_deps": load_lake_dependencies(),
+    }
+
+
+def build_graph_payload(
+    *,
+    package_name: str,
+    root_modules: list[str],
+    local_modules: list[str],
+    source_index: dict[str, SourceDecl],
+    export_meta: dict[str, Any],
+    export_records: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    edge_set: set[tuple[str, str]] = set()
+    reverse_edges: dict[str, set[str]] = {name: set() for name in source_index}
+    nodes: list[dict[str, Any]] = []
+
+    for name in sorted(source_index):
+        source_decl = source_index[name]
+        export_record = export_records.get(name, {"deps": [], "kind": source_decl.kind})
+        mapped_deps: set[str] = set()
+        external_dep_count = 0
+
+        for dep_name in cast(list[str], export_record.get("deps", [])):
+            if dep_name == name:
+                continue
+            mapped = map_dependency(dep_name, source_index)
+            if mapped is None:
+                external_dep_count += 1
+                continue
+            if mapped == name:
+                continue
+            mapped_deps.add(mapped)
+            edge_set.add((name, mapped))
+            reverse_edges.setdefault(mapped, set()).add(name)
+
+        nodes.append(
+            {
+                "name": name,
+                "kind": source_decl.kind,
+                "module": source_decl.module,
+                "file": source_decl.file,
+                "line": source_decl.line,
+                "status": source_decl.status,
+                "source": source_decl.source,
+                "deps": sorted(mapped_deps),
+                "dependents": [],
+                "external_dep_count": external_dep_count,
+                "export_kind": export_record.get("kind", "unknown"),
+            }
+        )
+
+    node_by_name = {node["name"]: node for node in nodes}
+    for name, dependents in reverse_edges.items():
+        if name in node_by_name:
+            node_by_name[name]["dependents"] = sorted(dependents)
+
+    module_members: dict[str, list[str]] = {}
+    for node in nodes:
+        module_members.setdefault(cast(str, node["module"]), []).append(cast(str, node["name"]))
+
+    modules: list[dict[str, Any]] = []
+    for module_name, names in sorted(module_members.items()):
+        statuses = {source_index[name].status for name in names}
+        modules.append(
+            {
+                "name": module_name,
+                "display_name": module_name.rsplit(".", 1)[-1],
+                "count": len(names),
+                "status": "sorry" if "sorry" in statuses else "formalized",
+                "files": sorted({source_index[name].file for name in names}),
+            }
+        )
+
+    return {
+        "project": build_project_meta(
+            package_name=package_name,
+            root_modules=root_modules,
+            local_modules=local_modules,
+            export_meta=export_meta,
+        ),
+        "modules": modules,
+        "declarations": nodes,
+        "edges": [{"from": src, "to": dst} for src, dst in sorted(edge_set)],
+        "stats": {
+            "declarations": len(nodes),
+            "edges": len(edge_set),
+            "modules": len(modules),
+        },
+    }
+
+
+def generate_graph_payload(args: argparse.Namespace) -> bytes:
+    root_modules = args.module or parse_root_modules(LAKEFILE_TOML)
+    if not root_modules:
+        raise SystemExit(
+            "Could not determine any root Lean modules. Pass one or more --module arguments."
+        )
+
+    print("Building Lean project...", file=sys.stderr)
+    run_command(["lake", "build"], cwd=REPO_ROOT, description="Building the Lean project")
+
+    lean4export_bin = ensure_lean4export(args.lean4export_bin)
+
+    local_modules = find_reachable_local_modules(REPO_ROOT, root_modules)
+    if not local_modules:
+        raise SystemExit("No local Lean modules were found from the selected roots.")
+
+    source_index = scan_source_declarations(REPO_ROOT, local_modules)
+    if not source_index:
+        raise SystemExit("No source declarations were found in the selected modules.")
+
+    print(
+        f"Exporting {len(source_index)} reachable declarations from {len(local_modules)} modules...",
+        file=sys.stderr,
+    )
+    export_text = run_lean4export(
+        lean4export_bin,
+        root_modules=root_modules,
+        declarations=sorted(source_index),
+    )
+    export_meta, export_records = parse_export_output(export_text)
+
+    payload = build_graph_payload(
+        package_name=parse_package_name(LAKEFILE_TOML),
+        root_modules=root_modules,
+        local_modules=local_modules,
+        source_index=source_index,
+        export_meta=export_meta,
+        export_records=export_records,
+    )
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+def serve(args: argparse.Namespace) -> int:
+    port = ensure_port(args.port)
+    html_path = check_file(resolve_path(args.html), label="HTML file")
+    graph_payload = generate_graph_payload(args)
+
+    try:
+        server = VizHTTPServer((args.host, port), VizRequestHandler, html_path, graph_payload)
+    except OSError as err:
+        raise SystemExit(f"Failed to bind {args.host}:{port}: {err.strerror or err}") from err
+
+    host, bound_port = server.server_address[:2]
+    url = format_url(host, bound_port)
+    print(f"Serving {html_path} at {url}")
+    print("Press Ctrl+C to stop.")
+
+    if args.open:
+        webbrowser.open(url)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping server.")
+    finally:
+        with contextlib.suppress(Exception):
+            server.shutdown()
+        server.server_close()
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    return serve(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
