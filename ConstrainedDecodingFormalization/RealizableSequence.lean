@@ -125,6 +125,13 @@ def itst_fst_eq_rs [LawfulBEq Γ]
     exact ⟨T, (mem_computeSingleProducible_iff_singleProducible (fst_comp := fst_comp) q1 T).2 hT, rfl⟩
 
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+lemma mem_re_iff [LawfulBEq Γ]
+  (fst_comp : FST α Γ σ2) (d : List Γ) :
+  d ∈ (BuildInverseTokenSpannerTable fst_comp).fst ↔ d ∈ RealizableSequences fst_comp := by
+  rw [← List.mem_toFinset]
+  simpa using congrArg (fun s => d ∈ s) (itst_fst_eq_rs (fst_comp := fst_comp))
+
+omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
 lemma BuildInverseTokenSpannerTable_snd
   (fst_comp : FST α Γ σ2) (rs : List Γ) (s : σ2) :
   (BuildInverseTokenSpannerTable fst_comp).snd rs s =
@@ -171,6 +178,13 @@ def itst_snd_eq_itst [LawfulBEq Γ] (fst_comp : FST α Γ σ2) :
           have hmem : rs.getLast hne ∈ fst_comp.computeSingleProducible q1 :=
             (mem_computeSingleProducible_iff_singleProducible (fst_comp := fst_comp) q1 (rs.getLast hne)).2 hprod
           simpa [hstep, hTs] using And.intro hmem hTs
+
+omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+lemma mem_itst_iff [LawfulBEq Γ]
+  (fst_comp : FST α Γ σ2) (d : List Γ) (qa : σ2) (tok : α) :
+  tok ∈ (BuildInverseTokenSpannerTable fst_comp).snd d qa ↔ tok ∈ InverseTokenSpannerTable fst_comp d qa := by
+  rw [← List.mem_toFinset]
+  simpa using congrArg (fun s => tok ∈ s) (itst_snd_eq_itst (fst_comp := fst_comp) d qa)
 
 end Symbols
 
