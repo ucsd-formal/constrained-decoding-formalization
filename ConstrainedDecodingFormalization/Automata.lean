@@ -153,15 +153,10 @@ theorem mem_accepts {x : List α} (h : (A.eval x).isSome) : x ∈ A.accepts ↔ 
   ·
     intro h'
     obtain ⟨f, hf₁, hf₂⟩ := h'
-    have : (A.eval x).get h = f := by
-      exact Option.get_of_mem h hf₁
-    rwa [this]
+    rwa [Option.get_of_mem h hf₁]
   ·
     intro ha
-    exists (A.eval x).get h
-    constructor
-    · simp [eval]
-    · exact ha
+    exact ⟨_, by simp [eval], ha⟩
 
 /-- The set of states reachable from `q` in one input step. -/
 def adj (q : σ) [FinEnum α] [FinEnum σ] : Finset σ :=
@@ -220,8 +215,8 @@ lemma toDFA_iff_accept : some a ∈ A.toDFA.accept ↔ a ∈ A.accept := by
   simp_all [toDFA]
 
 @[simp]
-lemma toDFA_none_is_fail : ∀ (a : α), A.toDFA.step none a = none := by
-  exact fun a => rfl
+lemma toDFA_none_is_fail : ∀ (a : α), A.toDFA.step none a = none :=
+  fun _ => rfl
 
 lemma toDFA_step_correct : ∀ (s : σ) (a : α), A.toDFA.step (some s) a = A.step s a := by
   refine fun s a => ?_
@@ -287,8 +282,7 @@ theorem toDFA_correct : A.toDFA.accepts = A.accepts := by
         · simp_all only [toDFA, List.coe_toFinset, List.mem_map]
       exact this
     .
-      have : ∃ f, A.evalFrom A.start x = some f ∧ f ∈ A.accept := by exact m
-      obtain ⟨f, h1, h2⟩ := this
+      obtain ⟨f, h1, h2⟩ := m
       simp_all only [eval, Option.some.injEq]
 
 variable
@@ -456,8 +450,8 @@ def evalFrom_fold_seed (s: σ) (l: List α) (seed: List Γ) : Option (σ × List
 
 @[simp]
 lemma evalFrom_fold_seed_nil (l : List α) :
-  List.foldl M.evalFrom_fold_step none l = none := by
-  exact List.foldl_fixed' (congrFun rfl) l
+  List.foldl M.evalFrom_fold_step none l = none :=
+  List.foldl_fixed' (congrFun rfl) l
 
 /-- Fold-based evaluation without an explicit initial output seed. -/
 @[simp]
@@ -518,8 +512,8 @@ def evalFrom_fold_eq_evalFrom (s : σ) (l : List α) :
   simp[this]
 
 def eval_fold_eq_eval (l : List α) :
-    M.eval_fold l = M.eval l := by
-  exact evalFrom_fold_eq_evalFrom M M.start l
+    M.eval_fold l = M.eval l :=
+  evalFrom_fold_eq_evalFrom M M.start l
 
 @[simp]
 theorem evalFrom_nil (s : σ) : M.evalFrom s [] = some (s, []) := rfl
@@ -914,15 +908,10 @@ theorem mem_accepts {x : List α} (h : (M.eval x).isSome) : x ∈ M.accepts ↔ 
   ·
     intro h'
     obtain ⟨f, hf₁, hf₂⟩ := h'
-    have : (M.eval x).get h = f := by
-      exact Option.get_of_mem h hf₁
-    rwa [this]
+    rwa [Option.get_of_mem h hf₁]
   ·
     intro ha
-    exists (M.eval x).get h
-    constructor
-    · simp [eval]
-    · exact ha
+    exact ⟨_, by simp [eval], ha⟩
 
 /-- Reconstruct a step function from an explicit transition table. -/
 def mkStep [DecidableEq α] [DecidableEq σ] (transitions : List (σ × α × Option (σ × List Γ))) : σ → α → Option (σ × List Γ) :=
@@ -1053,8 +1042,8 @@ variable {β τ}
   (M₁ : FST α Γ σ) (M₂ : FST Γ β τ)
 
 @[simp]
-lemma compose_fun_evalFrom_nil (s₁ : σ) (s₂ : τ) : compose_fun_evalFrom M₁ M₂ s₁ s₂ [] = some ((s₁, s₂), []) := by
-  exact rfl
+lemma compose_fun_evalFrom_nil (s₁ : σ) (s₂ : τ) : compose_fun_evalFrom M₁ M₂ s₁ s₂ [] = some ((s₁, s₂), []) :=
+  rfl
 
 
 lemma compose_fun_exists_step (s₁ : σ) (s₂ : τ) (x : α)

@@ -1337,7 +1337,10 @@ const appState = {
   sourceModalName: null,
   searchQuery: '',
   zoomBehavior: null,
-  layoutNodes: new Map()
+  layoutNodes: new Map(),
+  graphCache: new Map(),
+  renderedGraphKey: null,
+  renderedTheme: null
 };
 
 const kindOrder = [
@@ -1363,6 +1366,7 @@ const NODE_DOT_Y = 29;
 const NODE_DOT_RADIUS = 7.5;
 const NODE_TEXT_X = 42;
 const NODE_TEXT_RIGHT_PADDING = 18;
+const GRAPH_CACHE_LIMIT = 24;
 const LEAN_KEYWORDS = new Set([
   'abbrev', 'axiom', 'by', 'class', 'def', 'deriving', 'do', 'else', 'end',
   'example', 'export', 'from', 'fun', 'have', 'if', 'import', 'in', 'inductive',
@@ -1415,6 +1419,10 @@ const zoomBehavior = d3.zoom()
   .on('zoom', (event) => {
     zoomLayer.attr('transform', event.transform);
   });
+const edgeLine = d3.line()
+  .x((point) => point.x)
+  .y((point) => point.y)
+  .curve(d3.curveBasis);
 
 svg.call(zoomBehavior);
 appState.zoomBehavior = zoomBehavior;
@@ -1423,7 +1431,7 @@ applyTheme(preferredTheme(), false);
 svg.on('click', (event) => {
   if (event.target === svg.node()) {
     appState.selectedName = null;
-    renderAll(false);
+    renderSelectionState();
   }
 });
 
@@ -2111,20 +2119,36 @@ function nodeWidth(decl) {
   return Math.max(196, Math.min(376, decl.name.length * 7.2 + NODE_TEXT_X + 28));
 }
 
-function renderGraph(fitAfterRender) {
+function graphFilterKey() {
+  return `${appState.moduleFilter || '*'}::${appState.kindFilter || '*'}`;
+}
+
+function rememberGraphSnapshot(snapshot) {
+  if (appState.graphCache.has(snapshot.key)) {
+    appState.graphCache.delete(snapshot.key);
+  }
+  appState.graphCache.set(snapshot.key, snapshot);
+  while (appState.graphCache.size > GRAPH_CACHE_LIMIT) {
+    const oldestKey = appState.graphCache.keys().next().value;
+    appState.graphCache.delete(oldestKey);
+  }
+  return snapshot;
+}
+
+function computeGraphSnapshot() {
   const declarations = visibleDeclarations();
   const edges = visibleEdges();
-  const query = appState.searchQuery.trim().toLowerCase();
-
-  appState.layoutNodes = new Map();
-
-  const edgeLayer = zoomLayer.select('.edges');
-  const nodeLayer = zoomLayer.select('.nodes');
+  const snapshot = {
+    key: graphFilterKey(),
+    declarations,
+    edges,
+    nodes: [],
+    laidOutEdges: [],
+    layoutNodes: new Map()
+  };
 
   if (!declarations.length) {
-    edgeLayer.selectAll('*').remove();
-    nodeLayer.selectAll('*').remove();
-    return;
+    return snapshot;
   }
 
   const graph = new dagre.graphlib.Graph();
@@ -2151,25 +2175,49 @@ function renderGraph(fitAfterRender) {
 
   dagre.layout(graph);
 
-  const nodes = declarations.map((decl) => {
+  snapshot.nodes = declarations.map((decl) => {
     const layout = graph.node(decl.name);
     const node = { ...decl, ...layout };
-    appState.layoutNodes.set(decl.name, node);
+    snapshot.layoutNodes.set(decl.name, node);
     return node;
   });
 
-  const laidOutEdges = edges.map((edge) => ({
+  snapshot.laidOutEdges = edges.map((edge) => ({
     ...edge,
     points: graph.edge({ v: edge.from, w: edge.to }).points
   }));
+  return snapshot;
+}
 
-  const edgeLine = d3.line()
-    .x((point) => point.x)
-    .y((point) => point.y)
-    .curve(d3.curveBasis);
+function visibleGraphSnapshot() {
+  const key = graphFilterKey();
+  if (appState.graphCache.has(key)) {
+    const cached = appState.graphCache.get(key);
+    appState.graphCache.delete(key);
+    appState.graphCache.set(key, cached);
+    appState.layoutNodes = cached.layoutNodes;
+    return cached;
+  }
+
+  const snapshot = rememberGraphSnapshot(computeGraphSnapshot());
+  appState.layoutNodes = snapshot.layoutNodes;
+  return snapshot;
+}
+
+function clearRenderedGraph() {
+  zoomLayer.select('.edges').selectAll('*').remove();
+  zoomLayer.select('.nodes').selectAll('*').remove();
+  appState.layoutNodes = new Map();
+  appState.renderedGraphKey = null;
+  appState.renderedTheme = null;
+}
+
+function renderGraphStructure(snapshot) {
+  const edgeLayer = zoomLayer.select('.edges');
+  const nodeLayer = zoomLayer.select('.nodes');
 
   edgeLayer.selectAll('path')
-    .data(laidOutEdges, (edge) => `${edge.from}->${edge.to}`)
+    .data(snapshot.laidOutEdges, (edge) => `${edge.from}->${edge.to}`)
     .join(
       (enter) => enter.append('path').attr('class', 'edge'),
       (update) => update,
@@ -2177,11 +2225,8 @@ function renderGraph(fitAfterRender) {
     )
     .attr('d', (edge) => edgeLine(edge.points))
     .attr('marker-end', 'url(#graph-arrow)')
-    .classed('edge-selected', (edge) => appState.selectedName && (edge.from === appState.selectedName || edge.to === appState.selectedName))
-    .classed('edge-muted', (edge) => shouldDimEdge(edge));
-
   const nodeJoin = nodeLayer.selectAll('g.node')
-    .data(nodes, (decl) => decl.name)
+    .data(snapshot.nodes, (decl) => decl.name)
     .join(
       (enter) => {
         const group = enter.append('g').attr('class', 'node');
@@ -2198,9 +2243,6 @@ function renderGraph(fitAfterRender) {
 
   nodeJoin
     .attr('transform', (decl) => `translate(${decl.x - decl.width / 2}, ${decl.y - decl.height / 2})`)
-    .classed('selected', (decl) => decl.name === appState.selectedName)
-    .classed('muted', (decl) => shouldDimNode(decl.name))
-    .classed('search-hit', (decl) => query && decl.name.toLowerCase().includes(query))
     .on('click', (event, decl) => {
       event.stopPropagation();
       selectDeclaration(decl.name, false);
@@ -2229,6 +2271,41 @@ function renderGraph(fitAfterRender) {
 
   nodeJoin.select('title')
     .text((decl) => `${decl.name}\n${fullDeclLocation(decl)}`);
+
+  appState.layoutNodes = snapshot.layoutNodes;
+  appState.renderedGraphKey = snapshot.key;
+  appState.renderedTheme = document.documentElement.dataset.theme || 'light';
+}
+
+function updateGraphState() {
+  const query = appState.searchQuery.trim().toLowerCase();
+  zoomLayer.select('.edges')
+    .selectAll('path')
+    .classed('edge-selected', (edge) => appState.selectedName && (edge.from === appState.selectedName || edge.to === appState.selectedName))
+    .classed('edge-muted', (edge) => shouldDimEdge(edge));
+
+  zoomLayer.select('.nodes')
+    .selectAll('g.node')
+    .classed('selected', (decl) => decl.name === appState.selectedName)
+    .classed('muted', (decl) => shouldDimNode(decl.name))
+    .classed('search-hit', (decl) => Boolean(query) && decl.name.toLowerCase().includes(query));
+}
+
+function renderGraph(fitAfterRender) {
+  const snapshot = visibleGraphSnapshot();
+  if (!snapshot.nodes.length) {
+    clearRenderedGraph();
+    return;
+  }
+
+  const theme = document.documentElement.dataset.theme || 'light';
+  if (appState.renderedGraphKey !== snapshot.key || appState.renderedTheme !== theme) {
+    renderGraphStructure(snapshot);
+  } else {
+    appState.layoutNodes = snapshot.layoutNodes;
+  }
+
+  updateGraphState();
 
   if (fitAfterRender) {
     requestAnimationFrame(() => fitGraph());
@@ -2280,6 +2357,21 @@ function focusSelectedDeclaration() {
     .call(appState.zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
 }
 
+function refreshGraphPresentation() {
+  const theme = document.documentElement.dataset.theme || 'light';
+  if (appState.renderedGraphKey === graphFilterKey() && appState.renderedTheme === theme) {
+    updateGraphState();
+  } else {
+    renderGraph(false);
+  }
+}
+
+function renderSelectionState() {
+  refreshGraphPresentation();
+  renderDetails();
+  renderSourceModal();
+}
+
 function renderAll(fitAfterRender) {
   ensureSelectionVisible();
   renderModules();
@@ -2303,6 +2395,10 @@ function selectDeclaration(name, focus) {
   if (!decl) {
     return;
   }
+  const graphChanged = (
+    Boolean(appState.moduleFilter && decl.module !== appState.moduleFilter)
+    || Boolean(appState.kindFilter && decl.kind !== appState.kindFilter)
+  );
   if (appState.moduleFilter && decl.module !== appState.moduleFilter) {
     appState.moduleFilter = null;
   }
@@ -2313,7 +2409,11 @@ function selectDeclaration(name, focus) {
   if (appState.sourceModalName) {
     appState.sourceModalName = name;
   }
-  renderAll(false);
+  if (graphChanged) {
+    renderAll(false);
+  } else {
+    renderSelectionState();
+  }
   if (focus) {
     requestAnimationFrame(() => focusSelectedDeclaration());
   }
@@ -2382,6 +2482,9 @@ async function loadGraph() {
     const payload = await response.json();
     appState.data = payload;
     appState.byName = new Map(payload.declarations.map((decl) => [decl.name, decl]));
+    appState.graphCache.clear();
+    appState.renderedGraphKey = null;
+    appState.renderedTheme = null;
     renderProjectMeta();
     renderAll(true);
   } catch (error) {
@@ -2493,7 +2596,7 @@ function setupWheelIsolation() {
 document.getElementById('search-input').addEventListener('input', (event) => {
   appState.searchQuery = event.target.value;
   renderSearchResults();
-  renderGraph(false);
+  refreshGraphPresentation();
 });
 
 document.getElementById('search-input').addEventListener('keydown', (event) => {

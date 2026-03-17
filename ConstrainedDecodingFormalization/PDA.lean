@@ -203,16 +203,15 @@ lemma evalFrom_iff_exists :
   case nil =>
     simp
     intro h_u
-    exists s.fst, s.snd
+    refine ⟨s.fst, s.snd, ?_⟩
+    simp [h_u]
   case cons head tail ih =>
     intro hp
     have ih' := ih (P.fullStep S head) s hp
     have ⟨s', st', hs, hf⟩ := ih'
     simp[fullStep] at hs
     obtain ⟨s0, st0, h⟩ := hs
-    exists s0, st0
-    constructor
-    exact h.left
+    refine ⟨s0, st0, h.left, ?_⟩
     obtain ⟨top, replace, dst, htrans⟩ := h.right
     simp
     suffices (s', st') ∈ P.fullStep {(s0, st0)} head by

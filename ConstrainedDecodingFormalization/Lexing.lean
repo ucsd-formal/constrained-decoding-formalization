@@ -123,8 +123,8 @@ inductive PartialLexRel (spec: LexerSpec α Γ σ)
     (h : unlexed ∈ spec.automaton.accepts) →
       PartialLexRel spec wn (tokens ++ [ExtChar.char (spec.accept_seq_term unlexed h)]) [ch]
 
-private def PartialLex_trans (spec: LexerSpec α Γ σ) (prev: Option (List (Ch Γ) × List α))
-   (c : Ch α) : Option (List (Ch Γ) × List α) :=
+private def PartialLex_trans (spec: LexerSpec α Γ σ) (prev: Option (List (Ch Γ) × List α)) (c : Ch α)
+  : Option (List (Ch Γ) × List α) :=
   match prev with
   | none => none
   | some (tokens, unlexed) =>
@@ -163,8 +163,8 @@ private def PartialLex_trans_nil (spec: LexerSpec α Γ σ) (c : Ch α) :
 
 @[simp]
 private def PartialLex_trans_foldl_nil (spec: LexerSpec α Γ σ) (ws : List (Ch α)) :
-  foldl (PartialLex_trans spec) none ws = none := by
-  exact foldl_fixed' (congrFun rfl) ws
+  foldl (PartialLex_trans spec) none ws = none :=
+  foldl_fixed' (congrFun rfl) ws
 
 @[simp]
 private def PartialLex_seed (spec: LexerSpec α Γ σ) (seed: Option (List (Ch Γ) × List α)) : Lexer α Γ :=
@@ -217,7 +217,7 @@ def LexingState.src {σ : Type w} (spec: LexerSpec α Γ σ) : LexingState σ �
 | LexingState.start => spec.automaton.start
 
 @[simp]
-def LexingState_src_id [DecidableEq α] [BEq α]{σ : Type w} (spec: LexerSpec α Γ σ) (s : σ) :
+def LexingState_src_id [DecidableEq α] [BEq α] {σ : Type w} (spec: LexerSpec α Γ σ) (s : σ) :
   LexingState.src spec (LexingState.id s) = s := by
   simp[LexingState.src]
 
@@ -229,8 +229,8 @@ The construction follows the convention that tokens are attached to accepting
 states of the lexer automaton. This is the central machine-level object that is
 later composed with detokenization and parser preprocessing.
 -/
-def BuildLexingFST [BEq α] [DecidableEq α] (spec: LexerSpec α Γ σ) :
-    FST (Ch α) (Ch Γ) (LexingState σ) := Id.run do
+def BuildLexingFST [BEq α] [DecidableEq α] (spec: LexerSpec α Γ σ)
+  : FST (Ch α) (Ch Γ) (LexingState σ) := Id.run do
   let ⟨A, term, hterm, _, _⟩ := spec
 
   let new_q0 := LexingState.start
@@ -268,9 +268,12 @@ omit [DecidableEq α] [DecidableEq σ] [BEq α] in
 equivalent in both directions. This is the technical core behind the later
 equivalence theorems. -/
 lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
-    (∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) → PartialLex_seed spec (some ([], [])) w = some (tokens, unlexed)) ∧
-    (∀ wp ws seed_f seed_s tokens unlexed, (PartialLexRel spec wp seed_f seed_s) ∧ PartialLex_seed spec (some (seed_f, seed_s)) ws = some (tokens, unlexed) → PartialLexRel spec (wp ++ ws) tokens unlexed)
-      := by
+  (∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) →
+    PartialLex_seed spec (some ([], [])) w = some (tokens, unlexed)) ∧
+  (∀ wp ws seed_f seed_s tokens unlexed,
+    (PartialLexRel spec wp seed_f seed_s) ∧
+      PartialLex_seed spec (some (seed_f, seed_s)) ws = some (tokens, unlexed) →
+    PartialLexRel spec (wp ++ ws) tokens unlexed) := by
   have hprune := spec.automaton.pruned_prefixLanguage hp
   have left : (∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) → PartialLex_seed spec (some ([], [])) w = some (tokens, unlexed)) := by
     intro w tokens unlexed h
@@ -515,18 +518,15 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
 omit [DecidableEq α] [DecidableEq σ] [BEq α] in
 /-- Pruning lets us identify `PartialLex` with the relational lexer semantics. -/
 theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
-    ∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) ↔ PartialLex spec w = some (tokens, unlexed)
-      := by
+  ∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) ↔
+    PartialLex spec w = some (tokens, unlexed) := by
   intro w tokens unlexed
   apply Iff.intro
   . exact (PartialLex_pruned_eq_PartialLexRel_seed spec hp).left w tokens unlexed
   . intro h
     have : PartialLexRel spec ([] ++ w) tokens unlexed := by
       apply (PartialLex_pruned_eq_PartialLexRel_seed spec hp).right [] w
-      constructor
-      exact PartialLexRel.nil
-      simp[PartialLex] at h
-      exact h
+      exact ⟨PartialLexRel.nil, by simp[PartialLex] at h; exact h⟩
     simp at this
     exact this
 
@@ -534,8 +534,7 @@ theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.
 private def FSA_ch_to_LexingFST (spec: LexerSpec α Γ σ) :
   ∀ (w : List α) q q', (q ≠ LexingState.start ∨ w ≠ []) →
     (spec.automaton.evalFrom (q.src spec) w = some q' ↔
-    (BuildLexingFST spec).evalFrom q w = some (LexingState.id q', []))
-    := by
+      (BuildLexingFST spec).evalFrom q w = some (LexingState.id q', [])) := by
   intro w q q' h
   induction w generalizing q q'
   case nil =>
@@ -574,21 +573,48 @@ private def FSA_ch_to_LexingFST (spec: LexerSpec α Γ σ) :
       convert ih
       split <;> simp_all
 
+omit [DecidableEq α] [DecidableEq σ] [BEq α] in
+private lemma PartialLex_append_singleton_of_trans (spec: LexerSpec α Γ σ)
+    {w : List (Ch α)} {head : Ch α}
+    {seed_ts ts : List (Ch Γ)} {seed_wr wr : List α}
+    (hw : PartialLex spec w = some (seed_ts, seed_wr))
+    (hstep : PartialLex_trans spec (some (seed_ts, seed_wr)) head = some (ts, wr)) :
+    PartialLex spec (w ++ [head]) = some (ts, wr) := by
+  simp [PartialLex, PartialLex_seed] at hw ⊢
+  rw [hw]
+  simpa using hstep
+
+omit [DecidableEq α] [DecidableEq σ] [BEq α] [BEq σ] [LawfulBEq σ] in
+private lemma FST_eval_append_singleton_of_evalFrom_fold_step (M : FST α Γ σ)
+    {w : List α} {head : α} {q q' : σ} {ts ts' : List Γ}
+    (hw : M.eval w = some (q, ts))
+    (hstep : M.evalFrom_fold_step (some (q, ts)) head = some (q', ts')) :
+    M.eval (w ++ [head]) = some (q', ts') := by
+  simp [FST.eval] at hw ⊢
+  rw [←FST.evalFrom_fold_eq_evalFrom] at hw ⊢
+  simp [FST.evalFrom_fold, FST.evalFrom_fold_seed] at hw ⊢
+  rw [hw]
+  simpa using hstep
+
 private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) :
   ∀ wp ws q' seed_ts seed_wr,
-       PartialLex spec wp = some (seed_ts, seed_wr) →
-      (BuildLexingFST spec).eval wp = some (q', seed_ts) →
-      (BuildLexingFST spec).eval seed_wr = some (q', []) →
-      (seed_wr = [] ↔ q' = LexingState.start) →
-      match PartialLex_seed spec (some (seed_ts, seed_wr)) ws with
-      | some (ts, wr) =>
-        (∃ q'', ((BuildLexingFST spec).evalFrom_fold_seed q' ws seed_ts = some (q'', ts)) ∧
-                 (BuildLexingFST spec).evalFrom_fold_seed (BuildLexingFST spec).start wr [] = some (q'', []))
-      | none => (BuildLexingFST spec).evalFrom_fold_seed q' ws seed_ts = none := by
+    PartialLex spec wp = some (seed_ts, seed_wr) →
+    (BuildLexingFST spec).eval wp = some (q', seed_ts) →
+    (BuildLexingFST spec).eval seed_wr = some (q', []) →
+    (seed_wr = [] ↔ q' = LexingState.start) →
+    match PartialLex_seed spec (some (seed_ts, seed_wr)) ws with
+    | some (ts, wr) =>
+      ∃ q'',
+        (BuildLexingFST spec).evalFrom_fold_seed q' ws seed_ts = some (q'', ts) ∧
+        (BuildLexingFST spec).evalFrom_fold_seed (BuildLexingFST spec).start wr [] = some (q'', [])
+    | none => (BuildLexingFST spec).evalFrom_fold_seed q' ws seed_ts = none := by
   intro wp ws q' seed_ts seed_wr
   let fst := BuildLexingFST spec
   let new_q0 := fst.start
   let old_q0 := spec.automaton.start
+
+  have hlex_nil : fst.eval [] = some (new_q0, []) := by
+    simp [fst, new_q0, BuildLexingFST, Id.run, FST.eval, FST.evalFrom]
 
   have h_q0_na : old_q0 ∉ spec.automaton.accept := by
     by_contra h'
@@ -625,6 +651,18 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
     exact h₂
   case cons head tail ih =>
     let pl_step := (PartialLex_trans spec (some (seed_ts, seed_wr)) head)
+    have hplex_append :
+        ∀ {ts wr}, PartialLex_trans spec (some (seed_ts, seed_wr)) head = some (ts, wr) →
+          PartialLex spec (wp ++ [head]) = some (ts, wr) := by
+      intro ts wr hstep
+      exact PartialLex_append_singleton_of_trans spec h₀ hstep
+
+    have hlex_append :
+        ∀ {q'' ts''}, fst.evalFrom_fold_step (some (q', seed_ts)) head = some (q'', ts'') →
+          fst.eval (wp ++ [head]) = some (q'', ts'') := by
+      intro q'' ts'' hstep
+      exact FST_eval_append_singleton_of_evalFrom_fold_step fst h₁ hstep
+
     cases hh : head
     case eos =>
       simp[PartialLex_trans]
@@ -664,23 +702,14 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
             rw[←this]
           simp[haq', this]
 
-        have hlex_wp_step : (BuildLexingFST spec).eval (wp ++ [head]) = some (LexingState.start, seed_ts ++ [.char produced_token, ExtChar.eos]) := by
-          simp[FST.eval] at h₁ ⊢
-          rw[←FST.evalFrom_fold_eq_evalFrom] at h₁ ⊢
-          simp[FST.evalFrom_fold, FST.evalFrom_fold_seed] at h₁ ⊢
-          rw[h₁]
-          exact hlex_trans
+        have hlex_wp_step : fst.eval (wp ++ [head]) = some (LexingState.start, seed_ts ++ [.char produced_token, ExtChar.eos]) :=
+          hlex_append hlex_trans
 
-        have hplex_step : PartialLex spec (wp ++ [head]) = some (seed_ts ++ [.char produced_token, ExtChar.eos], []) := by
-          simp[PartialLex, PartialLex_seed] at h₀ ⊢
-          rw[h₀]
-          simp[PartialLex_trans, hh]
-          simp[produced_token]
-          simp[haccept]
+        have hplex_step : PartialLex spec (wp ++ [head]) = some (seed_ts ++ [.char produced_token, ExtChar.eos], []) :=
+          hplex_append (by
+            simp [PartialLex_trans, hh, produced_token, haccept])
 
-        have lex_wr_step : (BuildLexingFST spec).eval [] = some (LexingState.start, []) := by
-          simp[BuildLexingFST, Id.run, FST.eval, FST.evalFrom]
-        have ih := ih (wp ++ [head]) LexingState.start (seed_ts ++ [.char produced_token, ExtChar.eos]) [] hplex_step hlex_wp_step lex_wr_step
+        have ih := ih (wp ++ [head]) LexingState.start (seed_ts ++ [.char produced_token, ExtChar.eos]) [] hplex_step hlex_wp_step hlex_nil
 
         simp[hh] at hlex_trans
         rw[hlex_trans]
@@ -705,23 +734,15 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
             simp[old_q0] at h_q0_na
             simp[h_q0_na]
 
-          have hlex_wp_step : (BuildLexingFST spec).eval (wp ++ [head]) = some (LexingState.start, seed_ts ++ [ExtChar.eos]) := by
-            simp[FST.eval] at h₁ ⊢
-            rw[←FST.evalFrom_fold_eq_evalFrom] at h₁ ⊢
-            simp[FST.evalFrom_fold, FST.evalFrom_fold_seed] at h₁ ⊢
-            rw[h₁]
-            exact hlex_trans
+          have hlex_wp_step : fst.eval (wp ++ [head]) = some (LexingState.start, seed_ts ++ [ExtChar.eos]) :=
+            hlex_append hlex_trans
 
-          have hplex_step : PartialLex spec (wp ++ [head]) = some (seed_ts ++ [ExtChar.eos], []) := by
-            simp[PartialLex, PartialLex_seed] at h₀ ⊢
-            rw[h₀]
-            simp[PartialLex_trans, hh, hempty]
-            exact he
+          have hplex_step : PartialLex spec (wp ++ [head]) = some (seed_ts ++ [ExtChar.eos], []) :=
+            hplex_append (by
+              simp [PartialLex_trans, hh, hempty]
+              exact he)
 
-          have lex_wr_step : (BuildLexingFST spec).eval [] = some (LexingState.start, []) := by
-            simp[BuildLexingFST, Id.run, FST.eval, FST.evalFrom]
-
-          have ih := ih (wp ++ [head]) LexingState.start (seed_ts ++ [ExtChar.eos]) [] hplex_step hlex_wp_step lex_wr_step
+          have ih := ih (wp ++ [head]) LexingState.start (seed_ts ++ [ExtChar.eos]) [] hplex_step hlex_wp_step hlex_nil
 
           simp[hh] at hlex_trans
           rw[hlex_trans]
@@ -779,23 +800,15 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
               simp[hch]
 
             have hplex_trans : PartialLex spec (wp ++ [head]) = some (seed_ts ++ [ExtChar.char unwrapped], [ch]) := by
-              simp[PartialLex_seed] at h₀ ⊢
-              rw[h₀]
-              simp[hh]
-              exact hplex_step
+              simpa [hh] using (PartialLex_append_singleton_of_trans spec h₀ hplex_step)
 
             have hlex_wp_step : (BuildLexingFST spec).evalFrom_fold_step (some (q', seed_ts)) (ExtChar.char ch) = some (LexingState.id qnext, seed_ts ++ [ExtChar.char unwrapped]) := by
               simp[FST.evalFrom_fold_step, BuildLexingFST, Id.run]
               simp[hstep, haccept]
               simp[hch, unwrapped, term, qsrc]
 
-            have hlex_wp_trans : (BuildLexingFST spec).eval (wp ++ [head]) = some (LexingState.id qnext, seed_ts ++ [ExtChar.char unwrapped]) := by
-              simp[FST.eval] at h₁ ⊢
-              rw[←FST.evalFrom_fold_eq_evalFrom] at h₁ ⊢
-              simp[FST.evalFrom_fold, FST.evalFrom_fold_seed] at h₁ ⊢
-              rw[h₁]
-              simp[hh]
-              exact hlex_wp_step
+            have hlex_wp_trans : fst.eval (wp ++ [head]) = some (LexingState.id qnext, seed_ts ++ [ExtChar.char unwrapped]) := by
+              simpa [fst, hh] using (FST_eval_append_singleton_of_evalFrom_fold_step fst h₁ hlex_wp_step)
 
             have lex_wr_step : (BuildLexingFST spec).eval [ch] = some (LexingState.id qnext, []) := by
               simp[BuildLexingFST, Id.run, FST.eval, FST.evalFrom]
@@ -825,22 +838,14 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
           simp[FSA.evalFrom, hstep]
 
         have hplex_trans : PartialLex spec (wp ++ [head]) = some (seed_ts, seed_wr ++ [ch]) := by
-          simp[PartialLex_seed] at h₀ ⊢
-          rw[h₀]
-          simp[hh]
-          exact hplex_step
+          simpa [hh] using (PartialLex_append_singleton_of_trans spec h₀ hplex_step)
 
         have hlex_wp_step : (BuildLexingFST spec).evalFrom_fold_step (some (q', seed_ts)) (ExtChar.char ch) = some (LexingState.id dst, seed_ts) := by
           simp[FST.evalFrom_fold_step, BuildLexingFST, Id.run]
           simp[hstep]
 
-        have hlex_wp_trans : (BuildLexingFST spec).eval (wp ++ [head]) = some (LexingState.id dst, seed_ts) := by
-          simp[FST.eval] at h₁ ⊢
-          rw[←FST.evalFrom_fold_eq_evalFrom] at h₁ ⊢
-          simp[FST.evalFrom_fold, FST.evalFrom_fold_seed] at h₁ ⊢
-          rw[h₁]
-          simp[hh]
-          exact hlex_wp_step
+        have hlex_wp_trans : fst.eval (wp ++ [head]) = some (LexingState.id dst, seed_ts) := by
+          simpa [fst, hh] using (FST_eval_append_singleton_of_evalFrom_fold_step fst h₁ hlex_wp_step)
 
         have lex_wr_step : (BuildLexingFST spec).eval (seed_wr ++ [ch]) = some (LexingState.id dst, []) := by
           simp[FST.evalFrom, FST.evalFrom_append]
@@ -859,10 +864,10 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
 /-- The executable lexer and the lexing FST agree on successful executions. -/
 theorem PartialLex_to_LexingFST (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) :
   ∀ w, match PartialLex spec w with
-       | some (ts', wr) =>
-          ∃ q', (BuildLexingFST spec).eval w = some (q', ts') ∧ (BuildLexingFST spec).eval wr = some (q', [])
-       | none => (BuildLexingFST spec).eval w = none := by
-
+    | some (ts', wr) =>
+      ∃ q', (BuildLexingFST spec).eval w = some (q', ts') ∧
+        (BuildLexingFST spec).eval wr = some (q', [])
+    | none => (BuildLexingFST spec).eval w = none := by
   let fst := BuildLexingFST spec
   let new_q0 := fst.start
 
@@ -902,8 +907,8 @@ theorem PartialLex_to_LexingFST (spec: LexerSpec α Γ σ) (he: [] ∉ spec.auto
 theorem PartialLexRel_to_LexingFST (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned) :
   ∀ w terminals unlexed,
     PartialLexRel spec w terminals unlexed →
-      ∃ q', (BuildLexingFST spec).eval w = some (q', terminals)
-          ∧ (BuildLexingFST spec).eval unlexed = some (q', []) := by
+    ∃ q', (BuildLexingFST spec).eval w = some (q', terminals) ∧
+      (BuildLexingFST spec).eval unlexed = some (q', []) := by
   intro w terminals unlexed h
   have hpl := (PartialLex_pruned_eq_PartialLexRel spec hpruned w terminals unlexed).mp h
   have := PartialLex_to_LexingFST spec he w
@@ -916,7 +921,7 @@ lexing derivation with some residual unlexed suffix. -/
 theorem LexingFST_to_PartialLexRel (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned) :
   ∀ w q' terminals,
     (BuildLexingFST spec).eval w = some (q', terminals) →
-    ∃ (unlexed: List α),
+    ∃ (unlexed : List α),
       (BuildLexingFST spec).eval unlexed = some (q', []) ∧ PartialLexRel spec w terminals unlexed := by
   intro w q' terminals h
   cases hpl : PartialLex spec w
@@ -2337,9 +2342,9 @@ lemma detok_rs_pfx [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite tnonwhite qnonwhit
   let lexer := BuildDetokLexer (v := vocab) spec
   lexer.tailModdedRealizableSequences (Unit.unit, q) white_term =
     { Ts | Ts = [] ∨
-           (∃ t tsfx,
-             ¬Ts.contains (ExtChar.char white_term) ∧
-             Ts = t :: tsfx ∧ t ∈ lexer.singleProducible (Unit.unit, q)) } := by
+            (∃ t tsfx,
+              ¬Ts.contains (ExtChar.char white_term) ∧
+              Ts = t :: tsfx ∧ t ∈ lexer.singleProducible (Unit.unit, q)) } := by
   ext x
   apply Iff.intro
   . intro h
