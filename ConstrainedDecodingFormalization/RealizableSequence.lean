@@ -44,7 +44,6 @@ variable
   [Inhabited α] [Inhabited Γ]
   [Fintype α] [Fintype Γ]
 
-#check Language (Ch α)
 
 /-- The set of output sequences obtainable by taking one transition of
 `fst_comp` and then finishing with a singleton-producible token. -/

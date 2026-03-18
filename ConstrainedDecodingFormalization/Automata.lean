@@ -103,7 +103,7 @@ def prefixLanguage : Language α :=
 and can still reach an accepting state. -/
 def pruned : Prop :=
   ∀ σ, (∃ w f, some f = A.evalFrom σ w ∧ f ∈ A.accept) ∧
-       (∃ w, some σ = A.evalFrom A.start w)
+      (∃ w, some σ = A.evalFrom A.start w)
 
 /-- The language of inputs that have not yet failed from the start state. -/
 def intermediateLanguage : Language α :=
@@ -257,33 +257,13 @@ theorem toDFA_eval_correct : ∀ (l : List α), A.toDFA.eval l = A.eval l := by
 original FSA. -/
 theorem toDFA_correct : A.toDFA.accepts = A.accepts := by
   ext x
-  simp only [DFA.mem_accepts]
-  cases h : A.eval x
-  .
-    have : A.toDFA.eval x = none := by simp_all only [toDFA_eval_correct]
-    simp_all [acceptsFrom, eval, accepts]
-    refine (iff_false_right ?_).mpr (by apply toDFA_none_not_accept)
-    have : ¬(∃ f, A.evalFrom A.start x = some f ∧ f ∈ A.accept) := by
-      simp_all only [reduceCtorEq, false_and, exists_false, not_false_eq_true]
-    exact fun a => this a
-  .
-    have : (A.eval x).isSome := by simp_all
-    rw [Option.isSome_iff_exists] at this
-    obtain ⟨a, h'⟩ := this
-    have : A.toDFA.eval x = a := by
-      simp_all only [Option.some.injEq, toDFA_eval_correct]
-    simp_all only [Option.some.injEq, DFA.eval, toDFA_iff_accept]
-    constructor <;> rw [←h] at * <;> intro m
-    .
-      have : ∃ f, A.evalFrom A.start x = some f ∧ f ∈ A.accept := by
-        constructor <;> simp_all only [eval, Option.some.injEq]
-        apply And.intro
-        · exact rfl
-        · simp_all only [toDFA, List.coe_toFinset, List.mem_map]
-      exact this
-    .
-      obtain ⟨f, h1, h2⟩ := m
-      simp_all only [eval, Option.some.injEq]
+  change A.toDFA.eval x ∈ A.toDFA.accept ↔ ∃ f, A.eval x = some f ∧ f ∈ A.accept
+  rw [toDFA_eval_correct]
+  cases A.eval x with
+  | none =>
+      simp [toDFA_none_not_accept]
+  | some s =>
+      simp [toDFA_iff_accept]
 
 variable
   [DecidableEq α]
@@ -328,9 +308,6 @@ def toNFA : NFA α σ where
   step s a := (A.step s a).elim ∅ (fun s => {s})
   start := {A.start}
   accept := A.accept.toFinset
-
-#check Singleton
-#check Subsingleton
 
 
 omit [DecidableEq α] [Inhabited α] [Fintype α] [Fintype σ]
@@ -546,6 +523,32 @@ theorem evalFrom_cons (s : σ) (x : α) (xs : List α)
     (h₀ : M.step s x = some (s', S)) (h₁ : M.evalFrom s' xs = some (s'', T)) :
       M.evalFrom s (x :: xs) = (s'', S ++ T) := by
   simp_all only [evalFrom]
+
+/-- Bidirectional characterization of a successful cons-step run. -/
+theorem evalFrom_cons_some_iff {s s'' : σ} {a : α} {as : List α} {U : List Γ} :
+    M.evalFrom s (a :: as) = some (s'', U)
+      ↔ ∃ s' S T,
+        M.step s a = some (s', S) ∧
+        M.evalFrom s' as = some (s'', T) ∧
+        U = S ++ T := by
+  constructor
+  · intro h
+    simp only [evalFrom] at h
+    cases hs : M.step s a with
+    | none => simp [hs] at h
+    | some p =>
+      obtain ⟨s₁, S⟩ := p
+      simp [hs] at h
+      cases he : M.evalFrom s₁ as with
+      | none => simp [he] at h
+      | some p2 =>
+        obtain ⟨s₂, T⟩ := p2
+        simp [he] at h
+        obtain ⟨heq, hout⟩ := h
+        subst heq
+        exact ⟨s₁, S, T, rfl, he, hout.symm⟩
+  · rintro ⟨s', S, T, hs, he, rfl⟩
+    exact evalFrom_cons M s a as hs he
 
 theorem evalFrom_append (s : σ) (xs ys : List α) : M.evalFrom s (xs ++ ys) =
   match M.evalFrom s xs with
@@ -966,7 +969,6 @@ def compose_fun_evalFrom { β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ �
     | none => none
     | some (s₂', T) => ((s₁', s₂'), T)
 
--- todo make this less casework, very bad right now
 lemma compose_fun_step_cons { β : Type u_1 } { τ : Type u_2 }
   (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (s₁ : σ) (s₂ : τ) (w : α) (ws : List α) :
     compose_fun_evalFrom M₁ M₂ s₁ s₂ (w :: ws) =
@@ -975,38 +977,21 @@ lemma compose_fun_step_cons { β : Type u_1 } { τ : Type u_2 }
       | some ((s₁', s₂'), T) =>
         (compose_fun_evalFrom M₁ M₂ s₁' s₂' ws).map (fun ((s₁'', s₂''), T') => ((s₁'', s₂''), T ++ T'))
   := by
-  simp[compose_fun_evalFrom, compose_fun_step]
-  simp[evalFrom]
   cases h₁ : M₁.step s₁ w with
   | none =>
-    simp
+      simp [compose_fun_evalFrom, compose_fun_step, evalFrom, h₁]
   | some sp =>
-    simp
-    cases h₃ : M₂.evalFrom s₂ sp.2 with
-    | none =>
-      split <;> simp_all
-      rename_i T' h_eq
-      split at h_eq <;> simp_all
-      rename_i T'' _
-      have := M₂.evalFrom_append s₂ sp.2 T''
-      simp_all
-    | some sp2 =>
-      split <;> simp_all
-      next h_eq =>
-        split at h_eq <;> simp_all
-      next h_eq =>
-        split at h_eq <;> simp_all
-        rename_i T'' _
-        have := M₂.evalFrom_append s₂ sp.2 T''
-        simp_all
-        split <;> simp_all
-        rename_i heq'
-        cases h₄ : M₂.evalFrom sp2.1 T'' with
-        | none => simp_all
-        | some dst =>
-          simp_all
-          obtain ⟨a, ⟨b, hab⟩⟩ := heq'
-          simp_all
+      cases h₂ : M₁.evalFrom sp.1 ws with
+      | none =>
+          cases h₃ : M₂.evalFrom s₂ sp.2 <;>
+            simp [compose_fun_evalFrom, compose_fun_step, evalFrom, h₁, h₂, h₃]
+      | some sp' =>
+          cases h₃ : M₂.evalFrom s₂ sp.2 with
+          | none =>
+              simp [compose_fun_evalFrom, compose_fun_step, evalFrom, h₁, h₂, h₃, M₂.evalFrom_append]
+          | some sp2 =>
+              simp [compose_fun_evalFrom, compose_fun_step, evalFrom, h₁, h₂, h₃, M₂.evalFrom_append]
+              cases h₄ : M₂.evalFrom sp2.1 sp'.2 <;> rfl
 
 def compose_fun_eval {β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (w : List α) : Option ((σ × τ) × List β) :=
   (compose_fun_evalFrom M₁ M₂ M₁.start M₂.start w)
@@ -1062,94 +1047,50 @@ lemma compose_fun_evalFrom_singleton (s₁ : σ) (s₂ : τ) (x : α)
 
 
 
-variable (A : FSA α σ)
+/-- Project an FST to its underlying FSA by forgetting outputs. -/
+def toFSA : FSA α σ where
+  start := M.start
+  step s a := (M.step s a).map Prod.fst
+  accept := M.accept
 
-/-
-
-def toFSA : FSA α σ :=
-  let step := fun s a => (M.step s a).1
-  ⟨M.alph, M.states, M.start, step, M.accept⟩
-
-@[simp]
-lemma toFSA_step_correct : ∀ (s : σ) (a : α), M.toFSA.step s a = (M.step s a).1 := by
-  exact fun s a => rfl
+@[simp] lemma toFSA_start : M.toFSA.start = M.start := rfl
+@[simp] lemma toFSA_accept : M.toFSA.accept = M.accept := rfl
 
 @[simp]
-lemma toFSA_evalFrom_correct : ∀ (s : σ) (l : List α), M.toFSA.evalFrom s l = (M.evalFrom s l).1 := by
-  refine fun s l => ?_
-  induction l generalizing s
-  case nil =>
-    simp [FSA.evalFrom, evalFrom]
-  case cons head tail ih =>
-    simp [FSA.evalFrom, evalFrom]
-    cases h : M.step s head
-    rename_i next output
-    cases next
-    ·
-      simp [FSA.evalFrom, evalFrom, toFSA_step_correct, h]
-    ·
-      rename_i s'
-      simp [FSA.evalFrom, evalFrom, toFSA_step_correct, h]
-      exact ih s'
+lemma toFSA_step (s : σ) (a : α) :
+    M.toFSA.step s a = (M.step s a).map Prod.fst := rfl
 
-lemma toFSA_eval_correct : ∀ (l : List α), M.toFSA.eval l = (M.eval l).1 := by
-  refine fun l => ?_
-  simp [eval, FSA.eval]
-  exact rfl
+@[simp]
+lemma toFSA_evalFrom (s : σ) (w : List α) :
+    M.toFSA.evalFrom s w = (M.evalFrom s w).map Prod.fst := by
+  induction w generalizing s with
+  | nil => simp [FSA.evalFrom, evalFrom]
+  | cons x xs ih =>
+    simp only [FSA.evalFrom, evalFrom, toFSA_step]
+    cases M.step s x with
+    | none => simp
+    | some p =>
+      dsimp only [Option.map]
+      rw [ih]
+      cases M.evalFrom p.1 xs <;> rfl
 
-theorem toFSA_correct : M.toFSA.accepts = M.accepts := by
+lemma toFSA_eval (w : List α) :
+    M.toFSA.eval w = (M.eval w).map Prod.fst :=
+  toFSA_evalFrom M M.start w
+
+theorem toFSA_accepts : M.toFSA.accepts = M.accepts := by
   ext x
-  have h₀ : M.toFSA.eval x = (M.eval x).1 := by exact toFSA_eval_correct M x
-  cases h : (M.eval x).1
-  .
-    have : M.toFSA.eval x = none := by simp_all only
-    refine Eq.to_iff ?_
-    have h₁ : x ∉ M.accepts := by
-      refine reject_none M ?_
-      exact Option.isNone_iff_eq_none.mpr h
-    have h₂ : x ∉ M.toFSA.accepts := by
-      refine FSA.reject_none M.toFSA ?_
-      exact Option.isNone_iff_eq_none.mpr this
-    simp_all only
-  .
-    have : ∃ a, (M.eval x).1 = some a := by simp [h]
-    obtain ⟨a, ha⟩ := this
-    have : (M.toFSA.eval x) = a := by
-      simp [FSA.eval]
-      exact ha
-    constructor <;> rw [←h] at * <;> intro m
-    .
-      have : ∃ f ∈ M.toFSA.evalFrom M.toFSA.start x, f ∈ M.toFSA.accept := by exact m
-      simp_all only [Option.isSome_some, mem_accepts, FSA.mem_accepts]
-      exact m
-    .
-      have : ∃ f ∈ M.toFSA.evalFrom M.toFSA.start x, f ∈ M.toFSA.accept := by
-        simp_all only [toFSA_evalFrom_correct, Option.mem_def]
-        exact m
-      exact this
-
-
-
-variable
-  [DecidableEq α] [DecidableEq σ]
-  [Inhabited α] [Inhabited Γ]
-  [Fintype α] [Fintype Γ] [Fintype σ]
-
-def transitions (fst : FST α Γ σ) : List (σ × α × (Option σ × List Γ)) :=
-  fst.states.flatMap (fun q =>
-    (fst.alph.map (fun c =>
-        (q, c, fst.step q c)
-      )
-    )
-  )
-
-def mkStep (transitions : List (σ × α × (Option σ × List Γ))) : σ → α → (Option σ × List Γ) :=
-  fun s a =>
-    transitions.find? (fun (s', a', _) => s = s' && a = a')
-    |>.map (fun (_, _, ts) => ts)
-    |>.getD (none, [])
-
--/
+  simp only [FSA.accepts, FSA.acceptsFrom, accepts, acceptsFrom,
+    toFSA_evalFrom, toFSA_start, toFSA_accept]
+  constructor
+  · rintro ⟨f, hf, hmem⟩
+    rw [Option.map_eq_some_iff] at hf
+    obtain ⟨⟨f', out⟩, heval, rfl⟩ := hf
+    exact ⟨(f', out), heval, hmem⟩
+  · rintro ⟨⟨f, out⟩, hf, hmem⟩
+    refine ⟨f, ?_, hmem⟩
+    rw [Option.map_eq_some_iff]
+    exact ⟨(f, out), hf, rfl⟩
 
 end FST
 

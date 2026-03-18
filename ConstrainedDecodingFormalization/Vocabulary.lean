@@ -29,7 +29,7 @@ Plain tokens are mapped pointwise through `ExtChar.char`, while EOS is sent to
 the singleton token `[eos]`. This is the instance used by the detokenizing FST
 and checker constructions over `Ch α`.
 -/
-instance {α β} [BEq α] [b : Vocabulary α β] : Vocabulary (Ch α) (Ch β) where
+instance {α β} [DecidableEq α] [BEq α] [b : Vocabulary α β] : Vocabulary (Ch α) (Ch β) where
   flatten := fun x => match x with
     | ExtChar.char c => List.map ExtChar.char (b.flatten c)
     | ExtChar.eos    => [ExtChar.eos]

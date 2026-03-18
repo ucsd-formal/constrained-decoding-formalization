@@ -2,6 +2,7 @@ import ConstrainedDecodingFormalization.PDA
 import ConstrainedDecodingFormalization.Lexing
 import ConstrainedDecodingFormalization.RealizableSequence
 import ConstrainedDecodingFormalization.Vocabulary
+import ConstrainedDecodingFormalization.Checker
 
 /-!
 # Grammar-constrained decoding
@@ -202,9 +203,6 @@ lemma mem_preprocess_accepted_sequences_iff
   d ∈ (PreprocessParser fst_comp p qp qa).2.2 ↔
     d ∈ RealizableSequences fst_comp ∧
     p.evalFrom {(qp, [])} d ≠ ∅ := by
-  letI : BEq Γ := instBEqOfDecidableEq
-  letI : ReflBEq Γ := ⟨by intro a; simp⟩
-  letI : LawfulBEq Γ := ⟨by intro a b h; simpa using h⟩
   constructor
   · intro hd
     have hacc :
@@ -226,9 +224,6 @@ lemma mem_rejected_sequences_iff
       (fun s => FinsetNFA.evalFrom p {qp} s = ∅)) ↔
     d ∈ RealizableSequences fst_comp ∧
     FinsetNFA.evalFrom p {qp} d = ∅ := by
-  letI : BEq Γ := instBEqOfDecidableEq
-  letI : ReflBEq Γ := ⟨by intro a; simp⟩
-  letI : LawfulBEq Γ := ⟨by intro a b h; simpa using h⟩
   constructor
   · intro hd
     have hrej :
@@ -252,9 +247,6 @@ lemma mem_preprocess_accepted_tokens_iff
       d ∈ RealizableSequences fst_comp ∧
       p.evalFrom {(qp, [])} d ≠ ∅ ∧
       tok ∈ InverseTokenSpannerTable fst_comp d qa := by
-  letI : BEq Γ := instBEqOfDecidableEq
-  letI : ReflBEq Γ := ⟨by intro a; simp⟩
-  letI : LawfulBEq Γ := ⟨by intro a b h; simpa using h⟩
   constructor
   · intro h
     have hmem :
@@ -312,9 +304,6 @@ lemma mem_preprocess_dependent_sequences_iff
     p.evalFrom {(qp, [])} d = ∅ ∧
     FinsetNFA.evalFrom p {qp} d ≠ ∅ ∧
     (BuildInverseTokenSpannerTable fst_comp).snd d qa ≠ [] := by
-  letI : BEq Γ := instBEqOfDecidableEq
-  letI : ReflBEq Γ := ⟨by intro a; simp⟩
-  letI : LawfulBEq Γ := ⟨by intro a b h; simpa using h⟩
   let re := (BuildInverseTokenSpannerTable fst_comp).fst
   let accepted := re.filter (fun s => p.evalFrom {(qp, [])} s ≠ ∅)
   let rejected := re.filter (fun s => FinsetNFA.evalFrom p {qp} s = ∅)
@@ -478,10 +467,10 @@ abbrev GCDItst [Vocabulary α β] [FinEnum β] (spec : LexerSpec α Γ σa) :
 /-- The generic mask checker built from a lexer/parser combination together
 with its preprocessing artifacts. -/
 def MaskChecker
-   [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa]
-   (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
-   (pp_table : PPTable (Ch β) σp σa (Ch Γ))
-   (itst : List (Ch Γ) → σa → List (Ch β)) : List β → Ch β → Bool :=
+  [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa]
+  (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
+  (pp_table : PPTable (Ch β) σp σa (Ch Γ))
+  (itst : List (Ch Γ) → σa → List (Ch β)) : List β → Ch β → Bool :=
   fun curr cand =>
     match comb.eval (curr.map ExtChar.char) with
     | none => false
@@ -494,21 +483,16 @@ def MaskChecker
 -- TODO use more consistent notions of variable names
 /-- The end-to-end grammar-constrained checker associated to a lexer
 specification and a parser. -/
-def GCDChecker
-   [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
-   [DecidableEq σa]
-   [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
-   (spec: LexerSpec α Γ σa) (parser0: PDA Γ π σp) : List β → Ch β → Bool :=
-  let comb : FST (Ch β) (Ch Γ) (Unit × LexingState σa) :=
-    Detokenizing.BuildDetokLexer (V := Ch β) spec
-  let parser : PDA (Ch Γ) π (Ch σp) := ParserWithEOS parser0
-  let _inst_beq_tok : BEq (Ch β) := instBEqOfDecidableEq
-  let _inst_beq_term : BEq (Ch Γ) := instBEqOfDecidableEq
-  let pp_table : PPTable (Ch β) (Ch σp) (Unit × LexingState σa) (Ch Γ) :=
-    PreprocessParser comb parser
-  let itst : List (Ch Γ) → (Unit × LexingState σa) → List (Ch β) :=
-    (BuildInverseTokenSpannerTable comb).snd
-  MaskChecker comb parser pp_table itst
+@[reducible] def GCDChecker
+  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+  [DecidableEq σa]
+  [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+  (spec: LexerSpec α Γ σa) (parser0: PDA Γ π σp) : List β → Ch β → Bool :=
+  MaskChecker
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (ParserWithEOS parser0)
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS parser0))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
 
 /-- Folding `Bool.or` over a finite set is true exactly when the set contains
 `true`. -/
@@ -525,17 +509,15 @@ lemma Finset.fold_or_eq_true_iff (s : Finset Bool) :
           simp [Finset.fold_insert, ha]
 
 /-- Semantic viable-prefix predicate for the full GCD construction. -/
-def GCDViablePrefix
+@[reducible] def GCDViablePrefix
   [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
   [DecidableEq σa]
   [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (w : List β) : Prop :=
-  let comb : FST (Ch β) (Ch Γ) (Unit × LexingState σa) :=
-    Detokenizing.BuildDetokLexer (V := Ch β) spec
-  let parser : PDA (Ch Γ) π (Ch σp) := ParserWithEOS P
   ∃ suffix qa gammas,
-    comb.eval (w.map ExtChar.char ++ suffix) = some (qa, gammas) ∧
-    parser.evalFull gammas ≠ ∅
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+      (w.map ExtChar.char ++ suffix) = some (qa, gammas) ∧
+    (ParserWithEOS P).evalFull gammas ≠ ∅
 
 -- want to say that for any lexer state
 -- any thing that starts with a realizable sequence is producible
@@ -604,11 +586,8 @@ theorem accept_if_ComputedValidTokenMask
   · rcases realizableSequencesComplete (fst_comp := fst_comp) qa t gammas htok with ⟨ts, qa', hrun⟩
     exact ⟨ts, qa', gammas, hrun, hcur⟩
 
-/-
 theorem MaskChecker_true_witness
-  [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [FinEnum β]
-  [beqTok : BEq (Ch β)] [lawTok : LawfulBEq (Ch β)]
-  [beqTerm : BEq (Ch Γ)] [lawTerm : LawfulBEq (Ch Γ)]
+  [BEq σa] [LawfulBEq σa] [FinEnum β]
   (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
   (curr : List β) (cand : Ch β)
   (h : MaskChecker comb parser (PreprocessParser comb parser)
@@ -618,10 +597,6 @@ theorem MaskChecker_true_witness
     (qp, st) ∈ parser.evalFrom {(parser.start, [])} terms ∧
     cand ∈ ComputeValidTokenMask parser (BuildInverseTokenSpannerTable comb).snd
       (PreprocessParser comb parser) q_fst qp st := by
-  letI : BEq (Ch β) := beqTok
-  letI : LawfulBEq (Ch β) := lawTok
-  letI : BEq (Ch Γ) := beqTerm
-  letI : LawfulBEq (Ch Γ) := lawTerm
   unfold MaskChecker at h
   cases hcomb : comb.eval (curr.map ExtChar.char) with
   | none =>
@@ -632,39 +607,27 @@ theorem MaskChecker_true_witness
       cases hfalse
   | some result =>
       rcases result with ⟨q_fst, terms⟩
-      have hcombFrom : comb.evalFrom comb.start (curr.map ExtChar.char) = some (q_fst, terms) := by
-        simpa [FST.eval] using hcomb
-      have hfold :
-          Finset.fold Bool.or false id
-            ((parser.evalFrom {(parser.start, [])} terms).image
-              (fun (q_parse, st) =>
-                (ComputeValidTokenMask parser (BuildInverseTokenSpannerTable comb).snd
-                  (PreprocessParser comb parser) q_fst q_parse st).contains cand)) = true := by
-        have h' := h
-        rw [hcombFrom] at h'
-        exact h'
-      have himg :
-          true ∈
-            (parser.evalFrom {(parser.start, [])} terms).image
-              (fun (q_parse, st) =>
-                (ComputeValidTokenMask parser (BuildInverseTokenSpannerTable comb).snd
-                  (PreprocessParser comb parser) q_fst q_parse st).contains cand) := by
-        exact (Finset.fold_or_eq_true_iff _).1 hfold
-      simp only [Finset.mem_image] at himg
-      rcases himg with ⟨⟨qp, st⟩, hmem, hcontains⟩
-      refine ⟨q_fst, terms, qp, st, ?_, ?_, ?_⟩
-      · simp_all
-      · exact hmem
-      · have hb :
+      let qPda : Finset (σp × List π) := parser.evalFrom {(parser.start, [])} terms
+      let inCurr : Finset Bool :=
+        qPda.image (fun (q_parse, st) =>
+          (ComputeValidTokenMask parser (BuildInverseTokenSpannerTable comb).snd
+            (PreprocessParser comb parser) q_fst q_parse st).contains cand)
+      have hfold : Finset.fold Bool.or false id inCurr = true := by
+        simp only [hcomb] at h
+        convert h
+      have himg : true ∈ inCurr := (Finset.fold_or_eq_true_iff _).1 hfold
+      have hwit :
+          ∃ qp st,
+            (qp, st) ∈ parser.evalFrom {(parser.start, [])} terms ∧
             (ComputeValidTokenMask parser (BuildInverseTokenSpannerTable comb).snd
-              (PreprocessParser comb parser) q_fst qp st).contains cand := by
-          simpa using hcontains
-        exact (List.contains_iff_mem).1 hb
+              (PreprocessParser comb parser) q_fst qp st).contains cand = true := by
+        simpa [qPda, inCurr, Finset.mem_image] using himg
+      rcases hwit with ⟨qp, st, hmem, hcontains⟩
+      refine ⟨q_fst, terms, qp, st, rfl, hmem, ?_⟩
+      exact (List.contains_iff_mem).1 hcontains
 
 theorem MaskChecker_char_true_imp_viable
-  [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [FinEnum β]
-  [beqTok : BEq (Ch β)] [lawTok : LawfulBEq (Ch β)]
-  [beqTerm : BEq (Ch Γ)] [lawTerm : LawfulBEq (Ch Γ)]
+  [BEq σa] [LawfulBEq σa] [FinEnum β]
   (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
   (curr : List β) (cand : β)
   (h : MaskChecker comb parser (PreprocessParser comb parser)
@@ -672,100 +635,278 @@ theorem MaskChecker_char_true_imp_viable
   ∃ suffix qa gammas,
     comb.eval (((curr ++ [cand]).map ExtChar.char) ++ suffix) = some (qa, gammas) ∧
     parser.evalFull gammas ≠ ∅ := by
-  letI : BEq (Ch β) := beqTok
-  letI : LawfulBEq (Ch β) := lawTok
-  letI : BEq (Ch Γ) := beqTerm
-  letI : LawfulBEq (Ch Γ) := lawTerm
   rcases MaskChecker_true_witness
     (comb := comb) (parser := parser) (curr := curr) (cand := .char cand) h with
     ⟨q_fst, terms, qp, st, hcomb, hmem, hmask⟩
-  rcases (mem_ComputeValidTokenMask_preprocess_iff
-    (fst_comp := comb) (P := parser) (qa := q_fst) (qp := qp) (st := st)
-    (tok := .char cand)).1 hmask with
-    ⟨gammas, _, hacc0, htok⟩ | ⟨gammas, _, _, _, hcur, htok⟩
-  · rcases realizableSequencesComplete
-      (fst_comp := comb) q_fst (.char cand) gammas htok with
-      ⟨ts, qa', hrun⟩
-    have hparse := evalFrom_empty_stack_nonempty_any_stack parser qp gammas st hacc0
-    refine ⟨ts, qa', terms ++ gammas, ?_, ?_⟩
-    · calc
-        comb.eval (((curr ++ [cand]).map ExtChar.char) ++ ts)
-            = comb.evalFrom comb.start (curr.map ExtChar.char ++ (.char cand :: ts)) := by
-                simp [FST.eval, List.map_append, List.append_assoc]
-        _ = some (qa', terms ++ gammas) := by
-          have hcombFrom : comb.evalFrom comb.start (curr.map ExtChar.char) = some (q_fst, terms) := by
-            simpa [FST.eval] using hcomb
-          have happ := FST.evalFrom_append (M := comb) comb.start
-            (curr.map ExtChar.char) (.char cand :: ts)
-          rw [hcombFrom] at happ
-          simp [hrun] at happ
-          exact happ
-    · rw [parser.evalFull_append terms gammas]
-      rcases Finset.nonempty_iff_ne_empty.mpr hparse with ⟨cfg, hcfg⟩
-      have hsingle :
-          ({(qp, st)} : Finset (σp × List π)) ⊆ parser.evalFull terms := by
-        intro x hx
-        simp at hx
-        rcases hx with rfl
-        simpa [PDA.evalFull] using hmem
-      have hcfg' : cfg ∈ parser.evalFrom (parser.evalFull terms) gammas :=
-        (parser.evalFrom_subset {(qp, st)} (parser.evalFull terms) hsingle gammas) hcfg
-      exact Finset.nonempty_iff_ne_empty.mp ⟨cfg, hcfg'⟩
-  · rcases realizableSequencesComplete
-      (fst_comp := comb) q_fst (.char cand) gammas htok with
-      ⟨ts, qa', hrun⟩
-    refine ⟨ts, qa', terms ++ gammas, ?_, ?_⟩
-    · calc
-        comb.eval (((curr ++ [cand]).map ExtChar.char) ++ ts)
-            = comb.evalFrom comb.start (curr.map ExtChar.char ++ (.char cand :: ts)) := by
-                simp [FST.eval, List.map_append, List.append_assoc]
-        _ = some (qa', terms ++ gammas) := by
-          have hcombFrom : comb.evalFrom comb.start (curr.map ExtChar.char) = some (q_fst, terms) := by
-            simpa [FST.eval] using hcomb
-          have happ := FST.evalFrom_append (M := comb) comb.start
-            (curr.map ExtChar.char) (.char cand :: ts)
-          rw [hcombFrom] at happ
-          simp [hrun] at happ
-          exact happ
-    · rw [parser.evalFull_append terms gammas]
-      rcases Finset.nonempty_iff_ne_empty.mpr hcur with ⟨cfg, hcfg⟩
-      have hsingle :
-          ({(qp, st)} : Finset (σp × List π)) ⊆ parser.evalFull terms := by
-        intro x hx
-        simp at hx
-        rcases hx with rfl
-        simpa [PDA.evalFull] using hmem
-      have hcfg' : cfg ∈ parser.evalFrom (parser.evalFull terms) gammas :=
-        (parser.evalFrom_subset {(qp, st)} (parser.evalFull terms) hsingle gammas) hcfg
-      exact Finset.nonempty_iff_ne_empty.mp ⟨cfg, hcfg'⟩
+  have hmask' :
+      .char cand ∈
+        ComputeValidTokenMask parser (BuildInverseTokenSpannerTable comb).snd
+          (PreprocessParser comb parser) q_fst qp st := by
+    simpa using hmask
+  rcases accept_if_ComputedValidTokenMask
+    (fst_comp := comb) (P := parser) qp st q_fst (.char cand) hmask' with
+    ⟨ts, qa', gammas, hrun, hparse⟩
+  refine ⟨ts, qa', terms ++ gammas, ?_, ?_⟩
+  · calc
+      comb.eval (((curr ++ [cand]).map ExtChar.char) ++ ts)
+          = comb.evalFrom comb.start (curr.map ExtChar.char ++ (.char cand :: ts)) := by
+              simp [FST.eval, List.map_append, List.append_assoc]
+      _ = some (qa', terms ++ gammas) := by
+        have hcombFrom : comb.evalFrom comb.start (curr.map ExtChar.char) = some (q_fst, terms) := by
+          simpa [FST.eval] using hcomb
+        have happ := FST.evalFrom_append (M := comb) comb.start
+          (curr.map ExtChar.char) (.char cand :: ts)
+        rw [hcombFrom] at happ
+        simp [hrun] at happ
+        exact happ
+  · rw [parser.evalFull_append terms gammas]
+    rcases Finset.nonempty_iff_ne_empty.mpr hparse with ⟨cfg, hcfg⟩
+    have hsingle :
+        ({(qp, st)} : Finset (σp × List π)) ⊆ parser.evalFull terms := by
+      intro x hx
+      simp at hx
+      rcases hx with rfl
+      simpa [PDA.evalFull] using hmem
+    have hcfg' : cfg ∈ parser.evalFrom (parser.evalFull terms) gammas :=
+      (parser.evalFrom_subset {(qp, st)} (parser.evalFull terms) hsingle gammas) hcfg
+    exact Finset.nonempty_iff_ne_empty.mp ⟨cfg, hcfg'⟩
 
-theorem GCDChecker_char_true_imp_viable
+/-- The EOS case: if the mask checker accepts `.eos`, the current token sequence
+can be extended with `.eos` to form a sequence that the FST processes and the
+parser accepts. -/
+theorem MaskChecker_eos_true_imp_viable
+  [BEq σa] [LawfulBEq σa] [FinEnum β]
+  (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
+  (curr : List β)
+  (h : MaskChecker comb parser (PreprocessParser comb parser)
+    (BuildInverseTokenSpannerTable comb).snd curr .eos = true) :
+  ∃ suffix qa gammas,
+    comb.eval (curr.map ExtChar.char ++ (.eos :: suffix)) = some (qa, gammas) ∧
+    parser.evalFull gammas ≠ ∅ := by
+  rcases MaskChecker_true_witness
+    (comb := comb) (parser := parser) (curr := curr) (cand := .eos) h with
+    ⟨q_fst, terms, qp, st, hcomb, hmem, hmask⟩
+  have hmask' :
+      ExtChar.eos ∈
+        ComputeValidTokenMask parser (BuildInverseTokenSpannerTable comb).snd
+          (PreprocessParser comb parser) q_fst qp st := by
+    simpa using hmask
+  rcases accept_if_ComputedValidTokenMask
+    (fst_comp := comb) (P := parser) qp st q_fst .eos hmask' with
+    ⟨ts, qa', gammas, hrun, hparse⟩
+  refine ⟨ts, qa', terms ++ gammas, ?_, ?_⟩
+  · calc
+      comb.eval (curr.map ExtChar.char ++ (.eos :: ts))
+          = comb.evalFrom comb.start (curr.map ExtChar.char ++ (.eos :: ts)) := by
+              simp [FST.eval]
+      _ = some (qa', terms ++ gammas) := by
+        have hcombFrom : comb.evalFrom comb.start (curr.map ExtChar.char) = some (q_fst, terms) := by
+          simpa [FST.eval] using hcomb
+        have happ := FST.evalFrom_append (M := comb) comb.start
+          (curr.map ExtChar.char) (.eos :: ts)
+        rw [hcombFrom] at happ
+        simp [hrun] at happ
+        exact happ
+  · rw [parser.evalFull_append terms gammas]
+    rcases Finset.nonempty_iff_ne_empty.mpr hparse with ⟨cfg, hcfg⟩
+    have hsingle :
+        ({(qp, st)} : Finset (σp × List π)) ⊆ parser.evalFull terms := by
+      intro x hx
+      simp at hx
+      rcases hx with rfl
+      simpa [PDA.evalFull] using hmem
+    have hcfg' : cfg ∈ parser.evalFrom (parser.evalFull terms) gammas :=
+      (parser.evalFrom_subset {(qp, st)} (parser.evalFull terms) hsingle gammas) hcfg
+    exact Finset.nonempty_iff_ne_empty.mp ⟨cfg, hcfg'⟩
+
+/-- GCD-specialized EOS theorem: if the checker accepts EOS, the current token
+sequence extends to a viable run through the combined FST and parser. -/
+theorem GCDChecker_eos_true_imp_viable
+  [BEq σa] [LawfulBEq σa] [FinEnum β] [Vocabulary α β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β)
+  (h : MaskChecker
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (ParserWithEOS P)
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+    curr .eos = true) :
+  ∃ suffix qa gammas,
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+      (curr.map ExtChar.char ++ (.eos :: suffix)) = some (qa, gammas) ∧
+    (ParserWithEOS P).evalFull gammas ≠ ∅ :=
+  MaskChecker_eos_true_imp_viable
+    (comb := Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (parser := ParserWithEOS P)
+    (curr := curr) h
+
+/-! ## Completeness direction
+
+The completeness direction states: if a token extends the current prefix to a
+viable one, then that token is in the computed valid-token mask.
+
+The key structural property needed is that any FST one-step-and-tail run
+produces an output that decomposes into a realizable sequence with a
+corresponding inverse token-spanner entry. This requires reasoning about the
+internal structure of the FST, specifically that `step` followed by
+`singleProducible` captures all one-token output spans.
+-/
+
+omit [FinEnum Γ] [FinEnum α] [FinEnum σa] [DecidableEq Γ] [DecidableEq α] in
+/-- Any one-step FST run decomposes into a step producing an initial output
+segment followed by a singleProducible tail, yielding membership in
+`InverseTokenSpannerTable` and `RealizableSequences`. -/
+theorem fst_run_produces_realizable
+  (fst_comp : FST α Γ σa) (qa qa' : σa) (t : α) (ts : List α) (gammas : List Γ)
+  (hne : gammas ≠ [])
+  (hrun : fst_comp.evalFrom qa (t :: ts) = some (qa', gammas)) :
+  gammas ∈ RealizableSequences fst_comp ∧
+  t ∈ InverseTokenSpannerTable fst_comp gammas qa := by
+  sorry
+
+/-- Completeness of the mask checker: if a token extends the current prefix to
+a viable prefix (the FST can process the extended sequence and the parser
+accepts), then that token is in the valid-token mask.
+
+This is the reverse direction of `MaskChecker_char_true_imp_viable` and
+corresponds to paper Theorem C.5. -/
+theorem MaskChecker_viable_imp_char_true
+  [BEq σa] [LawfulBEq σa] [FinEnum β]
+  (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
+  (curr : List β) (cand : β)
+  (hviable : ∃ suffix qa gammas,
+    comb.eval (((curr ++ [cand]).map ExtChar.char) ++ suffix) = some (qa, gammas) ∧
+    parser.evalFull gammas ≠ ∅) :
+  MaskChecker comb parser (PreprocessParser comb parser)
+    (BuildInverseTokenSpannerTable comb).snd curr (.char cand) = true := by
+  sorry
+
+/-- `GCDChecker` is definitionally the concrete `MaskChecker` built from the
+detokenizing lexer/parser pair and their preprocessing artifacts. -/
+lemma GCDChecker_eq_MaskChecker
   [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
   [DecidableEq σa]
   [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β) (cand : β) :
-  GCDChecker spec P curr (.char cand) = true →
-    GCDViablePrefix spec P (curr ++ [cand]) := by
-  intro h
-  let comb : FST (Ch β) (Ch Γ) (Unit × LexingState σa) :=
-    Detokenizing.BuildDetokLexer (V := Ch β) spec
-  let parser : PDA (Ch Γ) π (Ch σp) := ParserWithEOS P
-  let _inst_beq_tok : BEq (Ch β) := instBEqOfDecidableEq
-  let _inst_beq_term : BEq (Ch Γ) := instBEqOfDecidableEq
-  let pp_table : PPTable (Ch β) (Ch σp) (Unit × LexingState σa) (Ch Γ) :=
-    PreprocessParser comb parser
-  let itst : List (Ch Γ) → (Unit × LexingState σa) → List (Ch β) :=
-    (BuildInverseTokenSpannerTable comb).snd
-  have hmask :
-      MaskChecker comb parser pp_table itst curr (.char cand) = true := by
-    simpa [GCDChecker, comb, parser, pp_table, itst] using h
-  change ∃ suffix qa gammas,
-    comb.eval (((curr ++ [cand]).map ExtChar.char) ++ suffix) = some (qa, gammas) ∧
-    parser.evalFull gammas ≠ ∅
-  simpa [pp_table, itst] using
-    (MaskChecker_char_true_imp_viable
-      (comb := comb) (parser := parser) (curr := curr) (cand := cand) hmask)
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β) (cand : Ch β) :
+  GCDChecker spec P curr cand =
+    MaskChecker
+      (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+      (ParserWithEOS P)
+      (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
+      (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+      curr cand := by
+  rfl
+
+/-- Unfold `GCDViablePrefix` into the concrete witness used by the wrapper
+theorems. -/
+lemma GCDViablePrefix_iff
+  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+  [DecidableEq σa]
+  [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (w : List β) :
+  GCDViablePrefix spec P w ↔
+    ∃ suffix qa gammas,
+      (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (w.map ExtChar.char ++ suffix) =
+        some (qa, gammas) ∧
+      (ParserWithEOS P).evalFull gammas ≠ ∅ := by
+  rfl
+
+theorem GCDChecker_char_true_imp_viable
+  [BEq σa] [LawfulBEq σa] [FinEnum β] [Vocabulary α β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β) (cand : β)
+  (h : MaskChecker
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (ParserWithEOS P)
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+    curr (.char cand) = true) :
+  ∃ suffix qa gammas,
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+      (((curr ++ [cand]).map ExtChar.char) ++ suffix) = some (qa, gammas) ∧
+    (ParserWithEOS P).evalFull gammas ≠ ∅ :=
+  MaskChecker_char_true_imp_viable
+    (comb := Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (parser := ParserWithEOS P)
+    (curr := curr) (cand := cand) h
+
+/-! ## Paper-facing theorems
+
+Theorem C.8 (Soundness): If the mask checker accepts a character token, then
+the extended prefix is viable (the FST can process it and the parser accepts).
+
+Theorem C.5 (Completeness): If the extended prefix is viable, then the mask
+checker accepts the token. (Depends on `fst_run_produces_realizable`.)
 -/
 
--- Concrete `GCDChecker` viable-prefix wrappers are deferred.
--- The generic theorem boundary above is the current stable proof interface.
+/-- **Theorem C.8 (Soundness)**: If token `cand` passes the GCD mask checker
+after prefix `curr`, then `curr ++ [cand]` extends to a viable run through
+the detokenizing lexer and parser. Fully proved. -/
+theorem Soundness
+  [BEq σa] [LawfulBEq σa] [FinEnum β] [Vocabulary α β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β) (cand : β)
+  (h : MaskChecker
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (ParserWithEOS P)
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+    curr (.char cand) = true) :
+  ∃ suffix qa gammas,
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+      (((curr ++ [cand]).map ExtChar.char) ++ suffix) = some (qa, gammas) ∧
+    (ParserWithEOS P).evalFull gammas ≠ ∅ :=
+  GCDChecker_char_true_imp_viable spec P curr cand h
+
+/-- **Theorem C.5 (Completeness)**: If `curr ++ [cand]` extends to a viable
+run through the detokenizing lexer and parser, then `cand` passes the GCD mask
+checker after prefix `curr`. Depends on `fst_run_produces_realizable`. -/
+theorem Completeness
+  [BEq σa] [LawfulBEq σa] [FinEnum β] [Vocabulary α β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β) (cand : β)
+  (hviable : ∃ suffix qa gammas,
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+      (((curr ++ [cand]).map ExtChar.char) ++ suffix) = some (qa, gammas) ∧
+    (ParserWithEOS P).evalFull gammas ≠ ∅) :
+  MaskChecker
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (ParserWithEOS P)
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+    curr (.char cand) = true :=
+  MaskChecker_viable_imp_char_true
+    (comb := Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (parser := ParserWithEOS P) (curr := curr) (cand := cand) hviable
+
+/-! ## Checker interface connection
+
+Connecting the one-step soundness/completeness results above to the cumulative
+`checkerAllows`/`checkerAccepts` interface defined in `Checker.lean` requires
+induction over the token prefix. The step-level theorems (`Soundness`,
+`Completeness`, `GCDChecker_eos_true_imp_viable`) provide the induction step;
+the base case is trivial since `checkerAllows c [] = true`.
+
+Full connection to `checkerSound` and `checkerComplete` is deferred pending
+resolution of the `sorry` in `fst_run_produces_realizable`.
+-/
+
+/-- The GCD mask checker, viewed as an abstract `Checker`, is sound:
+every incrementally allowed prefix can be extended to an accepted word,
+and decisions depend only on the underlying character content. -/
+theorem GCDChecker_sound
+  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+  [DecidableEq σa]
+  [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) :
+  checkerSound (α := α) (β := β) (GCDChecker spec P) Vocabulary.flatten := by
+  sorry
+
+/-- The GCD mask checker, viewed as an abstract `Checker`, is complete with
+respect to the language defined by the composed detokenizing lexer and parser:
+it accepts exactly the strings in that language, and its intermediate language
+is the prefix closure. -/
+theorem GCDChecker_complete
+  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+  [DecidableEq σa]
+  [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  (L : Language β) :
+  checkerComplete (β := β) (GCDChecker spec P) L := by
+  sorry

@@ -14,7 +14,7 @@ reason.
 inductive ExtChar (α : Type u)
 | char : α → ExtChar α
 | eos  : ExtChar α
-deriving BEq, DecidableEq, Repr
+deriving DecidableEq, Repr
 
 /-- `ExtChar α` is inhabited by the EOS symbol. -/
 instance {α} : Inhabited (ExtChar α) := ⟨ExtChar.eos⟩
