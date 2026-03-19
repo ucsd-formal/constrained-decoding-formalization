@@ -157,6 +157,41 @@ theorem evalFrom_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) 
     have := P.fullStep_subset u v h head
     simp[this, ih]
 
+/-- `fullStep` distributes over union: `fullStep (S₁ ∪ S₂) t = fullStep S₁ t ∪ fullStep S₂ t`. -/
+theorem fullStep_biUnion (S : Finset (σ × List π)) (t : Γ) :
+    P.fullStep S t = S.biUnion (fun x => P.fullStep {x} t) := by
+  simp [fullStep, Finset.biUnion_biUnion]
+
+/-- `evalFrom` distributes over its initial configuration set. -/
+theorem evalFrom_biUnion (S : Finset (σ × List π)) (w : List Γ) :
+    P.evalFrom S w = S.biUnion (fun x => P.evalFrom {x} w) := by
+  induction w generalizing S with
+  | nil => simp [evalFrom]
+  | cons h t ih =>
+    simp only [evalFrom_cons]
+    rw [ih (P.fullStep S h)]
+    rw [fullStep_biUnion]
+    rw [Finset.biUnion_biUnion]
+    apply Finset.biUnion_congr rfl
+    intro a _
+    exact (ih (P.fullStep {a} h)).symm
+
+/-- If `evalFrom S w` is nonempty, some singleton from `S` also reaches a nonempty set. -/
+theorem evalFrom_nonempty_exists_singleton (S : Finset (σ × List π)) (w : List Γ)
+    (hne : P.evalFrom S w ≠ ∅) :
+    ∃ x ∈ S, P.evalFrom {x} w ≠ ∅ := by
+  rw [evalFrom_biUnion] at hne
+  by_contra hall
+  push_neg at hall
+  apply hne
+  rw [Finset.eq_empty_iff_forall_notMem]
+  intro y hy
+  rw [Finset.mem_biUnion] at hy
+  obtain ⟨x, hxS, hxy⟩ := hy
+  have := hall x hxS
+  rw [Finset.eq_empty_iff_forall_notMem] at this
+  exact this y hxy
+
 /-- Evaluate the PDA from its designated start configuration `(start, [])`. -/
 def evalFull : List Γ → Finset (σ × List π) :=
   fun w => (P.evalFrom {(P.start, [])} w)

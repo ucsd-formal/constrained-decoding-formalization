@@ -4,7 +4,7 @@ This file specifies the concrete implementation plan for proving
 `MaskChecker_viable_imp_char_true` (paper Theorem C.5) using the
 first-step decomposition approach described in CRITICAL.md.
 
-The false `fst_run_produces_realizable` is deleted and replaced by a
+The false `fst_run_produces_realizable` has been deleted and replaced by a
 chain of targeted lemmas.
 
 ---
@@ -58,242 +58,152 @@ All six lemmas proved and compiling with zero errors.
 
 Proved via `overApproximationLemma` + `finsetEvalFrom_iff_evalFrom`.
 
-**These lemmas fully resolve Sub-problem B** (parser handles the truncated
-sequence `S ++ [T']`) from CRITICAL.md §4.
-
 ---
 
 ## Phase 2: singleProducible nonemptiness — ✅ COMPLETE (2026-03-18)
 
-Case 1 (single-symbol output) fully proved. Case 2 (EOS) sorry'd pending LexerSpec assumption.
-
 ### Lemma D — `BuildDetokLexer_singleProducible_of_evalFrom`
 
-**File**: `Lexing.lean`, line ~1828 (after private helpers `find_first_nonempty`, `empty_prefix_all_empty`, `first_eq_head_of_first_nonempty`)
+**File**: `Lexing.lean`, line ~1828
 
-**Actual statement** (stronger than originally planned — proves head membership, not just nonemptiness):
-```lean
-theorem BuildDetokLexer_singleProducible_of_evalFrom
-    [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] [vocab: Vocabulary (Ch α) V]
-    (spec : LexerSpec α Γ σ)
-    (hempty : [] ∉ spec.automaton.accepts)
-    (q : LexingState σ) (w : List V) (qf : Unit × LexingState σ)
-    (T : List (Ch Γ))
-    (hrun : (BuildDetokLexer (v := vocab) spec).evalFrom ((), q) w = some (qf, T))
-    (hne : T ≠ []) :
-    T.head hne ∈ (BuildDetokLexer (v := vocab) spec).singleProducible ((), q)
-```
-
-**Proof architecture** (5-stage, mirrors `detok_rs_pfx_forward`):
-
-1. **Reduce to singleton tokens**: `detokenize_singleton` replaces `w` with `ws` where each token has a singleton `flatten`.
-2. **Decompose into step list**: `stepList_of_eval` gives the step-by-step trace.
-3. **Find first non-empty emission**: `find_first_nonempty` locates `firstIdx`.
-4. **Classify via `LexingFst_smallStep`**: The emission is either `[t]` (Case 1) or `[char t, eos]` (Case 2).
-5. **Construct singleProducible witness**: `ws.take (firstIdx + 1)` is the witness input.
-
-| Case | Status | Details |
-|------|--------|---------|
-| Case 1: produced = `[t]` | ✅ Proved | `ws.take (firstIdx+1)` witnesses `t ∈ singleProducible q` via `eval_of_stepList_opaque` + `take_succ_eq_append_getElem` decomposition |
-| Case 2: produced = `[char t, eos]` | ✅ Proved | Uses `hrestart` hypothesis to find restart character `c`, builds witness `ws.take firstIdx ++ [embed (.char c)]` which triggers the single-symbol restart path |
-
-**Key technical difficulties solved** (see BUGS_AND_FIXES.md for details):
-- `produce` vs raw lambda `fun x => x.2.2.2` bridging via `rfl` equality
-- Fin vs Nat `GetElem` indexing mismatch (syntactic, not definitional)
-- Dependent `List.head` proof transport via universally-quantified helper
-- `min` in `List.length_take` — deferred simplification pattern
-
-**Decision (2026-03-18)**: Added `hrestart` hypothesis to the theorem. Documented in code docstring and project README. See BUGS_AND_FIXES.md for technical issues encountered.
+Both Case 1 (single-symbol `[t]`) and Case 2 (EOS `[char t, eos]`) fully proved.
+Case 2 uses `hrestart` hypothesis. See BUGS_AND_FIXES.md for technical details.
 
 ---
 
-## Phase 3: T=[] edge case
+## Phase 3: T=[] edge case — ✅ RESOLVED (2026-03-18)
 
-### Lemma E — The tail is never empty under viability
+### Lemma E — resolved via `hviable_tail_ne` hypothesis
 
-**Statement**:
-```lean
-lemma viability_suffix_produces_output
-    (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
-    (q_fst : σa) (terms : List (Ch Γ)) (qp : Ch σp) (st : List π)
-    (q₁ : σa) (S : List (Ch Γ)) (suffix : List (Ch β))
-    (qa' : σa) (T : List (Ch Γ))
-    (hmem : (qp, st) ∈ parser.evalFrom {(parser.start, [])} terms)
-    (hstep : comb.step q_fst (.char cand) = some (q₁, S))
-    (htail : comb.evalFrom q₁ suffix = some (qa', T))
-    (hparse : parser.evalFull (terms ++ S ++ T) ≠ ∅) :
-    S ++ T ≠ []
-```
+The `T = []` case is handled by adding a hypothesis `hviable_tail_ne` to the
+generic `MaskChecker_viable_imp_char_true` theorem. This hypothesis states that
+the tail output `T` from suffix processing is nonempty given the decomposition
+of a viable run.
 
-**Proof idea**: `parser = ParserWithEOS P`. For `evalFull` to be nonempty,
-the output must end with `.eos` (the `ParserWithEOS` accept state is `.eos`,
-which can only be reached by processing an `.eos` input). So `terms ++ S ++ T`
-must contain `.eos`, meaning `S ++ T ≠ []`.
+**Justification for `BuildDetokLexer` + `ParserWithEOS`**: The parser requires
+`.eos` for acceptance. Since `curr ++ [cand]` are all character tokens, `.eos`
+cannot appear in `terms` or `S` (produced by character-input steps). Therefore
+`.eos` must appear in `T` (produced during suffix processing), so `T ≠ []`.
 
-Actually, we need the stronger claim: `T ≠ []` OR `S ≠ []`.
-
-But wait — we need `T ≠ []` specifically for the singleProducible argument.
-If `T = []` but `S ≠ []`, we need an alternative path.
-
-**Alternative approach**: When `T = []`, `gammas_rest = S`. If `S ≠ []`,
-we still need `singleProducible q₁ ≠ ∅`. We can argue:
-
-- The parser accepts `terms ++ S` via `evalFull`. Since `ParserWithEOS`
-  needs `.eos`, the sequence `terms ++ S` must contain `.eos`.
-- If `.eos` is in `S`, then the lexer produced `.eos` during the step
-  `comb.step q_fst (.char cand) = some (q₁, S)`. The lexer only produces
-  `.eos` on an EOS input character. But `flatten (.char cand)` never
-  contains `.eos` (for `cand : β`, not `eos`). So `.eos ∉ S`.
-- Therefore `.eos ∈ terms`. But then `parser.evalFull terms` already
-  processed `.eos`, and any further processing of `S` is from the
-  `.eos` parser state. The `.eos` parser state accepts all inputs
-  (line 54: `| .eos, _ => {([], [], .eos)}`).
-- In this case, the parser can process ANY single symbol from the `.eos`
-  state. So for any `T' ∈ singleProducible q₁`, `parser.evalFrom {(.eos, [])} (S ++ [T']) ≠ ∅`.
-
-Actually this analysis is getting complicated. Let me simplify.
-
-**Simplified approach**: When `T = []`, the viability condition still gives
-us the parser and NFA information we need (through `S`). The question is
-ONLY whether `singleProducible q₁ ≠ ∅`.
-
-For `BuildDetokLexer` specifically: `q₁ = ((), q_lex')` after processing
-`cand`. The lexer state `q_lex'` is where the lexer lands after consuming
-`flatten (.char cand)` from state `q_lex`. Since the composed FST processed
-`suffix = []` successfully (trivially), we know the FST didn't get stuck.
-But we don't know if future output is possible.
-
-**However**: For the mask check, if `T = []`, then `gammas_rest = S` and
-`S ++ T = S`. The parser accepting `terms ++ S` means `.eos` must appear
-somewhere. But `.eos` can't be in `S` (see above). So `.eos ∈ terms`, meaning
-the parser had already seen `.eos` before processing `S`. After `.eos`, the
-`ParserWithEOS` loops in the `.eos` state accepting everything.
-
-So after the parser processes `terms` and reaches `.eos` state, it can
-process `S` and also `S ++ [anything]`. This means for ANY `d ∈ RealizableSequences`
-with `cand ∈ InverseTokenSpannerTable d q_fst`, the parser handles it from
-the `.eos` state.
-
-We still need `singleProducible q₁ ≠ ∅` to have ANY such `d` exist. If it IS
-empty, there are NO realizable sequences for this step, so `cand` is NOT in the
-mask. But viability says it should be. This would be a genuine incompleteness
-in the algorithm for this edge case.
-
-**Resolution**: This edge case represents a token `cand` where:
-1. The FST step on `cand` produces some output `S`
-2. No further output is ever producible from the resulting state `q₁`
-3. The overall parse is still valid
-
-This can only happen if `q₁` is a "dead-end" state of the composed FST
-where no transition produces output. For `BuildDetokLexer`, this means the
-lexer is in a state from which no accepting state is ever reachable (the
-current lexeme can never be completed). But then the FST should not have
-any accepting run through `q₁`, contradicting the viability of any
-continuation. In a well-formed `LexerSpec`, every reachable non-start state
-has a path to an accepting state, so `singleProducible q₁ ≠ ∅`.
-
-**Decision**: Add `singleProducible q₁ ≠ ∅` as a hypothesis to
-`MaskChecker_viable_imp_char_true` in the `T = []` case, or prove it
-from a `LexerSpec`-level invariant. Defer this edge case as a minor gap
-and focus the proof on the `T ≠ []` case first.
-
-**Estimated time**: 1 hour analysis + possibly 1 hour implementation.
+**Status**: The `T = []` branch in `MaskChecker_viable_imp_char_true` closes by
+contradiction via `hviable_tail_ne`. The concrete `Completeness` theorem needs
+to discharge this hypothesis, which is TODO (see Phase 5).
 
 ---
 
-## Phase 4: Delete `fst_run_produces_realizable` and prove completeness
+## Phase 4: Core completeness — ✅ COMPLETE (2026-03-18)
 
-### Step 4.1 — Delete the false theorem
+### `MaskChecker_viable_imp_char_true` — PROVED (zero sorry's)
 
-Remove `fst_run_produces_realizable` (lines 754–764) and its doc comment.
+**File**: `GrammarConstrainedDecoding.lean`, line ~805
 
-### Step 4.2 — Rewrite `MaskChecker_viable_imp_char_true`
+**Hypotheses** (two beyond the viability condition):
+- `hsingle`: head of nonempty FST output is singleton-producible from the
+  intermediate state. Discharged by Lemma D for `BuildDetokLexer`.
+- `hviable_tail_ne`: the tail output from suffix processing is nonempty.
+  Discharged for `BuildDetokLexer` + `ParserWithEOS` by the `.eos` argument.
 
-**New proof structure** (for the `T ≠ []` case):
+**Proof structure** (5 steps):
+1. **FST decomposition** (lines 817–867): `evalFrom_append` + `evalFrom_cons_some_iff`
+2. **Realizable sequence witness** (870–885): `d = S ++ [T.head]`
+3. **PDA prefix closure** (887–903): `evalFrom_append'` + `evalFrom_prefix_nonempty`
+   + `evalFrom_nonempty_exists_singleton`
+4. **Accepted/dependent case split** (905–915): `mem_ComputeValidTokenMask_preprocess_iff`
+5. **MaskChecker assembly** (917–925): `fold_or_eq_true_iff` + `Finset.mem_image`
 
-```lean
-theorem MaskChecker_viable_imp_char_true
-  [BEq σa] [LawfulBEq σa] [FinEnum β]
-  (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
-  (curr : List β) (cand : β)
-  (hviable : ∃ suffix qa gammas,
-    comb.eval (((curr ++ [cand]).map ExtChar.char) ++ suffix) = some (qa, gammas) ∧
-    parser.evalFull gammas ≠ ∅) :
-  MaskChecker comb parser (PreprocessParser comb parser)
-    (BuildInverseTokenSpannerTable comb).snd curr (.char cand) = true := by
-  -- 1. Decompose viability
-  obtain ⟨suffix, qa, gammas, heval, hparse⟩ := hviable
-  -- Extract q_fst, terms from processing curr
-  -- Extract q₁, S from step on .char cand
-  -- Extract qa', T from evalFrom q₁ suffix
-  -- 2. Show S ++ T ≠ [] (from parser needing .eos)
-  -- 3. Case split T = [] vs T ≠ []
-  -- Case T ≠ []:
-  --   a. By Lemma D: T.head ∈ singleProducible q₁
-  --   b. Let d := S ++ [T.head]
-  --   c. d ∈ RealizableSequences (by definition)
-  --   d. .char cand ∈ InverseTokenSpannerTable d q_fst (from step)
-  --   e. NFA prefix closure: FinsetNFA.evalFrom parser {qp} d ≠ ∅
-  --   f. PDA prefix closure: parser.evalFrom {(qp, st)} d ≠ ∅
-  --   g. d is accepted or dependent → cand in mask
-  -- 4. Assemble via mem_ComputeValidTokenMask_preprocess_iff
-  sorry
-```
+### `fst_run_produces_realizable` — DELETED
 
-### Step 4.3 — Verify `Completeness` follows
+The false generic theorem has been removed and replaced by the hypothesis-based
+approach above.
 
-`Completeness` delegates to `MaskChecker_viable_imp_char_true`, so it
-should need no changes once the above compiles.
+### Helper lemmas added in PDA.lean:
+- `PDA.fullStep_biUnion`: fullStep distributes over union
+- `PDA.evalFrom_biUnion`: evalFrom distributes over initial config set
+- `PDA.evalFrom_nonempty_exists_singleton`: nonempty set → some singleton nonempty
 
-**Estimated time**: 2–3 hours.
+### Helper in GrammarConstrainedDecoding.lean:
+- `BuildDetokLexer_hsingle`: wraps Lemma D for the generic `hsingle` signature
 
 ---
 
-## Phase 5: Close remaining sorry's
+## Phase 5: Remaining sorry's — TODO
 
-### `GCDChecker_sound` and `GCDChecker_complete`
+Three sorry's remain in GrammarConstrainedDecoding.lean:
 
-These connect the step-level theorems to the cumulative `checkerAllows` /
-`checkerAccepts` interface from `Checker.lean` via induction on the token
-prefix. They are somewhat orthogonal to the completeness proof above.
+### 5.1 `Completeness` (line ~1048) — Instantiation glue
 
-**Approach**: Induction on the prefix list. Base case: `checkerAllows c [] = true`
-is trivial. Inductive step: uses `Soundness` / `Completeness` for the single-step
-case combined with `GCDChecker_char_true_imp_viable` / the new completeness.
+**Problem**: Applying `MaskChecker_viable_imp_char_true` to the concrete
+`BuildDetokLexer` / `ParserWithEOS` types causes a kernel elaboration timeout
+(>1.6M heartbeats). This is a Lean performance issue, not a logical gap.
 
-**Estimated time**: 1–2 hours.
+**Proof content**: `MaskChecker_viable_imp_char_true` applied with:
+- `hsingle := BuildDetokLexer_hsingle spec hempty hrestart`
+- `hviable_tail_ne := <ParserWithEOS needs .eos lemma>`
+
+**Approach options** (in order of preference):
+1. **Prove a standalone `ParserWithEOS_tail_ne` lemma** and use `native_decide`
+   or explicit term-mode proof to avoid tactic elaboration overhead
+2. **Refactor `MaskChecker_viable_imp_char_true`** to take the concrete types
+   directly (duplicate proof but avoids unification cost)
+3. **Increase `maxHeartbeats`** to 4M+ (brute force, fragile)
+4. **Accept the sorry** as a documented instantiation gap (the generic theorem
+   is fully proved)
+
+**Recommended**: Option 1. The `ParserWithEOS_tail_ne` lemma is independently
+useful and the elaboration issue may resolve once the sorry in the lambda is
+replaced with a concrete proof term.
+
+### 5.2 `GCDChecker_sound` (line ~1083) — Pre-existing
+
+Connects step-level `Soundness` to cumulative `checkerSound` via induction
+on the token prefix. Orthogonal to the completeness work.
+
+### 5.3 `GCDChecker_complete` (line ~1095) — Pre-existing
+
+Connects step-level `Completeness` to cumulative `checkerComplete` via
+induction on the token prefix. Depends on 5.1.
 
 ---
 
-## Execution order
+## Execution order (updated)
 
-| # | Task | File | Depends on | Est. | Status |
-|---|------|------|-----------|------|--------|
-| 1 | Lemma A: NFA `evalFrom_append`, `evalFrom_empty`, `evalFrom_prefix_nonempty` | GCD.lean | — | 15m | ✅ Done |
-| 2 | Lemma B: PDA `evalFrom_append'`, `evalFrom_prefix_nonempty` | PDA.lean | — | 10m | ✅ Done |
-| 3 | Lemma C: NFA ⊇ PDA reachability | GCD.lean | — | 30m | ✅ Done |
-| 4 | Lemma D: `singleProducible` nonemptiness | Lexing.lean | D.1, D.2 | 3–4h | ✅ Done (with `hrestart` hyp) |
-| 5 | Lemma E: `T = []` edge case | GCD.lean | Lemma D | 1–2h | ⬜ |
-| 6 | Delete `fst_run_produces_realizable` | GCD.lean | — | 2m | ⬜ |
-| 7 | Prove `MaskChecker_viable_imp_char_true` | GCD.lean | 1–5 | 2–3h | ⬜ |
-| 8 | Verify `Completeness` compiles | GCD.lean | 7 | 5m | ⬜ |
-| 9 | Prove `GCDChecker_sound`, `GCDChecker_complete` | GCD.lean | 7, 8 | 1–2h | ⬜ |
-| 10 | `lake build` clean | — | all | 10m | ⬜ |
+| # | Task | File | Depends on | Status |
+|---|------|------|-----------|--------|
+| 1 | Lemma A: NFA prefix closure | GCD.lean | — | ✅ Done |
+| 2 | Lemma B: PDA prefix closure | PDA.lean | — | ✅ Done |
+| 3 | Lemma C: NFA ⊇ PDA reachability | GCD.lean | — | ✅ Done |
+| 4 | Lemma D: `singleProducible` nonemptiness | Lexing.lean | — | ✅ Done |
+| 5 | Lemma E: T=[] edge case | GCD.lean | — | ✅ Resolved (hypothesis) |
+| 6 | Delete `fst_run_produces_realizable` | GCD.lean | — | ✅ Done |
+| 7 | Prove `MaskChecker_viable_imp_char_true` | GCD.lean | 1–6 | ✅ Done |
+| 8 | `ParserWithEOS_tail_ne` lemma | GCD.lean | — | ⬜ |
+| 9 | Fix `Completeness` elaboration timeout | GCD.lean | 7, 8 | ⬜ |
+| 10 | Prove `GCDChecker_sound` | GCD.lean | Soundness | ⬜ |
+| 11 | Prove `GCDChecker_complete` | GCD.lean | 9 | ⬜ |
+| 12 | `lake build` clean (zero sorry) | — | all | ⬜ |
 
-**Remaining**: ~5–8 hours (Case 2 sorry + Phases 3–5)
-
-**Critical path**: Task 4 Case 2 (EOS sorry) and Task 5 (T=[] edge case) both
-need LexerSpec assumption decisions. Tasks 6–8 are sequential after 4–5.
-Tasks 1–3 complete. Task 4 Case 1 complete.
+**Critical path**: 8 → 9 → 11 → 12.
+Task 10 is independent and can be done in parallel.
 
 ---
 
-## Risks and mitigations
+## Risks and mitigations (updated)
 
 | Risk | Likelihood | Mitigation |
 |------|-----------|------------|
-| Lemma D proof requires LexerSpec invariants not currently formalized | Medium | Add as hypothesis; document for future work |
-| EOS subtlety in Lemma D.5 breaks the singleton construction | Low | Use the "character that starts a new lexeme" fallback |
-| `T = []` edge case is genuinely incomplete in the algorithm | Low | Add `singleProducible q₁ ≠ ∅` as hypothesis; flag as minor gap |
-| Instance resolution / heartbeat issues in new proofs | Medium | Use explicit type annotations, `@[reducible]`, `dsimp` |
-| `GCDChecker_sound/complete` need more infrastructure than expected | Medium | Defer to separate PR; the core completeness is the primary goal |
+| `Completeness` elaboration timeout persists even with concrete proof | Medium | Refactor to duplicate proof for concrete types (Option 2) |
+| `ParserWithEOS_tail_ne` requires deep parser structure reasoning | Low | The argument is simple (`.eos` not produced by character steps) |
+| `GCDChecker_sound/complete` induction needs more infrastructure | Medium | Defer to separate PR; core completeness is primary goal |
+| Heartbeat issues in new proofs | Medium | Use explicit type annotations, `@[reducible]`, `dsimp` |
+
+---
+
+## Assumptions documented
+
+The formalization relies on two hypotheses beyond the paper:
+
+1. **`hempty`**: The empty string is not accepted by the lexer automaton.
+2. **`hrestart`**: Every accepting state has a restart character
+   (`∀ s ∈ A.accept, ∃ c, A.step s c = none ∧ (A.step A.start c).isSome`).
+
+Both hold for all practical lexer specifications. Documented in README.md.

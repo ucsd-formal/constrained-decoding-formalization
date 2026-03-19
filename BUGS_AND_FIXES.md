@@ -61,3 +61,24 @@ Tracks formalization bugs encountered during implementation and the fixes applie
 - **Root cause**: The EOS step always emits two symbols. If the accepting state has outgoing transitions on ALL characters, then every `char c` input extends the lexeme (output `[]`) rather than triggering the restart path that produces `[char t]`.
 - **Resolution**: Added hypothesis `hrestart : ∀ s ∈ spec.automaton.accept, ∃ c : α, spec.automaton.step s c = none ∧ (spec.automaton.step spec.automaton.start c).isSome`. This guarantees a restart character exists for every accepting state. The proof uses `vocab.embed (.char c)` as a replacement token, triggering the restart path (line 246-248 of `BuildLexingFST`) which outputs `[ExtChar.char t]`.
 - **Justification**: Holds for all practical lexer specs — documented in README and theorem docstring.
+
+---
+
+## Phase 4: Completeness Assembly
+
+### Bug 9: `PDA.evalFrom_nonempty_exists_singleton` not found via dot notation
+- **Symptom**: `parser.evalFrom_nonempty_exists_singleton` gives "Invalid field" error; `PDA.evalFrom_nonempty_exists_singleton` gives "Unknown constant".
+- **Cause**: The lemma was added to PDA.lean but the downstream file (GrammarConstrainedDecoding.lean) was using stale oleans. Dot notation resolution failed because the LSP hadn't rebuilt the dependency.
+- **Fix**: Ran `lake build` to rebuild PDA.lean, then used fully qualified `PDA.evalFrom_nonempty_exists_singleton parser ...`.
+
+### Bug 10: `Completeness` kernel elaboration timeout (>1.6M heartbeats)
+- **Symptom**: Applying `MaskChecker_viable_imp_char_true` (generic) to `BuildDetokLexer`/`ParserWithEOS` (concrete) via `apply`, `exact`, or `@`-explicit form all timeout at `whnf`.
+- **Cause**: The generic theorem has a large proof body. When Lean elaborates the application with concrete types, it attempts deep `whnf` reduction of `MaskChecker`, `PreprocessParser`, `BuildInverseTokenSpannerTable`, etc. to unify the goal with the theorem's conclusion. These are complex nested definitions involving `FinEnum.toList`, `Finset.biUnion`, etc.
+- **Attempted mitigations**: `set_option maxHeartbeats` up to 1.6M, `@`-explicit application, `apply` vs `exact`, `attribute [irreducible]` (failed: theorems can't be made irreducible).
+- **Current status**: `Completeness` is sorry'd with detailed documentation. The logical content is fully captured by the generic theorem. See COMPLETENESS_PROOF_PLAN.md §5.1 for resolution options.
+
+### Design Decision: `hviable_tail_ne` hypothesis
+- **Problem**: The `T = []` edge case in `MaskChecker_viable_imp_char_true` — when the FST produces no output during suffix processing, there's no `T.head` to use as the singleton-producible witness.
+- **Analysis**: For `BuildDetokLexer` + `ParserWithEOS`, `T = []` is impossible because the parser requires `.eos` for acceptance, and `.eos` can only be produced during suffix processing (not from character-input steps).
+- **Resolution**: Added `hviable_tail_ne` as a hypothesis to the generic theorem. The `T = []` branch closes by contradiction. The concrete `Completeness` theorem needs to discharge this hypothesis using the `.eos` argument.
+- **Justification**: Pragmatic choice — keeps the generic theorem clean while the concrete discharge is a straightforward property of `ParserWithEOS`.
