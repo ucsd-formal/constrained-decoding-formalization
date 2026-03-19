@@ -116,7 +116,7 @@ proved (zero sorry's).
 | 5 | Parser prefix closure (Step 3) | ✅ |
 | 6 | Case split + mask membership (Step 4) | ✅ |
 | 7 | Assemble MaskChecker = true (Step 5) | ✅ |
-| 8 | Verify `Completeness` compiles | ⚠️ Timeout (see §5.1 of COMPLETENESS_PROOF_PLAN.md) |
+| 8 | Verify `Completeness` compiles | ✅ Resolved (duplicated proof for concrete types) |
 
 ## Decision taken
 
@@ -125,6 +125,6 @@ with two hypotheses:
 - `hsingle`: head of nonempty output is singleton-producible
 - `hviable_tail_ne`: tail output from suffix processing is nonempty
 
-`Completeness` instantiates with Lemma D (`BuildDetokLexer_hsingle`) and a
-`ParserWithEOS`-specific `.eos` argument. The instantiation currently times out
-due to kernel elaboration cost — documented as a Lean performance issue.
+`Completeness` was resolved by duplicating the proof for concrete types
+(`BuildDetokLexer` + `ParserWithEOS`) to avoid the kernel elaboration timeout.
+Uses `set_option maxHeartbeats 1600000`. `EOSCompleteness` also fully proved.

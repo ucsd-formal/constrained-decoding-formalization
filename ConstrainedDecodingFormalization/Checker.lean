@@ -33,6 +33,20 @@ def checkerAllows (c : Checker β) (w : List β) : Bool :=
   checkerAllowsHelper c w.reverse
 
 /-- Whether `w` is accepted incrementally and may also be terminated by EOS. -/
+@[simp] theorem checkerAllows_nil (c : Checker β) : checkerAllows c [] = true := by
+  simp [checkerAllows, checkerAllowsHelper]
+
+theorem checkerAllows_snoc (c : Checker β) (w : List β) (v : β) :
+    checkerAllows c (w ++ [v]) = (c w v && checkerAllows c w) := by
+  simp only [checkerAllows, List.reverse_append, List.reverse_cons, List.reverse_nil,
+    List.nil_append, List.singleton_append]
+  simp [checkerAllowsHelper, List.reverse_reverse]
+
+theorem checkerAllows_snoc_iff (c : Checker β) (w : List β) (v : β) :
+    checkerAllows c (w ++ [v]) ↔ checkerAllows c w ∧ c w v = true := by
+  rw [checkerAllows_snoc]
+  simp [Bool.and_eq_true, and_comm]
+
 def checkerAccepts (c : Checker β) (w : List β) : Bool :=
   checkerAllows c w && c w .eos = true
 

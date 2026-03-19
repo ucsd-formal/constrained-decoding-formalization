@@ -1851,15 +1851,35 @@ theorem GCDChecker_sound
   checkerSound (α := α) (β := β) (GCDChecker spec P) Vocabulary.flatten := by
   sorry
 
+/-- The target language of the GCD checker: token sequences `w` such that the
+composed detokenizing lexer processes `w.map char ++ [.eos]` successfully and
+the EOS-augmented parser accepts the resulting terminal sequence. -/
+def GCDLanguage
+  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+  [FinEnum β] [FinEnum σa] [FinEnum α]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) : Language β :=
+  { w | ∃ qa gammas,
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+      (w.map ExtChar.char ++ [.eos]) = some (qa, gammas) ∧
+    gammas ∈ (ParserWithEOS P).accepts }
+
 /-- The GCD mask checker, viewed as an abstract `Checker`, is complete with
 respect to the language defined by the composed detokenizing lexer and parser:
 it accepts exactly the strings in that language, and its intermediate language
-is the prefix closure. -/
+is the prefix closure.
+
+**Status**: Sorry'd. Requires induction over the token prefix using
+`Completeness`/`EOSCompleteness` (forward) and `Soundness` (backward),
+plus `checkerAllowsTermination` for the intermediate language direction.
+See PHASE5_CHECKER_INTERFACE.md for the detailed proof plan. -/
 theorem GCDChecker_complete
   [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
   [DecidableEq σa]
   [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
-  (L : Language β) :
-  checkerComplete (β := β) (GCDChecker spec P) L := by
+  (hempty : [] ∉ spec.automaton.accepts)
+  (hrestart : ∀ s ∈ spec.automaton.accept,
+    ∃ c : α, spec.automaton.step s c = none ∧
+      (spec.automaton.step spec.automaton.start c).isSome) :
+  checkerComplete (β := β) (GCDChecker spec P) (GCDLanguage spec P) := by
   sorry

@@ -126,42 +126,36 @@ approach above.
 
 ---
 
-## Phase 5: Remaining sorry's — TODO
+## Phase 5: Remaining sorry's — IN PROGRESS
 
-Three sorry's remain in GrammarConstrainedDecoding.lean:
+Two sorry's remain in GrammarConstrainedDecoding.lean (down from three):
 
-### 5.1 `Completeness` (line ~1048) — Instantiation glue
+### 5.1 `Completeness` — ✅ RESOLVED
 
-**Problem**: Applying `MaskChecker_viable_imp_char_true` to the concrete
-`BuildDetokLexer` / `ParserWithEOS` types causes a kernel elaboration timeout
-(>1.6M heartbeats). This is a Lean performance issue, not a logical gap.
+Duplicated proof for concrete types to avoid elaboration timeout.
+Uses `set_option maxHeartbeats 1600000`.
 
-**Proof content**: `MaskChecker_viable_imp_char_true` applied with:
-- `hsingle := BuildDetokLexer_hsingle spec hempty hrestart`
-- `hviable_tail_ne := <ParserWithEOS needs .eos lemma>`
+### 5.1b `EOSCompleteness` — ✅ RESOLVED
 
-**Approach options** (in order of preference):
-1. **Prove a standalone `ParserWithEOS_tail_ne` lemma** and use `native_decide`
-   or explicit term-mode proof to avoid tactic elaboration overhead
-2. **Refactor `MaskChecker_viable_imp_char_true`** to take the concrete types
-   directly (duplicate proof but avoids unification cost)
-3. **Increase `maxHeartbeats`** to 4M+ (brute force, fragile)
-4. **Accept the sorry** as a documented instantiation gap (the generic theorem
-   is fully proved)
+Proved with 5 new structural helper lemmas for `.eos` properties.
 
-**Recommended**: Option 1. The `ParserWithEOS_tail_ne` lemma is independently
-useful and the elaboration issue may resolve once the sorry in the lambda is
-replaced with a concrete proof term.
-
-### 5.2 `GCDChecker_sound` (line ~1083) — Pre-existing
+### 5.2 `GCDChecker_sound` (line ~1846) — Sorry
 
 Connects step-level `Soundness` to cumulative `checkerSound` via induction
-on the token prefix. Orthogonal to the completeness work.
+on the token prefix. Requires `checkerAllowsTermination` (productivity/liveness
+hypothesis) and `checkerPathIndependent` (FST factors through flatten).
 
-### 5.3 `GCDChecker_complete` (line ~1095) — Pre-existing
+### 5.3 `GCDChecker_complete` (line ~1875) — Sorry (statement fixed)
 
-Connects step-level `Completeness` to cumulative `checkerComplete` via
-induction on the token prefix. Depends on 5.1.
+Statement corrected: now uses concrete `GCDLanguage spec P` instead of free `L`.
+Added `hempty`/`hrestart` hypotheses. Connects step-level `Completeness`/
+`EOSCompleteness` to cumulative `checkerComplete` via induction on the token
+prefix.
+
+### Infrastructure completed
+
+- `checkerAllows_nil`, `checkerAllows_snoc`, `checkerAllows_snoc_iff` (Checker.lean)
+- `GCDLanguage` definition (GrammarConstrainedDecoding.lean)
 
 ---
 
@@ -176,14 +170,17 @@ induction on the token prefix. Depends on 5.1.
 | 5 | Lemma E: T=[] edge case | GCD.lean | — | ✅ Resolved (hypothesis) |
 | 6 | Delete `fst_run_produces_realizable` | GCD.lean | — | ✅ Done |
 | 7 | Prove `MaskChecker_viable_imp_char_true` | GCD.lean | 1–6 | ✅ Done |
-| 8 | `ParserWithEOS_tail_ne` lemma | GCD.lean | — | ⬜ |
-| 9 | Fix `Completeness` elaboration timeout | GCD.lean | 7, 8 | ⬜ |
+| 8 | `ParserWithEOS_tail_ne` lemma | GCD.lean | — | ✅ (via duplicated proof) |
+| 9 | Fix `Completeness` elaboration timeout | GCD.lean | 7, 8 | ✅ Done (duplicated proof) |
+| 9b | Prove `EOSCompleteness` | GCD.lean | — | ✅ Done |
+| 9c | `checkerAllows` induction lemmas | Checker.lean | — | ✅ Done |
+| 9d | Define `GCDLanguage`, fix `GCDChecker_complete` statement | GCD.lean | — | ✅ Done |
 | 10 | Prove `GCDChecker_sound` | GCD.lean | Soundness | ⬜ |
-| 11 | Prove `GCDChecker_complete` | GCD.lean | 9 | ⬜ |
+| 11 | Prove `GCDChecker_complete` | GCD.lean | 9, 9b, 9c, 9d | ⬜ |
 | 12 | `lake build` clean (zero sorry) | — | all | ⬜ |
 
-**Critical path**: 8 → 9 → 11 → 12.
-Task 10 is independent and can be done in parallel.
+**Critical path**: 10 + 11 → 12.
+Tasks 10 and 11 are independent and can be done in parallel.
 
 ---
 
