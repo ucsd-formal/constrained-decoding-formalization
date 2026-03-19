@@ -83,7 +83,49 @@ theorem finsetEvalFrom_iff_evalFrom (p: PDA Γ π σp) (q : Finset σp) (s : Lis
       rw[←this]
       apply ih
     exact Finset.coe_biUnion
+lemma evalFrom_append (p : PDA Γ π σp) (S : Finset σp)
+    (xs ys : List Γ) :
+    FinsetNFA.evalFrom p S (xs ++ ys) =
+      FinsetNFA.evalFrom p (FinsetNFA.evalFrom p S xs) ys := by
+  simp [FinsetNFA.evalFrom, List.foldl_append]
+
+@[simp]
+lemma evalFrom_empty (p : PDA Γ π σp) (w : List Γ) :
+    FinsetNFA.evalFrom p ∅ w = ∅ := by
+  induction w with
+  | nil => simp [FinsetNFA.evalFrom]
+  | cons h t ih =>
+    simp only [FinsetNFA.evalFrom, List.foldl_cons]
+    have : stepSet p ∅ h = ∅ := by simp [stepSet]
+    rw [this]
+    exact ih
+
+lemma evalFrom_prefix_nonempty (p : PDA Γ π σp) (S : Finset σp)
+    (xs ys : List Γ) :
+    FinsetNFA.evalFrom p S (xs ++ ys) ≠ ∅ →
+      FinsetNFA.evalFrom p S xs ≠ ∅ := by
+  intro h habs
+  rw [FinsetNFA.evalFrom_append, habs, FinsetNFA.evalFrom_empty] at h
+  exact h rfl
+
 end FinsetNFA
+
+omit [DecidableEq Γ] in
+/-- If the PDA reaches a nonempty configuration set, the NFA overapproximation
+also reaches a nonempty state set. -/
+lemma PDA.evalFrom_nonempty_imp_nfa_nonempty (P : PDA Γ π σp)
+    (qp : σp) (st : List π) (w : List Γ) :
+    P.evalFrom {(qp, st)} w ≠ ∅ →
+      FinsetNFA.evalFrom P {qp} w ≠ ∅ := by
+  intro hne habs
+  apply hne
+  rw [Finset.eq_empty_iff_forall_notMem] at habs ⊢
+  intro ⟨s', st'⟩ hmem
+  have hovr := P.overApproximationLemma w {(qp, st)} s' st' hmem
+  simp at hovr
+  have := (FinsetNFA.finsetEvalFrom_iff_evalFrom P {qp} w s').mpr
+  simp at this
+  exact habs s' (this hovr)
 
 /-- Characterize membership in a left fold of list concatenation with an
 arbitrary initial accumulator. -/

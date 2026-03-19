@@ -130,6 +130,16 @@ theorem evalFrom_none  ( w : List Γ ) : P.evalFrom {} w = {} := by
   have : P.evalFrom {} (h :: t) = P.evalFrom (P.fullStep {} h) t := by rfl
   simp[this, fullStep_none, ih]
 
+theorem evalFrom_append' (S : Finset (σ × List π)) (xs ys : List Γ) :
+    P.evalFrom S (xs ++ ys) = P.evalFrom (P.evalFrom S xs) ys := by
+  simp [evalFrom, List.foldl_append]
+
+theorem evalFrom_prefix_nonempty (S : Finset (σ × List π)) (xs ys : List Γ) :
+    P.evalFrom S (xs ++ ys) ≠ ∅ → P.evalFrom S xs ≠ ∅ := by
+  intro h habs
+  rw [evalFrom_append', habs, evalFrom_none] at h
+  exact h rfl
+
 @[simp]
 theorem fullStep_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) (h: u ⊆ v) ( w : Γ )
   : P.fullStep u w ⊆ P.fullStep v w := by

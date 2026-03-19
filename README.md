@@ -58,6 +58,20 @@ To run locally:
 ./lean-dep-viz build --output-dir site  # Generate static site
 ```
 
+## Assumptions
+
+The completeness proof relies on one hypothesis about the lexer specification beyond what is stated in the paper:
+
+**Lexer restartability (`hrestart`).** Every accepting state of the character automaton has at least one character that does *not* extend the current lexeme but *can* start a new lexeme from the start state:
+
+```
+∀ s ∈ A.accept, ∃ c, A.step s c = none ∧ (A.step A.start c).isSome
+```
+
+This is needed because the lexing FST has two emission patterns: a single-symbol `[char t]` (when completing a token and restarting) and a two-symbol `[char t, eos]` (when completing at end-of-stream). The completeness argument requires that the head of any nonempty output is *singleton-producible*—i.e., there exists an input that produces exactly that one symbol. For the EOS case, the two-symbol emission `[char t, eos]` cannot directly witness singleton producibility, so we need the restart path to produce just `[char t]`. The `hrestart` hypothesis guarantees such a restart character exists.
+
+This holds for all practical lexer specifications: it requires only that (1) the start state has at least one outgoing transition, and (2) each accepting state has at least one character class it does not recognize. Both conditions are trivially satisfied by standard lexers for programming languages, JSON, etc., where different token types (identifiers, operators, literals) use disjoint character classes.
+
 ## License
 
 This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.

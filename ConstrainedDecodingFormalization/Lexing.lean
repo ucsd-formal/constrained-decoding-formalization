@@ -1820,6 +1820,243 @@ private lemma first_eq_head_of_first_nonempty {Γ V σ} (x : List (Ch Γ)) (he :
   simp[hne]
 
 omit [BEq V] in
+/-- If the composed detokenizing lexer produces nonempty output from state `q`,
+then the head of that output is singleton-producible from `q`.
+
+This is the core FST-side lemma for completeness: it bridges a multi-step run
+producing `T ≠ []` to a witness in `singleProducible q`.
+
+The `hrestart` hypothesis asks that every accepting state of the character
+automaton has at least one character that does **not** extend the current
+lexeme but **can** start a new one from the start state.  This ensures
+the lexer can always complete a token with a single-symbol emission
+(without appending EOS), which is required when the first emission on a
+run is the two-symbol EOS-triggered `[char t, eos]` pattern.  The
+hypothesis holds for all practical lexer specifications—see the project
+README for discussion. -/
+theorem BuildDetokLexer_singleProducible_of_evalFrom
+    [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] [vocab: Vocabulary (Ch α) V]
+    (spec : LexerSpec α Γ σ)
+    (hempty : [] ∉ spec.automaton.accepts)
+    (hrestart : ∀ s ∈ spec.automaton.accept,
+      ∃ c : α, spec.automaton.step s c = none ∧
+        (spec.automaton.step spec.automaton.start c).isSome)
+    (q : LexingState σ) (w : List V) (qf : Unit × LexingState σ)
+    (T : List (Ch Γ))
+    (hrun : (BuildDetokLexer (v := vocab) spec).evalFrom ((), q) w = some (qf, T))
+    (hne : T ≠ []) :
+    T.head hne ∈ (BuildDetokLexer (v := vocab) spec).singleProducible ((), q) := by
+  let lexer := BuildDetokLexer (v := vocab) spec
+  have hlexer : lexer = (BuildDetokenizingFST.compose (BuildLexingFST spec)) := by
+    simp[BuildDetokLexer, lexer]
+  -- Stage 1: reduce to singleton tokens
+  have h_singleton := detokenize_singleton (v := vocab) (BuildLexingFST spec) q w
+  rw[←hlexer] at h_singleton
+  obtain ⟨ws, h_eq, h_ws_singleton⟩ := h_singleton
+  rw[hrun] at h_eq
+  -- Stage 2: decompose into step list
+  have h_step_list_exists := lexer.stepList_of_eval ((), q) ws
+  simp[←h_eq] at h_step_list_exists
+  obtain ⟨step_list, h_step_list⟩ := h_step_list_exists
+  -- Stage 3: find first non-empty emission
+  obtain ⟨firstIdx, hft_ne, h_prefix_empty⟩ :=
+    find_first_nonempty step_list T hne h_step_list.right.left
+  -- Each token in ws is singleton
+  have ⟨flat, h_flat⟩ : ∃ t, vocab.flatten step_list[firstIdx.val].2.1 = [t] := by
+    have := lexer.stepList_w ((), q) ws
+    simp only [h_step_list] at this
+    have : step_list[firstIdx].2.1 ∈ ws := by
+      have h_in : step_list[firstIdx].2.1 ∈ List.map (fun x => x.2.1) step_list := by
+        apply List.mem_map.mpr
+        exists step_list[firstIdx]
+        simp
+      rw[this] at h_in
+      exact h_in
+    exact h_ws_singleton step_list[firstIdx].2.1 this
+  -- Stage 4: classify via LexingFst_smallStep
+  have h_first_production : lexer.step step_list[firstIdx].1 step_list[firstIdx].2.1 =
+      some step_list[firstIdx].2.2 := by
+    have := lexer.stepList_zip ((), q) ws
+    simp only [h_step_list] at this
+    exact this step_list[firstIdx] (by simp)
+  simp[lexer, BuildDetokLexer] at h_first_production
+  rw[detokenizer_comp_step] at h_first_production
+  simp[h_flat] at h_first_production
+  obtain ⟨q', produced, hstep, hq'produced⟩ := h_first_production
+  have h_small := LexingFst_smallStep spec step_list[firstIdx].1.2 flat q' produced hstep
+  have hproduced_ne : produced ≠ [] := by
+    have : produced = step_list[firstIdx].2.2.2 := by
+      simpa using congrArg Prod.snd hq'produced
+    rw[this]; simp at hft_ne; exact hft_ne
+  simp[hproduced_ne] at h_small
+  -- Prefix produces empty output
+  have h_prefix_empty_flat : (step_list.take firstIdx).flatMap produce = [] :=
+    empty_prefix_all_empty step_list firstIdx h_prefix_empty
+  -- Compute the head
+  have h_head_eq : T.head hne = (produce step_list[firstIdx]).head (by simp at hft_ne; exact hft_ne) :=
+    first_eq_head_of_first_nonempty T hne step_list firstIdx h_step_list.right.left h_prefix_empty_flat hft_ne
+  -- stepList prefix/take info
+  have hslen := lexer.stepList_len ((), q) ws
+  simp[lexer, h_step_list] at hslen
+  have hft_lt_w : firstIdx.val < ws.length := by rw[←hslen]; simp
+  -- Case split on output structure
+  cases h_small with
+  | inl h_one =>
+    -- Case 1: produced = [t], exactly one symbol
+    obtain ⟨t, ht⟩ := h_one
+    have hprod_eq : produced = step_list[firstIdx].2.2.2 := by
+      simpa using congrArg Prod.snd hq'produced
+    let wfinal := ws.take (firstIdx.val + 1)
+    have hpfx := lexer.stepList_prefix_w ((), q) ws
+    simp[h_step_list] at hpfx
+    have h_step_wfinal : lexer.stepList ((), q) wfinal =
+        some (take wfinal.length step_list) := by
+      apply hpfx; simp[wfinal, List.take_prefix]
+    have heval_raw := lexer.eval_of_stepList_opaque ((), q) wfinal
+    simp[h_step_wfinal] at heval_raw
+    obtain ⟨a, b, heval⟩ := heval_raw
+    -- Show wfinal.length = firstIdx.val + 1
+    have hlt : firstIdx.val + 1 ≤ ws.length :=
+      Nat.add_one_le_of_lt (hslen ▸ firstIdx.isLt)
+    have h_wfinal_len : wfinal.length = firstIdx.val + 1 := by
+      simp[wfinal, List.length_take, Nat.min_eq_left hlt]
+    -- Bridge Fin/Nat indexing
+    have hprod_nat : step_list[↑firstIdx].2.2.2 = [t] := by
+      have : step_list[↑firstIdx] = step_list[firstIdx] := rfl
+      rw[this, ←hprod_eq]; exact ht
+    -- Show the flatMap output = [t]
+    have h_produce_eq : (fun (x : (Unit × LexingState σ) × V ×
+        (Unit × LexingState σ) × List (Ch Γ)) => x.2.2.2) = produce := rfl
+    have h_output : (take wfinal.length step_list).flatMap
+        (fun x => x.2.2.2) = [t] := by
+      rw[h_wfinal_len, List.take_succ_eq_append_getElem firstIdx.isLt]
+      simp only [List.flatMap_append, List.flatMap_cons, List.flatMap_nil, List.append_nil]
+      rw[h_produce_eq, h_prefix_empty_flat, List.nil_append]
+      exact hprod_nat
+    rw[h_output] at heval
+    -- Now heval : lexer.evalFrom ((), q) wfinal = some ((a, b), [t])
+    have h_head_t : T.head hne = t := by
+      have hprod_t : produce step_list[firstIdx] = [t] := by
+        unfold produce; exact hprod_nat
+      have : ∀ (l : List (Ch Γ)) (hl : l ≠ []), l = [t] → l.head hl = t := by
+        intros l hl heq; subst heq; rfl
+      rw[h_head_eq]; exact this _ hft_ne hprod_t
+    simp only [FST.singleProducible, Set.mem_setOf_eq]
+    exact ⟨wfinal, ((a, b), [T.head hne]), by rw[h_head_t]; exact heval, by simp[h_head_t]⟩
+  | inr h_two =>
+    -- Case 2: produced = [char t, eos], EOS case
+    obtain ⟨hq_acc, hflat_eos, t, ht⟩ := h_two
+    obtain ⟨c, hc_none, hc_start⟩ := hrestart _ hq_acc
+    -- produced = step_list[firstIdx].2.2.2
+    have hprod_eq : produced = step_list[firstIdx].2.2.2 := by
+      simpa using congrArg Prod.snd hq'produced
+    -- T.head = ExtChar.char t
+    have h_head_t : T.head hne = ExtChar.char t := by
+      have hprod_t : produce step_list[firstIdx] = [ExtChar.char t, ExtChar.eos] := by
+        unfold produce; rw[←hprod_eq]; exact ht
+      rw[h_head_eq]
+      have : ∀ (l : List (Ch Γ)) (hl : l ≠ []), l = [ExtChar.char t, ExtChar.eos] → l.head hl = ExtChar.char t := by
+        intros l hl heq; subst heq; rfl
+      exact this _ hft_ne hprod_t
+    -- Get prefix evaluation
+    have hpfx := lexer.stepList_prefix_w ((), q) ws
+    simp[h_step_list] at hpfx
+    have h_pfx_len : (ws.take firstIdx.val).length = firstIdx.val := by
+      rw[List.length_take]; exact Nat.min_eq_left (Nat.le_of_lt hft_lt_w)
+    have h_step_pfx : lexer.stepList ((), q) (ws.take firstIdx.val) =
+        some (step_list.take firstIdx.val) := by
+      have h := hpfx (ws.take firstIdx.val) (List.take_prefix _ ws)
+      rwa[h_pfx_len] at h
+    -- Get evalFrom for prefix
+    have heval_pfx_raw := lexer.eval_of_stepList_opaque ((), q) (ws.take firstIdx.val)
+    rw[h_step_pfx] at heval_pfx_raw
+    obtain ⟨q_mid, heval_pfx⟩ := heval_pfx_raw
+    -- Prefix output is empty
+    have h_pfx_output : (step_list.take firstIdx.val).flatMap
+        (fun (x : (Unit × LexingState σ) × V × (Unit × LexingState σ) × List (Ch Γ)) => x.2.2.2) = [] := by
+      change (step_list.take firstIdx.val).flatMap produce = []
+      exact h_prefix_empty_flat
+    rw[h_pfx_output] at heval_pfx
+    -- Get intermediate state = step_list[firstIdx].1
+    have hfi : firstIdx.val < ws.length := hslen ▸ firstIdx.isLt
+    have h_eval_take := lexer.stepList_eval_take ((), q) ws ⟨firstIdx.val, hfi⟩
+    simp[h_step_list] at h_eval_take
+    -- h_eval_take : ∃ x, evalFrom ... = some (step_list[↑fi].1, x)
+    -- heval_pfx   : evalFrom ... = some (q_mid, [])
+    -- Therefore q_mid = step_list[firstIdx].1
+    obtain ⟨out_take, h_out_take⟩ := h_eval_take
+    rw[h_out_take] at heval_pfx
+    have hqmid_eq : q_mid = step_list[firstIdx].1 := by
+      have := congrArg (fun x => x.map Prod.fst) heval_pfx
+      simp at this; exact this.symm
+    subst hqmid_eq
+    -- q_mid = step_list[firstIdx].1, which is (Unit × LexingState σ)
+    -- Its second component is step_list[firstIdx].1.2
+    set b_pfx := step_list[firstIdx].1.2
+    have hqmid_pair : step_list[firstIdx].1 = ((), b_pfx) := by
+      ext1
+      · exact Unit.ext _ _
+      · rfl
+    -- Extract the terminal from the EOS step
+    have h_term_eq : t = (spec.term (LexingState.src spec b_pfx)).get
+        ((spec.hterm _).mp hq_acc) := by
+      have hstep' := hstep
+      simp only [BuildLexingFST, Id.run] at hstep'
+      rw[hflat_eos] at hstep'
+      simp only [hq_acc, dite_true] at hstep'
+      -- hstep' : some (start, [char T_term, eos]) = some (q', produced)
+      have hinj := Option.some.inj hstep'
+      have hprod := congrArg Prod.snd hinj
+      simp at hprod
+      -- hprod now equates the terminal list with produced
+      rw[ht] at hprod
+      -- hprod should equate [char T_term, eos] with [char t, eos]
+      simp at hprod
+      exact hprod.symm
+    -- Build restart step
+    obtain ⟨q_new, hq_new⟩ := Option.isSome_iff_exists.mp hc_start
+    have h_lex_restart : (BuildLexingFST spec).step b_pfx (.char c) =
+        some (LexingState.id q_new, [ExtChar.char t]) := by
+      simp only [BuildLexingFST, Id.run]
+      have h_not_some : ¬(spec.automaton.step (LexingState.src spec b_pfx) c).isSome := by
+        show ¬(spec.automaton.step (LexingState.src spec step_list[↑firstIdx].1.2) c).isSome
+        simp[hc_none]
+      have hq_acc' : LexingState.src spec b_pfx ∈ spec.automaton.accept := hq_acc
+      simp only [h_not_some, hq_acc', dite_true]
+      rw[h_term_eq, hq_new]; simp
+    -- Lift to composed lexer
+    have h_detok_restart : lexer.step ((), b_pfx) (vocab.embed (.char c)) =
+        some (((), LexingState.id q_new), [ExtChar.char t]) := by
+      have hde := detok_eval_embed (V := V) spec b_pfx (.char c)
+      simp only [lexer, BuildDetokLexer] at hde ⊢
+      rw[hde, h_lex_restart]; simp
+    -- Build witness word and combine
+    let wfinal := ws.take firstIdx.val ++ [vocab.embed (.char c)]
+    -- Extract out_take = [] from heval_pfx
+    have h_out_take_nil : out_take = [] := by
+      have hinj := Option.some.inj heval_pfx
+      have h2 := (Prod.ext_iff.mp hinj).2
+      simp at h2; exact h2
+    -- Simplify h_out_take with out_take = []
+    rw[h_out_take_nil] at h_out_take
+    -- h_out_take : lexer.evalFrom ((), q) (take ...) = some (step_list[↑firstIdx].1, [])
+    -- step_list[↑firstIdx].1 = ((), b_pfx) via hqmid_pair
+    have h_detok_restart' : lexer.step step_list[↑firstIdx].1 (vocab.embed (.char c)) =
+        some (((), LexingState.id q_new), [ExtChar.char t]) := by
+      show lexer.step step_list[firstIdx].1 _ = _
+      rw[hqmid_pair]; exact h_detok_restart
+    have h_eval_wfinal : lexer.evalFrom ((), q) wfinal =
+        some (((), LexingState.id q_new), [ExtChar.char t]) := by
+      simp only [wfinal]
+      rw[lexer.evalFrom_append, h_out_take]
+      show (lexer.evalFrom step_list[↑firstIdx].1 [vocab.embed (.char c)]).map _ = _
+      rw[lexer.evalFrom_singleton, h_detok_restart']
+      simp
+    simp only [FST.singleProducible, Set.mem_setOf_eq]
+    exact ⟨wfinal, (((), LexingState.id q_new), [T.head hne]),
+      by rw[h_head_t]; exact h_eval_wfinal, by simp[h_head_t]⟩
+
+omit [BEq V] in
 private lemma detok_rs_pfx_forward [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
   (hempty : [] ∉ spec.automaton.accepts)
   (hwa: whitespace_assumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ) :
