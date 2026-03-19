@@ -1927,14 +1927,14 @@ theorem EOSCompleteness
 
 /-! ## Checker interface connection
 
-Connecting the one-step soundness/completeness results above to the cumulative
-`checkerAllows`/`checkerAccepts` interface defined in `Checker.lean` requires
-induction over the token prefix. The step-level theorems (`Soundness`,
-`Completeness`, `GCDChecker_eos_true_imp_viable`) provide the induction step;
-the base case is trivial since `checkerAllows c [] = true`.
+The one-step soundness/completeness results above are connected to the cumulative
+`checkerAllows`/`checkerAccepts` interface defined in `Checker.lean` by induction
+over the token prefix. The step-level theorems (`Soundness`, `Completeness`,
+`GCDChecker_eos_true_imp_viable`) provide the induction step; the base case is
+trivial since `checkerAllows c [] = true`.
 
-Full connection to `checkerSound` and `checkerComplete` is deferred pending
-completion of the remaining sorry in `MaskChecker_viable_imp_char_true`.
+The full connection is established by `GCDChecker_sound`, `GCDChecker_complete`,
+and `GCDChecker_checkerLanguage_eq_GCDLanguage` below.
 -/
 
 omit [FinEnum Γ] [FinEnum α] [FinEnum σa] [DecidableEq β] [DecidableEq Γ] in
