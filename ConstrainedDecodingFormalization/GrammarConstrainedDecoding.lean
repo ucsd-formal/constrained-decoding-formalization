@@ -1634,6 +1634,90 @@ private lemma ParserWithEOS_fullStep_eos_all_eos
   simp [List.isPrefixOf?] at hmatch
   exact ⟨_, hmatch⟩
 
+/-- In `ParserWithEOS`, evaluating from an all-`.eos`-state configuration set
+    preserves the all-`.eos` invariant for any input word. -/
+lemma ParserWithEOS_evalFrom_eos_stays
+    (P : PDA Γ π σp) (S : Finset (Ch σp × List π)) (w : List (Ch Γ))
+    (hall : ∀ cfg ∈ S, ∃ st', cfg = (ExtChar.eos, st')) :
+    ∀ cfg ∈ (ParserWithEOS P).evalFrom S w, ∃ st', cfg = (ExtChar.eos, st') := by
+  induction w generalizing S with
+  | nil => exact hall
+  | cons a rest ih =>
+    simp only [PDA.evalFrom_cons]
+    apply ih
+    intro cfg hcfg
+    simp only [PDA.fullStep, Finset.mem_biUnion] at hcfg
+    obtain ⟨⟨s₀, stack₀⟩, hmem₀, hmem_step⟩ := hcfg
+    -- s₀ = .eos (and stack₀ = st₀) by hall
+    obtain ⟨st₀, heq₀⟩ := hall ⟨s₀, stack₀⟩ hmem₀
+    rw [Prod.mk.injEq] at heq₀
+    obtain ⟨hs₀, hstack₀⟩ := heq₀
+    subst hs₀; subst hstack₀
+    -- step .eos a → dst = .eos, top = []
+    simp only [Finset.mem_biUnion] at hmem_step
+    obtain ⟨⟨top, rep, dst⟩, hstep, hmatch⟩ := hmem_step
+    simp only [ParserWithEOS] at hstep
+    -- step .eos a = {([], [], .eos)}
+    have hdst : dst = ExtChar.eos := by simp at hstep; exact hstep.2.2
+    have htop : top = [] := by simp at hstep; exact hstep.1
+    subst hdst; subst htop
+    simp [List.isPrefixOf?] at hmatch
+    exact ⟨_, hmatch⟩
+
+/-- If `(ParserWithEOS P).evalFull gammas ≠ ∅` and `ExtChar.eos ∈ gammas`,
+    then `gammas ∈ (ParserWithEOS P).accepts`. -/
+lemma ParserWithEOS_evalFull_eos_imp_accepts
+    (P : PDA Γ π σp) (gammas : List (Ch Γ))
+    (hne : (ParserWithEOS P).evalFull gammas ≠ ∅)
+    (heos : ExtChar.eos ∈ gammas) :
+    gammas ∈ (ParserWithEOS P).accepts := by
+  -- Split gammas at the .eos position: gammas = pre ++ (.eos :: post)
+  rw [List.mem_iff_append] at heos
+  obtain ⟨pre, post, hgammas⟩ := heos
+  -- Abbreviate
+  let parser := ParserWithEOS P
+  -- Rewrite evalFull gammas using the split
+  have hne_split : parser.evalFrom
+      (parser.evalFrom (parser.evalFrom {(parser.start, [])} pre) [ExtChar.eos]) post ≠ ∅ := by
+    have heq : (ParserWithEOS P).evalFull gammas =
+        parser.evalFrom (parser.evalFrom (parser.evalFrom {(parser.start, [])} pre)
+          [ExtChar.eos]) post := by
+      simp only [PDA.evalFull]
+      rw [hgammas, show pre ++ ExtChar.eos :: post = (pre ++ [ExtChar.eos]) ++ post from by
+            simp [List.append_assoc],
+          PDA.evalFrom_append', PDA.evalFrom_append']
+    rwa [heq] at hne
+  -- All configs after the .eos step have .eos state
+  have hall_after_eos :
+      ∀ cfg ∈ parser.evalFrom (parser.evalFrom {(parser.start, [])} pre) [ExtChar.eos],
+      ∃ st', cfg = (ExtChar.eos, st') := by
+    intro cfg hcfg
+    -- evalFrom S [.eos] = fullStep S .eos (definitionally)
+    have heq : parser.evalFrom (parser.evalFrom {(parser.start, [])} pre) [ExtChar.eos] =
+        parser.fullStep (parser.evalFrom {(parser.start, [])} pre) ExtChar.eos := rfl
+    rw [heq] at hcfg
+    exact ParserWithEOS_fullStep_eos_all_eos P _ cfg hcfg
+  -- All configs in the final set have .eos state (absorbing property)
+  have hall_final :
+      ∀ cfg ∈ parser.evalFrom
+        (parser.evalFrom (parser.evalFrom {(parser.start, [])} pre) [ExtChar.eos]) post,
+      ∃ st', cfg = (ExtChar.eos, st') :=
+    ParserWithEOS_evalFrom_eos_stays P _ post hall_after_eos
+  -- Pick any config from the nonempty final set
+  rcases Finset.nonempty_iff_ne_empty.mpr hne_split with ⟨cfg, hcfg⟩
+  obtain ⟨st', rfl⟩ := hall_final cfg hcfg
+  -- Show gammas ∈ accepts by exhibiting the .eos accept state
+  simp only [PDA.accepts, PDA.acceptsFrom, Set.mem_setOf_eq]
+  refine ⟨ExtChar.eos, ?_, ?_⟩
+  · rw [Finset.mem_image]
+    refine ⟨(ExtChar.eos, st'), ?_, rfl⟩
+    -- (ExtChar.eos, st') ∈ evalFrom {(start,[])} gammas
+    rw [hgammas, show pre ++ ExtChar.eos :: post = (pre ++ [ExtChar.eos]) ++ post from by
+          simp [List.append_assoc],
+        PDA.evalFrom_append', PDA.evalFrom_append']
+    exact hcfg
+  · simp [ParserWithEOS]
+
 set_option maxHeartbeats 3200000 in
 /-- **EOS Completeness**: If `curr` extends to an **accepted** run through the
 detokenizing lexer and parser via `.eos`, then `.eos` passes the GCD mask
@@ -1959,9 +2043,9 @@ respect to the language defined by the composed detokenizing lexer and parser:
 it accepts exactly the strings in that language, and its intermediate language
 is the prefix closure.
 
-**Status**: The `checkerLanguage` direction is proved using
-`GCDLanguage_imp_checkerAccepts`. The reverse direction (Soundness-based)
-and the `checkerIntermediateLanguage` direction remain sorry'd. -/
+**Status**: The `checkerLanguage` direction is fully proved (both directions).
+The `checkerIntermediateLanguage` direction remains sorry'd — it requires
+`checkerAllowsTermination` (a productivity/liveness hypothesis). -/
 theorem GCDChecker_complete
   [Vocabulary α β] [FinEnum β]
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
@@ -1977,8 +2061,83 @@ theorem GCDChecker_complete
     constructor
     · -- (→): if checker accepts w, then w ∈ GCDLanguage spec P
       intro h
-      -- TODO: requires Soundness (reverse direction)
-      sorry
+      -- Extract GCDChecker spec P w .eos = true from h
+      have heos_true : GCDChecker spec P w .eos = true := by
+        have := (Bool.and_eq_true_iff.mp h).2
+        simpa using this
+      -- By GCDChecker_eos_true_imp_viable, get a viable FST run with suffix
+      obtain ⟨suffix, qa_full, gammas_full, heval_full, hparse_full⟩ :=
+        GCDChecker_eos_true_imp_viable spec P w heos_true
+      -- Abbreviate
+      let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
+      -- Split FST run at w.map char: get comb.eval (w.map char) = some (q_fst, terms)
+      have heval_full_from : comb.evalFrom comb.start
+          (w.map ExtChar.char ++ (.eos :: suffix)) = some (qa_full, gammas_full) := by
+        simpa [FST.eval] using heval_full
+      have hcurr_some : ∃ q_fst terms,
+          comb.evalFrom comb.start (w.map ExtChar.char) = some (q_fst, terms) := by
+        by_contra hall
+        push_neg at hall
+        have happ := FST.evalFrom_append (M := comb) comb.start
+          (w.map ExtChar.char) (.eos :: suffix)
+        cases hc : comb.evalFrom comb.start (w.map ExtChar.char) with
+        | none => rw [hc] at happ; simp at happ; rw [happ] at heval_full_from; simp at heval_full_from
+        | some p => exact (hall p.1 p.2 hc).elim
+      obtain ⟨q_fst, terms, hcurr⟩ := hcurr_some
+      -- Split FST run at [.eos]: get comb.step q_fst .eos = some (q₁, S)
+      have hrest_from : ∃ out_rest,
+          comb.evalFrom q_fst (.eos :: suffix) = some (qa_full, out_rest) ∧
+          gammas_full = terms ++ out_rest := by
+        have happ := FST.evalFrom_append (M := comb) comb.start
+          (w.map ExtChar.char) (.eos :: suffix)
+        rw [hcurr] at happ; rw [happ] at heval_full_from
+        cases hrest : comb.evalFrom q_fst (.eos :: suffix) with
+        | none => simp [hrest] at heval_full_from
+        | some p =>
+          simp only [hrest, Option.map_some, Option.some.injEq, Prod.mk.injEq] at heval_full_from
+          obtain ⟨hqa, hterms⟩ := heval_full_from
+          -- hqa : p.1 = qa_full, hterms : terms ++ p.2 = gammas_full
+          refine ⟨p.2, ?_, hterms.symm⟩
+          have heqp : p = (qa_full, p.2) := Prod.ext hqa rfl
+          rw [heqp]
+      obtain ⟨out_rest, hrest, hgammas_split⟩ := hrest_from
+      -- Split the .eos cons step: step at .eos gives (q₁, S)
+      rcases (FST.evalFrom_cons_some_iff (M := comb)).1 hrest with
+        ⟨q₁, S, T, hstep, htail, hout_eq⟩
+      -- Define gammas₁ = terms ++ S (output after processing w ++ [.eos])
+      set gammas₁ := terms ++ S with hgammas₁_def
+      -- comb.eval (w.map char ++ [.eos]) = some (q₁, gammas₁)
+      have heval_eos : comb.eval (w.map ExtChar.char ++ [.eos]) = some (q₁, gammas₁) := by
+        simp only [FST.eval]
+        have happ := FST.evalFrom_append (M := comb) comb.start
+          (w.map ExtChar.char) [.eos]
+        rw [hcurr] at happ
+        simp only [happ]
+        -- comb.evalFrom q_fst [.eos] = some (q₁, S)
+        have hstep_eos : comb.evalFrom q_fst [ExtChar.eos] = some (q₁, S) := by
+          rw [FST.evalFrom_cons_some_iff]
+          exact ⟨q₁, S, [], hstep, by simp [FST.evalFrom], by simp⟩
+        simp [hstep_eos, hgammas₁_def]
+      -- .eos ∈ gammas₁ (since .eos ∈ S by BuildDetokLexer_eos_step_eos_in_output)
+      have heos_in_S : ExtChar.eos ∈ S :=
+        BuildDetokLexer_eos_step_eos_in_output spec q_fst q₁ S hstep
+      have heos_in_gammas₁ : ExtChar.eos ∈ gammas₁ := by
+        simp [hgammas₁_def, List.mem_append]
+        right; exact heos_in_S
+      -- (ParserWithEOS P).evalFull gammas₁ ≠ ∅
+      -- from evalFull gammas_full ≠ ∅ where gammas_full = gammas₁ ++ T
+      have hgammas_full_split : gammas_full = gammas₁ ++ T := by
+        rw [hgammas_split, hout_eq, hgammas₁_def, List.append_assoc]
+      have hparse_gammas₁ : (ParserWithEOS P).evalFull gammas₁ ≠ ∅ := by
+        intro h
+        apply hparse_full
+        rw [hgammas_full_split, (ParserWithEOS P).evalFull_append gammas₁ T, h]
+        simp
+      -- gammas₁ ∈ (ParserWithEOS P).accepts
+      have hacc_gammas₁ : gammas₁ ∈ (ParserWithEOS P).accepts :=
+        ParserWithEOS_evalFull_eos_imp_accepts P gammas₁ hparse_gammas₁ heos_in_gammas₁
+      -- Therefore w ∈ GCDLanguage
+      exact ⟨q₁, gammas₁, heval_eos, hacc_gammas₁⟩
     · -- (←): if w ∈ GCDLanguage spec P, then checker accepts w
       intro hw
       exact GCDLanguage_imp_checkerAccepts spec P hempty hrestart w hw

@@ -195,7 +195,7 @@ checkerIntermediate = pfx (5.2b)┘        │
 | 3 | **`checkerPathIndependent` (5.1b)**: FST factors through flatten | Medium | — | Medium |
 | 4 | **`checkerAllowsTermination` (5.1a)**: allowed → ∃ accepted extension | Hard | 1, new hypotheses | Low — may need productivity hypothesis |
 | 5 | **Fix `GCDChecker_complete` statement**: define `GCDLanguage`, fix signature | Easy | — | ✅ Done |
-| 6 | **`checkerLanguage = GCDLanguage` (5.2a)**: both directions | Hard | 1, 2, Completeness | ✅ Backward done; forward ⬜ |
+| 6 | **`checkerLanguage = GCDLanguage` (5.2a)**: both directions | Hard | 1, 2, Completeness | ✅ Done (both directions) |
 | 7 | **`checkerIntermediateLanguage = prefixes` (5.2b)**: both directions | Medium | 4, 6 | Low |
 
 ---

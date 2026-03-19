@@ -177,7 +177,7 @@ prefix.
 | 9d | Define `GCDLanguage`, fix `GCDChecker_complete` statement | GCD.lean | — | ✅ Done |
 | 10 | Prove `GCDChecker_sound` | GCD.lean | Soundness | ⬜ (needs path indep + termination) |
 | 11a | `checkerLanguage = GCDLanguage` backward | GCD.lean | Completeness + EOS | ✅ Done |
-| 11b | `checkerLanguage = GCDLanguage` forward | GCD.lean | Soundness (EOS) | ⬜ |
+| 11b | `checkerLanguage = GCDLanguage` forward | GCD.lean | Soundness (EOS) | ✅ Done |
 | 11c | `checkerIntermediateLanguage = prefixes` | GCD.lean | Termination | ⬜ (blocked by 5.1a) |
 | 12 | `lake build` clean (zero sorry) | — | all | ⬜ |
 
