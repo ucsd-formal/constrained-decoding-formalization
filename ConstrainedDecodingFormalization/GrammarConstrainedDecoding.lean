@@ -1373,6 +1373,461 @@ theorem Completeness
   simp only [List.contains_iff_mem]
   exact hmask
 
+/-! ## EOS Completeness
+
+The completeness direction for the `.eos` case: if the current prefix is viable
+(the FST processes `curr.map char ++ .eos :: suffix` and the parser accepts),
+then `MaskChecker` returns `true` for `.eos`.
+
+Unlike the `.char` case, after the `.eos` step the FST output `S` already
+contains `.eos`, so the parser reaches the `.eos` dead-loop state. The suffix
+output `T` may be empty. When `T ≠ []` we use the same realizable-sequence
+argument as the `.char` case. When `T = []` we exploit that `ParserWithEOS`
+at `.eos` state handles any further input (dead-loop), and we pick an arbitrary
+element from `singleProducible q₁` to form the realizable sequence witness.
+-/
+
+/-- `ParserWithEOS` at `.eos` state is a fixed point: `fullStep` returns the
+same configuration. -/
+private lemma ParserWithEOS_eos_fullStep_eq
+    (P : PDA Γ π σp) (st : List π) (c : Ch Γ) :
+    (ExtChar.eos, st) ∈ (ParserWithEOS P).fullStep {(ExtChar.eos, st)} c := by
+  simp only [PDA.fullStep, Finset.mem_biUnion, Finset.mem_singleton]
+  refine ⟨(ExtChar.eos, st), rfl, ?_⟩
+  simp only [Finset.mem_biUnion]
+  refine ⟨([], [], ExtChar.eos), ?_, ?_⟩
+  · show ([], [], ExtChar.eos) ∈ (ParserWithEOS P).step ExtChar.eos c
+    simp [ParserWithEOS]
+  · -- top = [], so isPrefixOf? [] st = some st, result = {(.eos, [] ++ st)} = {(.eos, st)}
+    simp [List.isPrefixOf?]
+
+/-- `ParserWithEOS` at `.eos` state loops: `fullStep` on any input from
+a configuration at `.eos` state is nonempty. -/
+private lemma ParserWithEOS_eos_fullStep_nonempty
+    (P : PDA Γ π σp) (st : List π) (c : Ch Γ) :
+    (ParserWithEOS P).fullStep {(ExtChar.eos, st)} c ≠ ∅ := by
+  intro h
+  have := ParserWithEOS_eos_fullStep_eq P st c
+  rw [h] at this
+  simp at this
+
+/-- If a PDA evaluation from a set `S` contains an `.eos` configuration, then
+extending by one more element keeps the evaluation nonempty (for `ParserWithEOS`). -/
+private lemma ParserWithEOS_evalFrom_eos_extend
+    (P : PDA Γ π σp) (S : Finset (Ch σp × List π)) (e : Ch Γ)
+    (heos : ∃ st', (ExtChar.eos, st') ∈ S) :
+    (ParserWithEOS P).fullStep S e ≠ ∅ := by
+  obtain ⟨st', hst'⟩ := heos
+  intro h
+  have hsub : (ParserWithEOS P).fullStep {(ExtChar.eos, st')} e ⊆
+      (ParserWithEOS P).fullStep S e :=
+    (ParserWithEOS P).fullStep_subset {(ExtChar.eos, st')} S
+      (Finset.singleton_subset_iff.mpr hst') e
+  have hne := ParserWithEOS_eos_fullStep_nonempty P st' e
+  have : (ParserWithEOS P).fullStep {(ExtChar.eos, st')} e = ∅ := by
+    rw [Finset.eq_empty_iff_forall_notMem]
+    intro x hx
+    exact (Finset.eq_empty_iff_forall_notMem.mp h x) (hsub hx)
+  exact hne this
+
+/-- `singleProducible` of `BuildDetokLexer` at the start state is nonempty:
+`.eos` is singleton-producible from the start state (via one `.eos` input step
+when the start state is not accepting). -/
+private lemma BuildDetokLexer_singleProducible_start_nonempty
+    [Vocabulary α β]
+    (spec : LexerSpec α Γ σa)
+    (hempty : [] ∉ spec.automaton.accepts) :
+    (ExtChar.eos : Ch Γ) ∈
+      (Detokenizing.BuildDetokLexer (V := Ch β) spec).singleProducible
+        ((), LexingState.start (σ := σa)) := by
+  -- Witness: w = [.eos], evalFrom ((), start) [.eos] = some (((), start), [.eos])
+  rw [mem_singleProducible_iff_exists_evalFrom_singleton]
+  -- start ∉ accept (from hempty)
+  have hstart_not_accept : spec.automaton.start ∉ spec.automaton.accept := by
+    intro h; apply hempty; rw [FSA.accepts_iff]; exact ⟨spec.automaton.start, rfl, h⟩
+  -- Provide the witness
+  refine ⟨[ExtChar.eos], ((), LexingState.start (σ := σa)), ?_⟩
+  -- Reduce the step through the composed FST
+  -- evalFrom ((), start) [.eos] unfolds to: step ((), start) .eos >>= evalFrom _ []
+  simp only [FST.evalFrom]
+  -- Use the comp_step decomposition
+  simp only [Detokenizing.BuildDetokLexer]
+  rw [Detokenizing.detokenizer_comp_step]
+  simp only [Vocabulary.flatten, FST.evalFrom, BuildLexingFST, Id.run, LexingState.src,
+    hstart_not_accept, dite_false, ite_true]
+  simp
+
+/-- After `.eos` step in `BuildDetokLexer`, the reached state is
+`((), LexingState.start)`. -/
+private lemma BuildDetokLexer_eos_step_reaches_start
+    [v : Vocabulary α β]
+    (spec : LexerSpec α Γ σa) (q_fst : Unit × LexingState σa)
+    (q₁ : Unit × LexingState σa) (S : List (Ch Γ))
+    (hstep : (Detokenizing.BuildDetokLexer (V := Ch β) spec).step q_fst
+      ExtChar.eos = some (q₁, S)) :
+    q₁ = ((), LexingState.start) := by
+  simp only [Detokenizing.BuildDetokLexer] at hstep
+  rw [Detokenizing.detokenizer_comp_step] at hstep
+  have hflatten : (Vocabulary.flatten (α := Ch α) (β := Ch β) ExtChar.eos) =
+      [ExtChar.eos] := by
+    simp [Vocabulary.flatten]
+  rw [hflatten] at hstep
+  -- hstep : (BuildLexingFST spec).evalFrom q_fst.2 [.eos]).map ... = some (q₁, S)
+  -- Reduce: unfold the composed FST step completely
+  simp only [Detokenizing.BuildDetokLexer, Detokenizing.detokenizer_comp_step,
+    Vocabulary.flatten, FST.evalFrom, List.foldl,
+    BuildLexingFST, Id.run] at hstep
+  -- The result has a nested split from the compose layer + the lex step
+  -- All viable branches go to LexingState.start. Use revert + split.
+  revert hstep
+  split
+  · -- h_1: none case from compose
+    intro hstep; simp at hstep
+  · -- h_2: some case from compose, need to extract start state from heq✝
+    rename_i _ s'' T' heq
+    intro hstep
+    simp at hstep
+    -- hstep : q₁ = ((), s'') ∧ ... ; heq : if-then-else = some (s'', S)
+    -- Extract s'' = LexingState.start from heq
+    have hs : s'' = LexingState.start := by
+      split at heq
+      · simp at heq; exact heq.1.symm
+      · split at heq
+        · simp at heq; exact heq.1.symm
+        · simp at heq
+    rw [← hstep.1, hs]
+
+/-- After `.eos` step in `BuildDetokLexer`, the output is nonempty. -/
+private lemma BuildDetokLexer_eos_step_output_ne_nil
+    [Vocabulary α β]
+    (spec : LexerSpec α Γ σa) (q_fst : Unit × LexingState σa)
+    (q₁ : Unit × LexingState σa) (S : List (Ch Γ))
+    (hstep : (Detokenizing.BuildDetokLexer (V := Ch β) spec).step q_fst
+      ExtChar.eos = some (q₁, S)) :
+    S ≠ [] := by
+  intro h; subst h
+  simp only [Detokenizing.BuildDetokLexer] at hstep
+  rw [Detokenizing.detokenizer_comp_step] at hstep
+  simp only [Vocabulary.flatten, FST.evalFrom, BuildLexingFST, Id.run] at hstep
+  revert hstep; split
+  · intro hstep; simp at hstep
+  · rename_i _ s'' T' heq
+    intro hstep; simp at hstep
+    -- After simp, hstep gives us q₁ = ((), s'') and T' = []
+    -- But heq : if-then-else = some (s'', T'), and with T' = [] all branches contradict
+    have : T' = [] := by
+      rcases hstep with ⟨_, hT'⟩
+      simpa using hT'
+    rw [this] at heq
+    split at heq <;> simp at heq
+
+/-- After `.eos` step in `BuildDetokLexer`, `.eos` appears in the output. -/
+private lemma BuildDetokLexer_eos_step_eos_in_output
+    [Vocabulary α β]
+    (spec : LexerSpec α Γ σa) (q_fst : Unit × LexingState σa)
+    (q₁ : Unit × LexingState σa) (S : List (Ch Γ))
+    (hstep : (Detokenizing.BuildDetokLexer (V := Ch β) spec).step q_fst
+      ExtChar.eos = some (q₁, S)) :
+    ExtChar.eos ∈ S := by
+  simp only [Detokenizing.BuildDetokLexer] at hstep
+  rw [Detokenizing.detokenizer_comp_step] at hstep
+  simp only [Vocabulary.flatten, FST.evalFrom, BuildLexingFST, Id.run] at hstep
+  revert hstep; split
+  · intro hstep; simp at hstep
+  · rename_i _ s'' T' heq
+    -- heq : (if-then-else on BuildLexingFST .eos) = some (s'', T')
+    -- hstep : Option.map ... (some (s'', T')) = some (q₁, S)
+    -- In all branches, T' contains .eos, and S = T'
+    intro hstep
+    -- First resolve heq to know what T' is
+    split at heq
+    · -- accepting state: T' = [T_tok, .eos]
+      obtain ⟨_, rfl⟩ := Prod.mk.inj (Option.some.inj heq)
+      -- Now hstep : ... = some (q₁, S) with T' = [_, .eos]
+      simp at hstep; exact hstep.2 ▸ (by simp)
+    · split at heq
+      · -- start state: T' = [.eos]
+        obtain ⟨_, rfl⟩ := Prod.mk.inj (Option.some.inj heq)
+        simp at hstep; exact hstep.2 ▸ (by simp)
+      · -- none case
+        simp at heq
+
+/-- After `.eos` step in `BuildDetokLexer`, there exists `S_init` such that
+`S = S_init ++ [.eos]`. -/
+private lemma BuildDetokLexer_eos_step_snoc
+    [Vocabulary α β]
+    (spec : LexerSpec α Γ σa) (q_fst : Unit × LexingState σa)
+    (q₁ : Unit × LexingState σa) (S : List (Ch Γ))
+    (hstep : (Detokenizing.BuildDetokLexer (V := Ch β) spec).step q_fst
+      ExtChar.eos = some (q₁, S)) :
+    ∃ S_init, S = S_init ++ [ExtChar.eos] := by
+  simp only [Detokenizing.BuildDetokLexer] at hstep
+  rw [Detokenizing.detokenizer_comp_step] at hstep
+  simp only [Vocabulary.flatten, FST.evalFrom, BuildLexingFST, Id.run] at hstep
+  revert hstep; split
+  · intro hstep; simp at hstep
+  · rename_i _ s'' T' heq
+    intro hstep
+    split at heq
+    · -- accepting state: T' = [T_tok, .eos]
+      have hT' : ∃ tok, T' = [ExtChar.char tok, ExtChar.eos] := by
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj heq); exact ⟨_, rfl⟩
+      obtain ⟨tok, rfl⟩ := hT'
+      -- hstep : Option.map f (some (s'', [.char tok, .eos])) = some (q₁, S)
+      -- which reduces to f (s'', [.char tok, .eos]) = (q₁, S)
+      -- where f maps (q_lex, out) to (((), q_lex), out)
+      -- so S = [.char tok, .eos]
+      have : S = [ExtChar.char tok, ExtChar.eos] := by
+        simp only [Option.map] at hstep
+        have := (Prod.mk.inj (Option.some.inj hstep)).2
+        simpa using this.symm
+      exact ⟨[ExtChar.char tok], this⟩
+    · split at heq
+      · -- start state: T' = [.eos]
+        have hT' : T' = [ExtChar.eos] := by
+          obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj heq); rfl
+        subst hT'
+        have : S = [ExtChar.eos] := by
+          simp only [Option.map] at hstep
+          have := (Prod.mk.inj (Option.some.inj hstep)).2
+          simpa using this.symm
+        exact ⟨[], by simpa using this⟩
+      · -- none case
+        simp at heq
+
+/-- In `ParserWithEOS`, after `fullStep` on `.eos` input, every config in the
+result is at `.eos` state. -/
+private lemma ParserWithEOS_fullStep_eos_all_eos
+    (P : PDA Γ π σp) (X : Finset (Ch σp × List π))
+    (cfg : Ch σp × List π)
+    (hcfg : cfg ∈ (ParserWithEOS P).fullStep X ExtChar.eos) :
+    ∃ st', cfg = (ExtChar.eos, st') := by
+  simp only [PDA.fullStep, Finset.mem_biUnion] at hcfg
+  obtain ⟨⟨s, stack⟩, _, hmem⟩ := hcfg
+  simp only [Finset.mem_biUnion] at hmem
+  obtain ⟨⟨top, rep, dst⟩, hstep, hmatch⟩ := hmem
+  -- ParserWithEOS.step _ .eos always targets .eos
+  -- In all cases, dst = .eos
+  have hdst : dst = ExtChar.eos := by
+    cases s with
+    | char s' =>
+      simp only [ParserWithEOS] at hstep
+      split at hstep
+      · simp at hstep; exact hstep.2.2
+      · simp at hstep
+    | eos =>
+      simp only [ParserWithEOS] at hstep
+      simp at hstep; exact hstep.2.2
+  subst hdst
+  -- top = [], so isPrefixOf? [] stack = some stack
+  have htop : top = [] := by
+    cases s with
+    | char s' =>
+      simp only [ParserWithEOS] at hstep
+      split at hstep
+      · simp at hstep; exact hstep.1
+      · simp at hstep
+    | eos =>
+      simp only [ParserWithEOS] at hstep
+      simp at hstep; exact hstep.1
+  subst htop
+  simp [List.isPrefixOf?] at hmatch
+  exact ⟨_, hmatch⟩
+
+set_option maxHeartbeats 3200000 in
+/-- **EOS Completeness**: If `curr` extends to an **accepted** run through the
+detokenizing lexer and parser via `.eos`, then `.eos` passes the GCD mask
+checker after prefix `curr`.
+
+Uses `BuildDetokLexer_hsingle` (Lemma D) for the `hsingle` hypothesis.
+When the suffix output `T = []`, picks `.eos` from `singleProducible q₁`
+(which is nonempty at the start state) and shows the parser can handle the
+extended sequence via the `.eos` dead-loop property of `ParserWithEOS`.
+
+Requires the lexer spec hypotheses `hempty` (empty string not accepted) and
+`hrestart` (every accepting state has a restart character). -/
+theorem EOSCompleteness
+  [FinEnum β] [Vocabulary α β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β)
+  (hempty : [] ∉ spec.automaton.accepts)
+  (hrestart : ∀ s ∈ spec.automaton.accept,
+    ∃ c : α, spec.automaton.step s c = none ∧
+      (spec.automaton.step spec.automaton.start c).isSome)
+  (hviable : ∃ suffix qa gammas,
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+      (curr.map ExtChar.char ++ (.eos :: suffix)) = some (qa, gammas) ∧
+    gammas ∈ (ParserWithEOS P).accepts) :
+  MaskChecker
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (ParserWithEOS P)
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+    curr .eos = true := by
+  -- Abbreviations
+  let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
+  let parser := ParserWithEOS P
+  -- Extract the viable run witnesses
+  obtain ⟨suffix, qa, gammas, heval, hacc⟩ := hviable
+  -- Acceptance implies evalFull ≠ ∅
+  have hparse : parser.evalFull gammas ≠ ∅ := by
+    intro hempty_cfg
+    change gammas ∈ (ParserWithEOS P).accepts at hacc
+    simp only [PDA.accepts, PDA.acceptsFrom] at hacc
+    obtain ⟨f, hfmem, _⟩ := hacc
+    rw [Finset.mem_image] at hfmem
+    obtain ⟨cfg, hcfg, _⟩ := hfmem
+    change (ParserWithEOS P).evalFrom {((ParserWithEOS P).start, [])} gammas = ∅ at hempty_cfg
+    rw [hempty_cfg] at hcfg
+    simp at hcfg
+  -- Step 1: Decompose the FST run
+  have heval_start : comb.evalFrom comb.start
+      (curr.map ExtChar.char ++ (.eos :: suffix)) = some (qa, gammas) := by
+    simpa [FST.eval] using heval
+  have hcurr_some : ∃ q_fst terms,
+      comb.evalFrom comb.start (curr.map ExtChar.char) = some (q_fst, terms) := by
+    by_contra h
+    push_neg at h
+    have happ := FST.evalFrom_append (M := comb) comb.start
+      (curr.map ExtChar.char) (.eos :: suffix)
+    cases hc : comb.evalFrom comb.start (curr.map ExtChar.char) with
+    | none => rw [hc] at happ; simp at happ; rw [happ] at heval_start; simp at heval_start
+    | some p => exact (h p.1 p.2 hc).elim
+  obtain ⟨q_fst, terms, hcurr⟩ := hcurr_some
+  have hrest_eq : ∃ out_rest,
+      comb.evalFrom q_fst (.eos :: suffix) = some (qa, out_rest) ∧
+      gammas = terms ++ out_rest := by
+    have happ := FST.evalFrom_append (M := comb) comb.start
+      (curr.map ExtChar.char) (.eos :: suffix)
+    rw [hcurr] at happ; rw [happ] at heval_start
+    cases hrest : comb.evalFrom q_fst (.eos :: suffix) with
+    | none => simp [hrest] at heval_start
+    | some p =>
+      obtain ⟨qa', out'⟩ := p
+      simp [hrest] at heval_start
+      exact ⟨out', by rw [heval_start.1], heval_start.2.symm⟩
+  obtain ⟨out_rest, hrest, hgammas_split⟩ := hrest_eq
+  rcases (FST.evalFrom_cons_some_iff (M := comb)).1 hrest with
+    ⟨q₁, S, T, hstep, htail, hout_eq⟩
+  have hgammas : gammas = terms ++ (S ++ T) := by rw [hgammas_split, hout_eq]
+  -- Step 2: Build the realizable sequence witness
+  -- For both T=[] and T≠[], we need e ∈ singleProducible q₁
+  -- When T≠[], e = T.head. When T=[], we use singleProducible nonemptiness.
+  -- We need singleProducible q₁ to be nonempty
+  by_cases hTne : T ≠ []
+  · -- Case T ≠ []: same as char case
+    have hhead_sp : (T.head hTne) ∈ comb.singleProducible q₁ :=
+      BuildDetokLexer_hsingle spec hempty hrestart q₁ suffix qa T htail hTne
+    set d := S ++ [T.head hTne] with hd_def
+    have hd_rs : d ∈ RealizableSequences comb :=
+      ⟨q_fst, .eos, S, q₁, T.head hTne, hstep, hhead_sp, rfl⟩
+    have hd_ne : d ≠ [] := by simp [hd_def]
+    have hd_dropLast : d.dropLast = S := by simp [hd_def]
+    have hd_getLast : d.getLast hd_ne = T.head hTne := by simp [hd_def]
+    have hitst : ExtChar.eos ∈ InverseTokenSpannerTable comb d q_fst := by
+      simp only [InverseTokenSpannerTable, dif_pos hd_ne, hd_dropLast, hd_getLast, Set.mem_setOf_eq]
+      exact ⟨q₁, hstep, hhead_sp⟩
+    -- Parser prefix closure
+    rw [hgammas] at hparse
+    rw [PDA.evalFull, PDA.evalFrom_append'] at hparse
+    have hST_eq : S ++ T = d ++ T.tail := by
+      rw [hd_def, List.append_assoc]; congr 1
+      exact (List.cons_head_tail hTne).symm
+    rw [hST_eq] at hparse
+    have hd_ne_empty : parser.evalFrom (parser.evalFrom {(parser.start, [])} terms) d ≠ ∅ :=
+      PDA.evalFrom_prefix_nonempty parser _ d (T.tail) hparse
+    rcases PDA.evalFrom_nonempty_exists_singleton parser _ d hd_ne_empty with
+      ⟨⟨qp, st_p⟩, hmem_qp, hqp_d_ne⟩
+    have hmask : ExtChar.eos ∈
+        ComputeValidTokenMask parser (BuildInverseTokenSpannerTable comb).snd
+          (PreprocessParser comb parser) q_fst qp st_p := by
+      simp only [mem_ComputeValidTokenMask_preprocess_iff]
+      by_cases hacc0 : (ParserWithEOS P).evalFrom {(qp, [])} d ≠ ∅
+      · left; exact ⟨d, hd_rs, hacc0, hitst⟩
+      · push_neg at hacc0; right
+        exact ⟨d, hd_rs, hacc0,
+          PDA.evalFrom_nonempty_imp_nfa_nonempty (ParserWithEOS P) qp st_p d hqp_d_ne,
+          hqp_d_ne, hitst⟩
+    -- Assemble MaskChecker = true
+    unfold MaskChecker
+    have hcomb_eval : comb.eval (curr.map ExtChar.char) = some (q_fst, terms) := by
+      simp [FST.eval, hcurr]
+    simp only [show (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (List.map ExtChar.char curr) =
+      some (q_fst, terms) from hcomb_eval]
+    rw [Finset.fold_or_eq_true_iff, Finset.mem_image]
+    refine ⟨(qp, st_p), hmem_qp, ?_⟩
+    simp only [List.contains_iff_mem]
+    exact hmask
+  · -- Case T = []: use singleProducible nonemptiness + ParserWithEOS looping
+    push_neg at hTne; subst hTne
+    -- gammas = terms ++ S
+    have hgammas' : gammas = terms ++ S := by simp [hgammas]
+    -- q₁ is the start state
+    have hq₁_start : q₁ = ((), LexingState.start (σ := σa)) :=
+      BuildDetokLexer_eos_step_reaches_start spec q_fst q₁ S hstep
+    -- Pick e = .eos from singleProducible q₁
+    have he_sp : (ExtChar.eos : Ch Γ) ∈ comb.singleProducible q₁ := by
+      rw [hq₁_start]
+      exact BuildDetokLexer_singleProducible_start_nonempty spec hempty
+    set e := (ExtChar.eos : Ch Γ) with he_def
+    set d := S ++ [e] with hd_def
+    have hd_rs : d ∈ RealizableSequences comb :=
+      ⟨q_fst, .eos, S, q₁, e, hstep, he_sp, rfl⟩
+    have hd_ne : d ≠ [] := by simp [hd_def]
+    have hd_dropLast : d.dropLast = S := by simp [hd_def]
+    have hd_getLast : d.getLast hd_ne = e := by simp [hd_def]
+    have hitst : ExtChar.eos ∈ InverseTokenSpannerTable comb d q_fst := by
+      simp only [InverseTokenSpannerTable, dif_pos hd_ne, hd_dropLast, hd_getLast, Set.mem_setOf_eq]
+      exact ⟨q₁, hstep, he_sp⟩
+    -- Parser: evalFrom {(qp, st_p)} (S ++ [e]) ≠ ∅
+    -- Use the fact that S ends with .eos, so parser reaches .eos state,
+    -- and then fullStep on e succeeds (ParserWithEOS looping)
+    rw [hgammas'] at hparse
+    rw [PDA.evalFull, PDA.evalFrom_append'] at hparse
+    -- parser.evalFrom (evalFrom {start} terms) S ≠ ∅
+    have hS_ne : parser.evalFrom (parser.evalFrom {(parser.start, [])} terms) S ≠ ∅ := by
+      simpa using hparse
+    rcases PDA.evalFrom_nonempty_exists_singleton parser _ S hS_ne with
+      ⟨⟨qp, st_p⟩, hmem_qp, hqp_S_ne⟩
+    -- parser.evalFrom {(qp, st_p)} S contains .eos state (since S ends with .eos)
+    -- then fullStep on e succeeds
+    -- S = S_init ++ [.eos] by the FST step structure
+    have ⟨S_init, hS_snoc⟩ := BuildDetokLexer_eos_step_snoc spec q_fst q₁ S hstep
+    -- Show evalFrom {(qp, st_p)} S has .eos configs (since S ends with .eos)
+    have heos_in_eval : ∃ st'', (ExtChar.eos, st'') ∈ parser.evalFrom {(qp, st_p)} S := by
+      rw [hS_snoc, PDA.evalFrom_append', PDA.evalFrom_cons]
+      simp only [PDA.evalFrom]
+      -- Goal: ∃ st'', (.eos, st'') ∈ fullStep (evalFrom {(qp,st_p)} S_init) .eos
+      have hne' : parser.fullStep (parser.evalFrom {(qp, st_p)} S_init) ExtChar.eos ≠ ∅ := by
+        have : parser.evalFrom {(qp, st_p)} (S_init ++ [ExtChar.eos]) ≠ ∅ := by rwa [← hS_snoc]
+        rwa [PDA.evalFrom_append', PDA.evalFrom_cons, show ([] : List (Ch Γ)) = [] from rfl,
+          PDA.evalFrom] at this
+      obtain ⟨cfg, hcfg⟩ := Finset.nonempty_iff_ne_empty.mpr hne'
+      obtain ⟨st'', rfl⟩ := ParserWithEOS_fullStep_eos_all_eos P _ cfg hcfg
+      exact ⟨st'', hcfg⟩
+    have hqp_d_ne : parser.evalFrom {(qp, st_p)} d ≠ ∅ := by
+      rw [hd_def, PDA.evalFrom_append']
+      exact ParserWithEOS_evalFrom_eos_extend P _ e heos_in_eval
+    have hmask : ExtChar.eos ∈
+        ComputeValidTokenMask parser (BuildInverseTokenSpannerTable comb).snd
+          (PreprocessParser comb parser) q_fst qp st_p := by
+      simp only [mem_ComputeValidTokenMask_preprocess_iff]
+      by_cases hacc0 : (ParserWithEOS P).evalFrom {(qp, [])} d ≠ ∅
+      · left; exact ⟨d, hd_rs, hacc0, hitst⟩
+      · push_neg at hacc0; right
+        exact ⟨d, hd_rs, hacc0,
+          PDA.evalFrom_nonempty_imp_nfa_nonempty (ParserWithEOS P) qp st_p d hqp_d_ne,
+          hqp_d_ne, hitst⟩
+    -- Assemble MaskChecker = true
+    unfold MaskChecker
+    have hcomb_eval : comb.eval (curr.map ExtChar.char) = some (q_fst, terms) := by
+      simp [FST.eval, hcurr]
+    simp only [show (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (List.map ExtChar.char curr) =
+      some (q_fst, terms) from hcomb_eval]
+    rw [Finset.fold_or_eq_true_iff, Finset.mem_image]
+    refine ⟨(qp, st_p), hmem_qp, ?_⟩
+    simp only [List.contains_iff_mem]
+    exact hmask
+
 /-! ## Checker interface connection
 
 Connecting the one-step soundness/completeness results above to the cumulative
