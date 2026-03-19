@@ -1863,23 +1863,125 @@ def GCDLanguage
       (w.map ExtChar.char ++ [.eos]) = some (qa, gammas) ∧
     gammas ∈ (ParserWithEOS P).accepts }
 
+/-- Any prefix of a word in `GCDLanguage` passes `checkerAllows` for the GCD checker.
+
+This is the key inductive step for completeness: we strengthen the IH from
+"the full word is in the language" to "any prefix passes checkerAllows".
+The induction is on the length of the prefix `w'`. -/
+private theorem GCDLanguage_checkerAllows_prefix
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  (hempty : [] ∉ spec.automaton.accepts)
+  (hrestart : ∀ s ∈ spec.automaton.accept,
+    ∃ c : α, spec.automaton.step s c = none ∧
+      (spec.automaton.step spec.automaton.start c).isSome)
+  (w : List β) (hw : w ∈ GCDLanguage spec P)
+  (w' : List β) (rest : List β) (hrest : w = w' ++ rest) :
+  checkerAllows (GCDChecker spec P) w' = true := by
+  -- Extract the GCDLanguage witness
+  obtain ⟨qa, gammas, heval, hacc⟩ := hw
+  -- We proceed by strong induction on w'.length.
+  -- The key property: for any prefix w' of w (i.e. w = w' ++ rest),
+  -- checkerAllows holds.
+  -- We use Nat.rec_aux on the reverse of w':
+  -- specifically, we show the stronger statement:
+  -- ∀ (n : Nat) (w' rest : List β), w'.length = n → w = w' ++ rest →
+  --   checkerAllows (GCDChecker spec P) w' = true
+  suffices h : ∀ (n : Nat) (w' rest : List β),
+      w'.length = n → w = w' ++ rest →
+      checkerAllows (GCDChecker spec P) w' = true from
+    h w'.length w' rest rfl hrest
+  intro n
+  induction n using Nat.strongRecOn with
+  | _ n ih =>
+    intro w' rest hlen hweq
+    -- Case split: is w' empty or w' = w'' ++ [v]?
+    cases List.eq_nil_or_concat w' with
+    | inl hnil =>
+      subst hnil; simp [checkerAllows_nil]
+    | inr hexist =>
+      obtain ⟨w'', v, hconcat⟩ := hexist
+      subst hconcat
+      -- w' = w'' ++ [v], so w = w'' ++ ([v] ++ rest)
+      have hlen' : w''.length < n := by
+        rw [← hlen]; simp [List.length_append]
+      have hrest' : w = w'' ++ ([v] ++ rest) := by
+        rw [hweq]; simp [List.append_assoc]
+      -- IH: checkerAllows c w'' = true
+      have ih_allows : checkerAllows (GCDChecker spec P) w'' = true :=
+        ih w''.length hlen' w'' ([v] ++ rest) rfl hrest'
+      -- Reduce to two subgoals via checkerAllows_snoc
+      -- Note: List.eq_nil_or_concat gives concat form; normalize to append form
+      simp only [List.concat_eq_append] at *
+      rw [checkerAllows_snoc, Bool.and_eq_true]
+      refine ⟨?_, ih_allows⟩
+      -- Apply Completeness: suffix = rest.map ExtChar.char ++ [.eos]
+      -- The eval witness: eval (((w'' ++ [v]).map char) ++ (rest.map char ++ [.eos])) = some (qa, gammas)
+      -- This equals eval (w.map char ++ [.eos]) = some (qa, gammas) (= heval)
+      apply Completeness spec P w'' v hempty hrestart
+      refine ⟨rest.map ExtChar.char ++ [.eos], qa, gammas, ?_, hacc⟩
+      -- Need: eval (((w'' ++ [v]).map char) ++ rest.map char ++ [.eos]) = some (qa, gammas)
+      -- From heval: evalFrom start (w.map char ++ [.eos]) = some (qa, gammas)
+      -- and hweq: w = w'' ++ [v] ++ rest (after concat_eq_append normalization)
+      simp only [FST.eval] at heval ⊢
+      have heq : (w'' ++ [v]).map (ExtChar.char (α := β)) ++ (rest.map ExtChar.char ++ [.eos]) =
+          w.map ExtChar.char ++ [.eos] := by
+        simp [hweq, List.map_append, List.append_assoc]
+      rw [heq]
+      exact heval
+
+/-- If `w ∈ GCDLanguage spec P`, then the GCD checker accepts `w`. -/
+theorem GCDLanguage_imp_checkerAccepts
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  (hempty : [] ∉ spec.automaton.accepts)
+  (hrestart : ∀ s ∈ spec.automaton.accept,
+    ∃ c : α, spec.automaton.step s c = none ∧
+      (spec.automaton.step spec.automaton.start c).isSome)
+  (w : List β) (hw : w ∈ GCDLanguage spec P) :
+  checkerAccepts (GCDChecker spec P) w = true := by
+  obtain ⟨qa, gammas, heval, hacc⟩ := hw
+  -- Show checkerAllows holds via the prefix lemma
+  have hallows : checkerAllows (GCDChecker spec P) w = true :=
+    GCDLanguage_checkerAllows_prefix spec P hempty hrestart w
+      ⟨qa, gammas, heval, hacc⟩ w [] (by simp)
+  -- Show GCDChecker w .eos = true via EOSCompleteness
+  have heos : GCDChecker spec P w .eos = true := by
+    apply EOSCompleteness spec P w hempty hrestart
+    refine ⟨[], qa, gammas, ?_, hacc⟩
+    simp only [FST.eval] at heval ⊢
+    exact heval
+  -- Combine: checkerAccepts = checkerAllows && c w .eos = true
+  simp only [checkerAccepts, hallows, heos, decide_true, Bool.and_self]
+
 /-- The GCD mask checker, viewed as an abstract `Checker`, is complete with
 respect to the language defined by the composed detokenizing lexer and parser:
 it accepts exactly the strings in that language, and its intermediate language
 is the prefix closure.
 
-**Status**: Sorry'd. Requires induction over the token prefix using
-`Completeness`/`EOSCompleteness` (forward) and `Soundness` (backward),
-plus `checkerAllowsTermination` for the intermediate language direction.
-See PHASE5_CHECKER_INTERFACE.md for the detailed proof plan. -/
+**Status**: The `checkerLanguage` direction is proved using
+`GCDLanguage_imp_checkerAccepts`. The reverse direction (Soundness-based)
+and the `checkerIntermediateLanguage` direction remain sorry'd. -/
 theorem GCDChecker_complete
-  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
-  [DecidableEq σa]
-  [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+  [Vocabulary α β] [FinEnum β]
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
   (hempty : [] ∉ spec.automaton.accepts)
   (hrestart : ∀ s ∈ spec.automaton.accept,
     ∃ c : α, spec.automaton.step s c = none ∧
       (spec.automaton.step spec.automaton.start c).isSome) :
   checkerComplete (β := β) (GCDChecker spec P) (GCDLanguage spec P) := by
-  sorry
+  constructor
+  · -- checkerLanguage (GCDChecker spec P) = GCDLanguage spec P
+    ext w
+    simp only [checkerLanguage, checkerAccepts]
+    constructor
+    · -- (→): if checker accepts w, then w ∈ GCDLanguage spec P
+      intro h
+      -- TODO: requires Soundness (reverse direction)
+      sorry
+    · -- (←): if w ∈ GCDLanguage spec P, then checker accepts w
+      intro hw
+      exact GCDLanguage_imp_checkerAccepts spec P hempty hrestart w hw
+  · -- checkerIntermediateLanguage (GCDChecker spec P) = (GCDLanguage spec P).prefixes
+    -- TODO: requires inductive prefix argument and checkerAllowsTermination
+    sorry

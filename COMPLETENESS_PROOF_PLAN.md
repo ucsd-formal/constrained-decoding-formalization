@@ -175,12 +175,14 @@ prefix.
 | 9b | Prove `EOSCompleteness` | GCD.lean | — | ✅ Done |
 | 9c | `checkerAllows` induction lemmas | Checker.lean | — | ✅ Done |
 | 9d | Define `GCDLanguage`, fix `GCDChecker_complete` statement | GCD.lean | — | ✅ Done |
-| 10 | Prove `GCDChecker_sound` | GCD.lean | Soundness | ⬜ |
-| 11 | Prove `GCDChecker_complete` | GCD.lean | 9, 9b, 9c, 9d | ⬜ |
+| 10 | Prove `GCDChecker_sound` | GCD.lean | Soundness | ⬜ (needs path indep + termination) |
+| 11a | `checkerLanguage = GCDLanguage` backward | GCD.lean | Completeness + EOS | ✅ Done |
+| 11b | `checkerLanguage = GCDLanguage` forward | GCD.lean | Soundness (EOS) | ⬜ |
+| 11c | `checkerIntermediateLanguage = prefixes` | GCD.lean | Termination | ⬜ (blocked by 5.1a) |
 | 12 | `lake build` clean (zero sorry) | — | all | ⬜ |
 
-**Critical path**: 10 + 11 → 12.
-Tasks 10 and 11 are independent and can be done in parallel.
+**Current sorry's**: `GCDChecker_sound` (termination + path independence), `GCDChecker_complete` (forward direction + prefix closure).
+Tasks 10 and 11b are independent. Task 11c is blocked by the productivity hypothesis.
 
 ---
 
