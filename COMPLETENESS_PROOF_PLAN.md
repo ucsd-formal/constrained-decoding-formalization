@@ -181,7 +181,8 @@ prefix.
 | 11c | `checkerIntermediateLanguage = prefixes` | GCD.lean | Termination | ⬜ (blocked by 5.1a) |
 | 12 | `lake build` clean (zero sorry) | — | all | ⬜ |
 
-**Current sorry's**: `GCDChecker_sound` (termination + path independence), `GCDChecker_complete` (forward direction + prefix closure).
+**Current sorry's**: `GCDChecker_sound` (termination + path independence, split into 2 sorry's), `GCDChecker_complete` (prefix closure only — language equality fully proved).
+**New infrastructure**: `BuildDetokLexer_eval_flatMap_eq` (FST factors through flatten), `ParserWithEOS_evalFull_eos_imp_accepts` (evalFull + .eos → accepts).
 Tasks 10 and 11b are independent. Task 11c is blocked by the productivity hypothesis.
 
 ---

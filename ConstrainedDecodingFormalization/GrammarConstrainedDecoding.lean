@@ -1924,6 +1924,38 @@ Full connection to `checkerSound` and `checkerComplete` is deferred pending
 completion of the remaining sorry in `MaskChecker_viable_imp_char_true`.
 -/
 
+omit [FinEnum Γ] [FinEnum α] [FinEnum σa] [DecidableEq β] [DecidableEq Γ] in
+/-- Evaluating `BuildDetokLexer` on a `.char`-lifted token list depends only on the
+flattened character content, not on the tokenization boundaries.
+
+This is a key building block for path independence: two token sequences with the
+same `flatMap flatten` value produce identical FST states and output lists. -/
+lemma BuildDetokLexer_eval_flatMap_eq
+    [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+    [DecidableEq σa] [FinEnum β] [FinEnum σa] [FinEnum α]
+    (spec : LexerSpec α Γ σa) (w₁ w₂ : List β)
+    (hfm : w₁.flatMap (Vocabulary.flatten (α := α)) = w₂.flatMap (Vocabulary.flatten (α := α))) :
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (w₁.map ExtChar.char) =
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (w₂.map ExtChar.char) := by
+  -- Reduce to detokenize equality via detokenize_eq_comp
+  simp only [FST.eval, Detokenizing.BuildDetokLexer]
+  apply Detokenizing.detokenize_eq_comp
+  -- Reduce detokenize on .char-lifted lists to flatMap flatten
+  rw [Detokenizing.detokenize_flatmap, Detokenizing.detokenize_flatmap]
+  -- The extended Vocabulary instance: flatten (char t) = (flatten t).map char
+  -- so (w.map char).flatMap Ch_flatten = (w.flatMap flatten).map char
+  -- which equals (w.flatMap flatten).map char on both sides.
+  have key : ∀ (w : List β),
+      (w.map ExtChar.char).flatMap (Vocabulary.flatten (α := Ch α) (β := Ch β)) =
+      (w.flatMap Vocabulary.flatten).map ExtChar.char := by
+    intro w
+    induction w with
+    | nil => simp
+    | cons h t ih =>
+      simp only [List.flatMap_cons, List.map_cons, List.map_append, Vocabulary.flatten]
+      exact congrArg _ ih
+  rw [key w₁, key w₂, hfm]
+
 /-- The GCD mask checker, viewed as an abstract `Checker`, is sound:
 every incrementally allowed prefix can be extended to an accepted word,
 and decisions depend only on the underlying character content. -/
@@ -1933,7 +1965,29 @@ theorem GCDChecker_sound
   [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) :
   checkerSound (α := α) (β := β) (GCDChecker spec P) Vocabulary.flatten := by
-  sorry
+  constructor
+  · -- checkerAllowsTermination: every incrementally allowed prefix can be
+    -- extended to a word accepted by the checker.
+    -- Requires a productivity / liveness hypothesis: the grammar must be
+    -- non-blocking at every reachable FST state.  Deferred pending that
+    -- additional assumption.
+    sorry
+  · -- checkerPathIndependent: `checkerAllows` decisions depend only on the
+    -- flattened character content, not on the tokenization boundaries.
+    --
+    -- Difficulty: `checkerAllows c w` is a CONJUNCTION of one-step checks at
+    -- every prefix boundary of `w`.  Two tokenizations `w₁`, `w₂` with
+    -- `w₁.flatMap flatten = w₂.flatMap flatten` may have a different number of
+    -- boundaries, each with different intermediate flatten values.
+    -- `BuildDetokLexer_eval_flatMap_eq` (above) handles the *complete* prefix
+    -- case, but the conjuncts for intermediate prefixes are harder: the
+    -- character content at intermediate boundaries differs between
+    -- tokenizations, so the FST states at those points can differ.
+    -- A full proof likely requires showing that `MaskChecker` returns `true`
+    -- for ALL viable intermediate states, making the conjunction invariant
+    -- under retokenization.  Deferred pending that viability-monotonicity
+    -- argument.
+    sorry
 
 /-- The target language of the GCD checker: token sequences `w` such that the
 composed detokenizing lexer processes `w.map char ++ [.eos]` successfully and
