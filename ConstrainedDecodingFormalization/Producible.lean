@@ -22,6 +22,8 @@ namespace FST
 variable {α : Type u} {Γ : Type v} {σ : Type w}
 variable (M : FST α Γ σ)
 
+/-! ### Semantic producibility definitions -/
+
 /-- The language of output words producible from state `q`. -/
 def producible (q : σ) : Language Γ :=
     { t | ∃ w, (∃ r ∈ M.evalFrom q w, r.2 = t) }
@@ -29,6 +31,8 @@ def producible (q : σ) : Language Γ :=
 /-- The set of tokens producible from `q` as a singleton output word. -/
 def singleProducible (q : σ) : Set Γ :=
     { t | ∃ w, (∃ r ∈ M.evalFrom q w, r.2 = [t]) }
+
+/-! ### DFS algorithm -/
 
 /-- Adding a fresh state to the visited set strictly decreases the cardinality
 of its complement. This is the measure used to justify termination of `dfs`. -/
@@ -85,6 +89,8 @@ def computeSingleProducible
   [DecidableEq σ ] [DecidableEq α ] [DecidableEq Γ ]
   (q : σ) : List Γ :=
   (dfs M q {} []).snd
+
+/-! ### Soundness of DFS -/
 
 section
 
@@ -233,13 +239,17 @@ lemma dfs_seed_subset
         t ∈ (M.dfs (a := a) q vis ret₁).2 →
         t ∈ (M.dfs (a := a) q vis ret₂).2
 
-  -- Mirror the recursive structure of `dfs` by recurring on the remaining
-  -- number of unvisited states.
+  -- Strategy: strong induction on |vis^c| (unvisited states). The `dfs` function
+  -- recurses only through epsilon transitions, each of which adds the current
+  -- state to the visited set, strictly shrinking the complement. We show that
+  -- replacing the seed `ret₁` with the larger `ret₂` propagates through the
+  -- fold over the alphabet by case-splitting on each transition type.
   have step : ∀ n, (∀ m, m < n → P m) → P n := by
     intro n IH q vis ret₁ ret₂ hcard hsubset t hmem
     unfold dfs at hmem ⊢
     by_cases h_vis : q ∈ vis
-    · simp [h_vis] at hmem ⊢
+    · -- Already visited: `dfs` returns the seed unchanged, so subset suffices
+      simp [h_vis] at hmem ⊢
       exact hsubset hmem
     ·
       let base : Finset σ := vis ∪ {q}
@@ -430,12 +440,18 @@ lemma mem_dfs_of_eps_step
   change t ∈ (((a : FinEnum α).toList).foldl stepAccum (base, [])).2
   exact hfold
 
+/-! ### Completeness of DFS -/
+
 omit [DecidableEq σ] in
 /-- Completeness of `dfs` from a DFS-compatible epsilon reachability witness.
 
 If `s` can be reached from `q` by following only epsilon-output transitions in
 the precise way that `dfs` explores them, and `s` has a singleton-output
 transition producing `t`, then `dfs` started at `q` records `t`.
+
+The proof proceeds by induction on the `DfsEpsReach` derivation: the base case
+uses `mem_dfs_of_singleton_step`, and the inductive step chains an epsilon
+transition with the recursive result via `mem_dfs_of_eps_step`.
 -/
 lemma dfs_complete_from_reach
   [Fintype Γ] [Fintype σ] [a : FinEnum α]
@@ -446,9 +462,11 @@ lemma dfs_complete_from_reach
   t ∈ (M.dfs (a := a) q V []).2 := by
   induction hreach with
   | here hq =>
+      -- Base case: already at `s`, so the singleton step is directly recorded
       rcases hstep with ⟨x, q₁, hstepx⟩
       exact mem_dfs_of_singleton_step (M := M) (a := a) hq hstepx
   | @next V q qnext s x hq hstep_eps hrest ih =>
+      -- Inductive step: take the epsilon transition q -> qnext, then apply IH
       have hrec_insert : t ∈ (M.dfs (a := a) qnext (insert q V) []).2 := by
         have hinsert_eq_union : insert q V = V ∪ {q} := by
           ext y
@@ -459,6 +477,7 @@ lemma dfs_complete_from_reach
 
 end
 
+/-! ### Structural lemmas for singleton-output runs -/
 
 /-- A run on a nonempty word produces `[t]` exactly when the first transition
 either produces `[t]` and the tail produces `[]`, or the first transition
@@ -558,6 +577,8 @@ lemma evalFrom_singleton_decompose
               rcases hcons with ⟨hγ, htail⟩
               have hne : (head :: (tail ++ T)) ≠ ([] : List Γ) := by simp
               contradiction
+
+/-! ### Soundness proof -/
 
 /-- Soundness core for `dfs`: every token recorded by the search either comes
 from the initial seed `ret`, or it is witnessed by a genuine singleton-output
@@ -737,6 +758,8 @@ lemma dfs_sound {q : σ} {t : Γ}
   ∃ w qf, M.evalFrom q w = some (qf, [t]) :=
   dfs_sound_core (M := M) (a := a) q ∅ ht
 
+/-! ### Epsilon reachability and cycle removal -/
+
 /-- The relation of taking a single transition whose output is empty. -/
 def EpsStep (q q' : σ) : Prop :=
   ∃ a, M.step q a = some (q', [])
@@ -899,6 +922,9 @@ lemma epsReach_exists_nodup_chain
     (q :: l).getLast (List.cons_ne_nil _ _) = s ∧
     List.Nodup (q :: l) := by
   classical
+  -- Pick the shortest epsilon chain from q to s. Any duplicate state yields a
+  -- strictly shorter chain (via cycle removal), contradicting minimality. Hence
+  -- the shortest chain is duplicate-free.
   let P : ℕ → Prop := fun n =>
     ∃ m : List σ,
       m.head? = some q ∧
@@ -977,6 +1003,8 @@ lemma epsReach_to_dfsReach_empty
     epsChain_to_dfsReach (M := M) (V := ∅) (q := q) (l := l)
       hchain hnodup (by intro x hx; simp)
 
+/-! ### Completeness proof -/
+
 /-- Completeness of `dfs` for singleton outputs. Any semantic witness of
 singleton producibility is discovered by the search. -/
 lemma dfs_complete
@@ -985,6 +1013,9 @@ lemma dfs_complete
   {q : σ} {t : Γ}
   (hex : ∃ w qf, M.evalFrom q w = some (qf, [t])) :
   t ∈ (M.dfs (a := a) q ∅ []).2 := by
+  -- Strategy: decompose the singleton-output run into an epsilon prefix, a
+  -- single producing transition, and an epsilon suffix. Convert the epsilon
+  -- prefix into a DfsEpsReach witness, then apply dfs_complete_from_reach.
   rcases hex with ⟨w, qf, hw⟩
   rcases (evalFrom_singleton_decompose (M := M) hw)
     with ⟨u, v, a₀, s, s', hw', hu, hstep, hv⟩
@@ -993,6 +1024,8 @@ lemma dfs_complete
   have hreach_dfs : DfsEpsReach (M := M) ∅ q s :=
     epsReach_to_dfsReach_empty (M := M) hreach_eps
   exact dfs_complete_from_reach (M := M) (a := a) hreach_dfs ⟨a₀, s', hstep⟩
+
+/-! ### Correctness -/
 
 /-- The executable procedure `computeSingleProducible` computes exactly the set
 of singleton outputs semantically producible from `q`. -/

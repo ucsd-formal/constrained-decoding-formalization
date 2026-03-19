@@ -34,6 +34,8 @@ structure FSA (α σ) where
   step : σ → α → Option σ
   accept : List σ
 
+/-! ### FSA: core structure and evaluation -/
+
 namespace FSA
 
 variable (A : FSA α σ)
@@ -86,6 +88,7 @@ def acceptsFrom (s : σ) : Language α :=
 /-- The language accepted from the designated start state. -/
 def accepts : Language α := A.acceptsFrom A.start
 
+/-- Bidirectional characterization of acceptance. -/
 def accepts_iff {w : List α} : w ∈ A.accepts ↔
   ∃ f, A.evalFrom A.start w = some f ∧ f ∈ A.accept := by
   simp [accepts, acceptsFrom]
@@ -136,6 +139,8 @@ def pruned_prefixLanguage (h : A.pruned) : A.intermediateLanguage = A.prefixLang
     | some s =>
       have : ¬A.evalFrom A.start w = none := by simp[h3]
       exact this
+
+/-! ### FSA: decidability and conversions -/
 
 def isPrefix (w : List α) : Prop := w ∈ A.prefixLanguage
 
@@ -190,6 +195,8 @@ instance [BEq σ] [LawfulBEq σ] (l : List α) : Decidable (l ∈ A.accepts) :=
 
 --instance [BEq σ] [LawfulBEq σ] (l : List α) : Decidable (l ∈ A.prefixLanguage) :=
   --sorry
+
+/-! ### FSA to DFA conversion -/
 
 /-- View a deterministic FSA as a DFA whose extra `none` state represents
 failure. This is the version used when relating the development to mathlib's
@@ -299,6 +306,8 @@ def stepList (S : List σ) (a : α) : List (Option σ) :=
 `Prop`-valued counterpart to `acceptsFrom`. -/
 def accepted (s : σ) (w : List α) : Prop := A.evalFrom s w ≠ none
 
+/-! ### FSA to NFA conversion -/
+
 /-- View a deterministic FSA as an NFA with singleton transition sets.
 
 This lets later files reuse mathlib's NFA language and reachability interface
@@ -365,6 +374,8 @@ lemma toNFA_evalFrom_Subsingleton (A : FSA α σ) (s : σ) (l : List α) :
     simp [NFA.stepSet_empty, toNFA_evalFrom_empty]
 
 end FSA
+
+/-! ### FST: core structure and evaluation -/
 
 /-- A deterministic finite-state transducer from inputs `α` to output words
 over `Γ`. -/
@@ -445,6 +456,7 @@ def eval (input : List α) : Option (σ × List Γ) :=
 def eval_fold (input : List α) : Option (σ × List Γ) :=
   M.evalFrom_fold M.start input
 
+/-- The fold-based evaluator with a seed agrees with the seed-based `evalFrom_seed`. -/
 def evalFrom_fold_seed_eq_evalFrom_seed (s : σ) (l : List α) (seed: List Γ) :
     M.evalFrom_fold_seed s l seed = M.evalFrom_seed s l seed := by
   induction l generalizing s seed
@@ -480,6 +492,7 @@ def evalFrom_fold_seed_eq_evalFrom_seed (s : σ) (l : List α) (seed: List Γ) :
       simp[evalFrom_fold_seed] at ih'
       exact ih'
 
+/-- The fold-based evaluator agrees with the recursive `evalFrom`. -/
 def evalFrom_fold_eq_evalFrom (s : σ) (l : List α) :
     M.evalFrom_fold s l = M.evalFrom s l := by
   have := evalFrom_fold_seed_eq_evalFrom_seed M s l []
@@ -567,6 +580,8 @@ theorem evalFrom_append (s : σ) (xs ys : List α) : M.evalFrom s (xs ++ ys) =
         simp
         cases h2 : M.evalFrom sp2.1 ys <;> simp
 
+/-! ### FST: transition traces -/
+
 /-- Recover the concrete transition trace taken by a successful run.
 
 This is mainly used in proof arguments that need to inspect runs step by step
@@ -583,6 +598,7 @@ def stepList (s : σ) (a : List α) : Option (List (σ × α × σ × List Γ)) 
       | none => none
       | some next => some ( (s, x, s'.fst, s'.snd) :: next )
 
+/-- The input symbols recorded by `stepList` match the original input word. -/
 lemma stepList_w ( s: σ) (w: List α) :
   match M.stepList s w with
   | none => True
@@ -615,6 +631,7 @@ lemma stepList_mem_w ( s: σ) (w: List α) :
     intro l  hl
     exists l
 
+/-- `stepList` produces a trace of the same length as the input word. -/
 lemma stepList_len (s: σ) (w: List α) :
   match M.stepList s w with
   | none => True
@@ -636,6 +653,7 @@ lemma stepList_len (s: σ) (w: List α) :
       simp
       exact ih'
 
+/-- A successful `evalFrom` run decomposes into a `stepList` trace with matching output. -/
 lemma stepList_of_eval (s: σ) (w: List α) :
   match M.evalFrom s w with
   | none => M.stepList s w = none
@@ -859,6 +877,8 @@ lemma stepList_zip (s: σ) (a: List α) :
       simp[h, hl]
       exact ih' src char dst tok hl
 
+/-! ### FST: language and acceptance -/
+
 /-- The language accepted when the transducer starts in state `s`, ignoring the
 actual output word. -/
 def acceptsFrom (s : σ) : Language α :=
@@ -932,6 +952,8 @@ def adj (q : σ) [FinEnum α] [FinEnum σ] : Finset σ :=
 universe u_1 u_2
 
 
+/-! ### FST: composition -/
+
 /-- Execute one input symbol of `M₁` and immediately feed the emitted output
 through `M₂`.
 
@@ -969,6 +991,7 @@ def compose_fun_evalFrom { β : Type u_1 } { τ : Type u_2 } (M₁ : FST α Γ �
     | none => none
     | some (s₂', T) => ((s₁', s₂'), T)
 
+/-- One step of the semantic composition equals: compose the first step, then recurse. -/
 lemma compose_fun_step_cons { β : Type u_1 } { τ : Type u_2 }
   (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (s₁ : σ) (s₂ : τ) (w : α) (ws : List α) :
     compose_fun_evalFrom M₁ M₂ s₁ s₂ (w :: ws) =
@@ -1046,6 +1069,8 @@ lemma compose_fun_evalFrom_singleton (s₁ : σ) (s₂ : τ) (x : α)
 
 
 
+
+/-! ### FST to FSA projection -/
 
 /-- Project an FST to its underlying FSA by forgetting outputs. -/
 def toFSA : FSA α σ where

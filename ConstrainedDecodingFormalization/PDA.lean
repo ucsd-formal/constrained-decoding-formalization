@@ -13,7 +13,11 @@ semantics and an NFA-based overapproximation used later in preprocessing and
 checker correctness arguments.
 -/
 
-/-! ## Prefix helper lemmas -/
+/-! ### Prefix helper lemmas
+
+Auxiliary lemma about `List.isPrefixOf?` that is used in the stack-invariance
+proof below. It shows how prefix witnesses compose transitively.
+-/
 section PrefixHelper
 universe u
 variable { α : Type u }
@@ -73,6 +77,8 @@ namespace PDA
 variable { Γ π σ } [ DecidableEq σ ] [ DecidableEq π ] [Fintype Γ] [Fintype π] [sf: Fintype σ]
 variable ( P : PDA Γ π σ )
 
+/-! ### Step and evaluation -/
+
 
 /-- A default empty PDA, used only to satisfy typeclass requirements. -/
 instance [Inhabited σ] [Inhabited π] : Inhabited (PDA Γ π σ) :=
@@ -86,10 +92,14 @@ def fullStep (S : Finset (σ × List π)) (t : Γ) : Finset (σ × List π) :=
       | some rem => { (dst, replace ++ rem) }
       | none => ∅
 
+/-- Stepping from the empty configuration set produces the empty set. -/
 @[simp]
 theorem fullStep_none ( t : Γ ) : P.fullStep ∅ t = ∅ :=
   by simp[fullStep]
 
+/-- One-step stack invariance: if `(sn, stn)` is reachable from `(s, st)` in one
+step, and `st` is a prefix of `st'`, then the corresponding run from `(s, st')`
+appends the extra suffix. Used inductively in `stackInvariance_lem`. -/
 private theorem fullStep_stackInvariance [ LawfulBEq π  ] : ∀ s st sn stn st' t, st <+: st' →
    (sn, stn) ∈ P.fullStep {(s, st)} t →
    (sn, stn ++ st'.drop st.length) ∈ P.fullStep {(s, st')} t
@@ -109,19 +119,23 @@ private theorem fullStep_stackInvariance [ LawfulBEq π  ] : ∀ s st sn stn st'
   have p2 := List.isPrefixOf?_eq_some_iff_append_eq.mpr partition
   simp[p2]
 
+/-! ### Multi-step evaluation (`evalFrom`) -/
 
 /-- Evaluate a PDA from a set of initial configurations on an input word. -/
 def evalFrom ( s: Finset ( σ × List π ) ) : List Γ → Finset (σ × List π) :=
   List.foldl ( fun s a => fullStep P s a) s
 
+/-- Evaluating from a singleton on the empty word returns the same singleton. -/
 @[simp]
 theorem evalFrom_nil (s : σ) (st : List π) : P.evalFrom {(s, st)} [] = {(s, st)} :=
   rfl
 
+/-- Evaluating on a cons is one step followed by evaluation on the tail. -/
 @[simp]
 theorem evalFrom_cons (S : Finset (σ × List π)) (head: Γ) (tail : List Γ) : P.evalFrom S (head :: tail) = P.evalFrom (P.fullStep S head) tail := by
   simp[evalFrom]
 
+/-- Evaluating from the empty configuration set always yields the empty set. -/
 @[simp]
 theorem evalFrom_none  ( w : List Γ ) : P.evalFrom {} w = {} := by
   induction w
@@ -130,16 +144,20 @@ theorem evalFrom_none  ( w : List Γ ) : P.evalFrom {} w = {} := by
   have : P.evalFrom {} (h :: t) = P.evalFrom (P.fullStep {} h) t := by rfl
   simp[this, fullStep_none, ih]
 
+/-- Evaluation distributes over word concatenation. -/
 theorem evalFrom_append' (S : Finset (σ × List π)) (xs ys : List Γ) :
     P.evalFrom S (xs ++ ys) = P.evalFrom (P.evalFrom S xs) ys := by
   simp [evalFrom, List.foldl_append]
 
+/-- If evaluation on `xs ++ ys` is nonempty, then evaluation on the prefix `xs`
+is also nonempty. -/
 theorem evalFrom_prefix_nonempty (S : Finset (σ × List π)) (xs ys : List Γ) :
     P.evalFrom S (xs ++ ys) ≠ ∅ → P.evalFrom S xs ≠ ∅ := by
   intro h habs
   rw [evalFrom_append', habs, evalFrom_none] at h
   exact h rfl
 
+/-- `fullStep` is monotone: larger configuration sets produce larger successor sets. -/
 @[simp]
 theorem fullStep_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) (h: u ⊆ v) ( w : Γ )
   : P.fullStep u w ⊆ P.fullStep v w := by
@@ -147,6 +165,8 @@ theorem fullStep_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) 
   apply Finset.biUnion_subset_biUnion_of_subset_left
   exact h
 
+/-- `evalFrom` is monotone: larger initial configuration sets produce larger
+reachable sets. -/
 @[simp]
 theorem evalFrom_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) (h: u ⊆ v) ( w : List Γ )
   : P.evalFrom u w ⊆ P.evalFrom v w := by
@@ -160,7 +180,7 @@ theorem evalFrom_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) 
 /-- `fullStep` distributes over union: `fullStep (S₁ ∪ S₂) t = fullStep S₁ t ∪ fullStep S₂ t`. -/
 theorem fullStep_biUnion (S : Finset (σ × List π)) (t : Γ) :
     P.fullStep S t = S.biUnion (fun x => P.fullStep {x} t) := by
-  simp [fullStep, Finset.biUnion_biUnion]
+  simp [fullStep]
 
 /-- `evalFrom` distributes over its initial configuration set. -/
 theorem evalFrom_biUnion (S : Finset (σ × List π)) (w : List Γ) :
@@ -192,6 +212,8 @@ theorem evalFrom_nonempty_exists_singleton (S : Finset (σ × List π)) (w : Lis
   rw [Finset.eq_empty_iff_forall_notMem] at this
   exact this y hxy
 
+/-! ### Acceptance and language definitions -/
+
 /-- Evaluate the PDA from its designated start configuration `(start, [])`. -/
 def evalFull : List Γ → Finset (σ × List π) :=
   fun w => (P.evalFrom {(P.start, [])} w)
@@ -218,6 +240,13 @@ def pruned : Prop :=
   -- for all states that are reachable,
   -- can we eventually reach an accepting state?
   ∀ s st, (∃ w, (s, st) ∈ P.evalFull w) → (∃ v, v ∈ P.acceptsFrom s st)
+
+/-! ### NFA overapproximation
+
+The PDA's control-state transitions, ignoring the stack, form an NFA that
+overapproximates the PDA's language. This is used in preprocessing to cheaply
+rule out tokens that cannot possibly lead to acceptance.
+-/
 
 /-- Forget the stack discipline and keep only the induced control-state NFA. -/
 def toNFA : NFA Γ σ :=
@@ -304,6 +333,7 @@ lemma overApproximationLemma :
   := by
   intro w S s' st' h
 
+  -- Monotonicity of NFA step and foldl, used to relate PDA and NFA runs
   have subset_lem1 : ∀ u v head, u ⊆ v →
     P.toNFA.stepSet u head ⊆ P.toNFA.stepSet v head := by
       intro u v head uh
@@ -368,14 +398,23 @@ theorem overApproximation  :
   simp[NFA.eval]
   exact dst_nfa
 
+/-! ### Stack invariance (Paper Prop. 3.1)
+
+The key structural property of our PDA model: extending the initial stack by a
+suffix does not affect the control-state trajectory. Every run from `(s, st)`
+lifts to a corresponding run from `(s, st')` whenever `st <+: st'`, with the
+extra suffix appended to each intermediate stack.
+-/
+
 /-- Extending the initial stack by a suffix extends every run by the same
-suffix. This is the core stack-invariance lemma. -/
+suffix. This is the core stack-invariance lemma (Paper Prop. 3.1). -/
 lemma stackInvariance_lem  : ∀ s st sn stn st' w, st <+: st' →
    (sn, stn) ∈ P.evalFrom {(s, st)} w →
    (sn, stn ++ st'.drop st.length) ∈ P.evalFrom {(s, st')} w := by
   intro s st sn stn st' w pfx
   induction w generalizing s st st'
   case nil =>
+    -- Base case: no input consumed, so the configuration is unchanged
     simp
     intro h h2
     constructor
@@ -385,9 +424,12 @@ lemma stackInvariance_lem  : ∀ s st sn stn st' w, st <+: st' →
   case cons h t ih =>
     intro h_p
     simp at h_p
+    -- Decompose the run into a first step and a tail evaluation
     obtain ⟨step, hstep⟩ := (P.evalFrom_iff_exists (P.fullStep {(s, st)} h) _ t).mp h_p
     have step_pfx : step.2 <+: (step.2 ++ List.drop st.length st') := by simp_all
+    -- Apply the inductive hypothesis to the tail
     have ih' := ih step.1 step.2 (step.2 ++ List.drop st.length st') step_pfx hstep.right
+    -- Lift the first step via one-step stack invariance
     have fs_si := P.fullStep_stackInvariance s st step.fst step.snd st' h pfx hstep.left
     simp at ih' ⊢
     apply evalFrom_subset
@@ -410,12 +452,16 @@ theorem stackInvariance  : ∀ w s st st',
   constructor
   repeat assumption
 
+/-- Acceptance from the empty stack implies acceptance from any stack. This is
+a direct corollary of `stackInvariance` since `[] <+: st` for all `st`. -/
 theorem acceptEmptyStk_acceptAll : ∀ w s st,
   w ∈ P.acceptsFrom s [] → w ∈ P.acceptsFrom s st := by
   intro w s st
   apply stackInvariance
   simp
 
+
+/-! ### Pruned PDA and prefix characterization -/
 
 /-- Split an evaluation from the start configuration across concatenation. -/
 lemma evalFull_append :
@@ -432,6 +478,8 @@ theorem pruned_intermediate_eq_prefix ( h : P.pruned ) :
   intro x
   apply Iff.intro
   case mp =>
+    -- Forward: if x is not rejected, then by prunedness there is a continuation
+    -- that reaches acceptance, making x a prefix of an accepted word
     intro h_x
     simp[intermediate, eval] at h_x
     have : ∃ u, u ∈ P.evalFrom {(P.start, [])} x := by
@@ -460,6 +508,8 @@ theorem pruned_intermediate_eq_prefix ( h : P.pruned ) :
     simp[Language.prefixes]
     exists (x ++ fin)
   case mpr =>
+    -- Backward: if x is a prefix of an accepted word, then evaluation on x
+    -- cannot be empty (otherwise the full word would also fail)
     intro h_x
     simp[Language.prefixes] at h_x
     simp[intermediate, eval]

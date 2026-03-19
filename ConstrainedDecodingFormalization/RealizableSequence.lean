@@ -36,6 +36,8 @@ abbrev Output (α : Type u) := List (List α)
 abbrev Re (Γ : Type v) := List (List Γ)
 
 
+/-! ### Executable construction and correctness -/
+
 section Symbols
 
 variable

@@ -42,6 +42,8 @@ variable
   [DecidableEq α] [DecidableEq σ]
   [BEq α] [BEq σ] [LawfulBEq σ]
 
+/-! ### Lexer specification -/
+
 /-- A lexer specification given by a character automaton together with token
 labels on accepting states.
 
@@ -80,6 +82,8 @@ def LexerSpec.accept_seq_term (spec: LexerSpec α Γ σ) (seq: List α) (h: seq 
 /-- An executable lexer from EOS-extended characters to EOS-extended tokens,
 also returning the residual unlexed suffix of the current token candidate. -/
 def Lexer (α : Type u) (Γ : Type v) := List (Ch α) -> Option (List (Ch Γ) × List α)
+
+/-! ### Relational and executable lexing -/
 
 /-- Relational semantics of incremental lexing.
 
@@ -123,6 +127,10 @@ inductive PartialLexRel (spec: LexerSpec α Γ σ)
     (h : unlexed ∈ spec.automaton.accepts) →
       PartialLexRel spec wn (tokens ++ [ExtChar.char (spec.accept_seq_term unlexed h)]) [ch]
 
+/-- One-step transition of the executable lexer.
+
+Decides, given a partial token `unlexed` and the next EOS-extended character,
+whether to commit the current token, continue extending it, or report failure. -/
 private def PartialLex_trans (spec: LexerSpec α Γ σ) (prev: Option (List (Ch Γ) × List α)) (c : Ch α)
   : Option (List (Ch Γ) × List α) :=
   match prev with
@@ -173,6 +181,8 @@ private def PartialLex_seed (spec: LexerSpec α Γ σ) (seed: Option (List (Ch �
 @[simp]
 def PartialLex (spec: LexerSpec α Γ σ) : Lexer α Γ :=
   PartialLex_seed spec (some ([], []))
+
+/-! ### Lexing FST construction -/
 
 /-- States of the lexing FST: either the distinguished start state or a state
 tracking an underlying lexer-automaton state. -/
@@ -500,6 +510,8 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
                   exact h_token_unlexed
                 exact PartialLexRel_append_singleton_tail spec (ih (wp ++ [ExtChar.char ch]) new_tokens new_unlexed hstep_rel htail)
 
+/-! ### Equivalence of relational and executable lexing -/
+
 omit [DecidableEq α] [DecidableEq σ] [BEq α] in
 /-- Pruning lets us identify `PartialLex` with the relational lexer semantics. -/
 theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
@@ -515,7 +527,10 @@ theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.
     simp at this
     exact this
 
--- automata parsing iff LexingFst parses and does not produce tokens
+/-! ### Lexing FST correctness -/
+
+/-- A character-level FSA run lifts to a lexing-FST run that produces no
+output tokens. -/
 private def FSA_ch_to_LexingFST (spec: LexerSpec α Γ σ) :
   ∀ (w : List α) q q', (q ≠ LexingState.start ∨ w ≠ []) →
     (spec.automaton.evalFrom (q.src spec) w = some q' ↔
@@ -958,7 +973,7 @@ lemma LexingFst_smallStep (spec: LexerSpec α Γ σ) :
 
 namespace Detokenizing
 
-/-! ## Detokenizing -/
+/-! ### Detokenizing FST -/
 universe x
 variable { V : Type x }
 variable [BEq V]
@@ -1063,8 +1078,8 @@ theorem detokenize_eq_comp [v: Vocabulary α V] { σ0 } (w1: List V) (w2: List V
   <;> simp[hd] at hw1 hw2
   <;> simp[hw1, hw2]
 
--- via the singleton assumption on the vocabulary, this means
--- that if something is realizable, it is realizable via singletons
+/-! ### Detokenizer-lexer composition -/
+
 omit [DecidableEq α] [BEq V] in
 /-- Any detokenized run can be replaced by one using only singleton-flattening
 tokens, thanks to the vocabulary axioms. -/
@@ -1101,12 +1116,8 @@ def BuildDetokLexer [v: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ) : FST V
   let detok := Detokenizing.BuildDetokenizingFST (v := v)
   FST.compose detok lex_fst
 
--- whitespace is accepted exactly in the start state and the state after the start state
--- and there is at least one non whitespace token
--- technically it's possible to derive the non whitespace based on other assumptions
--- but this is not necessary
--- this assumption also does allow whitespace to be formed by going to another state and back to the start
--- and then appending whitespace, but this doesn't hurt the proof
+/-! ### Whitespace exchange arguments -/
+
 /-- Assumptions isolating a distinguished whitespace character and token in the
 lexer automaton.
 
@@ -1837,7 +1848,7 @@ README for discussion. -/
 theorem BuildDetokLexer_singleProducible_of_evalFrom
     [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] [vocab: Vocabulary (Ch α) V]
     (spec : LexerSpec α Γ σ)
-    (hempty : [] ∉ spec.automaton.accepts)
+    (_hempty : [] ∉ spec.automaton.accepts)
     (hrestart : ∀ s ∈ spec.automaton.accept,
       ∃ c : α, spec.automaton.step s c = none ∧
         (spec.automaton.step spec.automaton.start c).isSome)
