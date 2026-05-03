@@ -62,7 +62,7 @@ def checkerLanguage (c : Checker β) : Language β :=
   {bs | checkerAccepts c bs}
 
 /-- Every allowed prefix can be extended to some accepted word. -/
-def checkerAllowsTermination (c : Checker β) : Prop :=
+def checkerProductive (c : Checker β) : Prop :=
   ∀ w, checkerAllows c w →
     ∃ w' : List β, checkerAccepts c w' ∧ w.isPrefixOf w'
 
@@ -72,18 +72,10 @@ def checkerPathIndependent (c : Checker β) (flatten : β → List α) : Prop :=
   ∀ w₁ w₂, w₁.flatMap flatten = w₂.flatMap flatten →
     checkerAllows c w₁ = checkerAllows c w₂
 
-/-- Soundness package for executable checkers.
-
-This says that the checker never gets stuck on an allowed prefix and that its
-decisions respect tokenizations with the same underlying character string.
--/
-def checkerSound (c : Checker β) (flatten : β → List α) : Prop :=
-  checkerAllowsTermination c ∧ checkerPathIndependent c flatten
-
-/-- Completeness package for executable checkers.
+/-- Correctness package for executable checkers.
 
 The checker recognizes exactly the target language, and its intermediate
 language coincides with the prefix closure of that language.
 -/
-def checkerComplete (c : Checker β) (l : Language β) : Prop :=
+def checkerCorrect (c : Checker β) (l : Language β) : Prop :=
   checkerLanguage c = l ∧ checkerIntermediateLanguage c = l.prefixes

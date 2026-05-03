@@ -193,9 +193,6 @@ instance [BEq σ] [LawfulBEq σ] (l : List α) : Decidable (l ∈ A.accepts) :=
     )
 
 
---instance [BEq σ] [LawfulBEq σ] (l : List α) : Decidable (l ∈ A.prefixLanguage) :=
-  --sorry
-
 /-! ### FSA to DFA conversion -/
 
 /-- View a deterministic FSA as a DFA whose extra `none` state represents
