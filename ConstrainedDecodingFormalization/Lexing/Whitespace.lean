@@ -90,8 +90,13 @@ private lemma flatMap_prefix_suffix {σ V Γ} (l : List (σ × V × σ × List (
 -- general exchange argument
 -- remove to shortest prefix that produces the token
 -- may also assume that each word in the vocabulary is a singleton
+section WhitespaceExchange
+
+variable {tnonwhite twhite : α} {qnonwhite qwhite : σ}
+variable [vocab : Vocabulary (Ch α) V]
+
 omit [BEq V] in
-private lemma exchange_basis [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ) (char: ExtChar Γ)
+private lemma exchange_basis (spec: LexerSpec α Γ σ) (char: ExtChar Γ)
   (q : LexingState σ) (hchar: char ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
   ∃ wpfx wlast pfx last,
                 (BuildDetokLexer (v := vocab) spec).stepList ((), q) (wpfx) = some (pfx) ∧
@@ -211,7 +216,8 @@ private lemma exchange_basis [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] [vocab: Vocabular
       exact List.mem_of_mem_take ht
 
 -- the only reachable state from qwhite is qwhite
-private lemma whitespaceState_evalFrom_eq { σ α } [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } (spec: LexerSpec α Γ σ)
+omit [DecidableEq σ] [BEq α] [BEq σ] [LawfulBEq σ] in
+private lemma whitespaceState_evalFrom_eq (spec: LexerSpec α Γ σ)
   (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) :
     ∀ q w, spec.automaton.evalFrom qwhite w = some q → q = qwhite := by
   intro q w h
@@ -240,7 +246,7 @@ private lemma whitespaceState_evalFrom_eq { σ α } [BEq (Ch Γ)] [LawfulBEq (Ch
 -- for any non qwhite state
 -- we can build a path to it that does not start with twhite
 omit [BEq V] in
-private lemma pathToNonWhitespaceState [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+private lemma pathToNonWhitespaceState (spec: LexerSpec α Γ σ)
   (hpruned: spec.automaton.pruned) (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite)
   : ∀ qtarget, qtarget ≠ qwhite → qtarget ≠ spec.automaton.start →
     ∃ ws wt qi, ws ≠ twhite ∧
@@ -315,7 +321,7 @@ private lemma pathToNonWhitespaceState [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonw
 
 -- extract the common proof that qp.2 = LexingState.id qwhite
 omit [BEq V] in
-private lemma exchangeBasis_endsAtWhitespaceState [BEq (Ch Γ)] [LawfulBEq (Ch Γ)]  [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+private lemma exchangeBasis_endsAtWhitespaceState (spec: LexerSpec α Γ σ)
   (hempty : [] ∉ spec.automaton.accepts) (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ)
   (_: (BuildDetokLexer (v := vocab) spec).stepList ((), q) (wpfx ++ [wlast]) = some (pfx ++ [last]))
   (hflat_pfx: flatMap produce pfx = [])
@@ -369,7 +375,7 @@ private lemma exchangeBasis_endsAtWhitespaceState [BEq (Ch Γ)] [LawfulBEq (Ch �
 -- traverse that path, then traverse the path to the qtarget (which must not start with qwhite)
 -- these two together will produce the necessary construction
 omit [BEq V] in
-private lemma exchangeWhitespace [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+private lemma exchangeWhitespace (spec: LexerSpec α Γ σ)
   (hempty : [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned) (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ)
   (hwsa: ExtChar.char (whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa) ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
     ∀ qtarget, qtarget ≠ qwhite → qtarget ≠ spec.automaton.start →
@@ -420,7 +426,7 @@ private lemma exchangeWhitespace [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite t
 -- if you can produce whitespace,
 -- you can produce that and eos and end at qwhite
 omit [BEq V] in
-private lemma exchangeWhitespaceEOS [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+private lemma exchangeWhitespaceEOS (spec: LexerSpec α Γ σ)
   (hempty : [] ∉ spec.automaton.accepts) (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ)
   (hwsa: ExtChar.char (whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa) ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
     ∃ w, (BuildDetokLexer (v := vocab) spec).evalFrom (Unit.unit, q) w = some ((Unit.unit, LexingState.id qwhite), [ExtChar.char (whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa), ExtChar.eos]) := by
@@ -453,7 +459,7 @@ private lemma exchangeWhitespaceEOS [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhit
 -- if you can produce a single nonwhitespace,
 -- you can produce that nonwhitespace while ending up at qwhite
 omit [BEq V] in
-private lemma exchangeNonWhitespace [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+private lemma exchangeNonWhitespace (spec: LexerSpec α Γ σ)
   (hempty : [] ∉ spec.automaton.accepts) (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ) (term: Γ)
   (hterm: term ≠ (whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa) ∧ ExtChar.char term ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
     ∃ w, (BuildDetokLexer (v := vocab) spec).evalFrom (Unit.unit, q) w = some ((Unit.unit, LexingState.id qwhite), [ExtChar.char term]) := by
@@ -533,7 +539,7 @@ private lemma exchangeNonWhitespace [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhit
 -- if you can produce eos,
 -- you can produce eos while ending up at qwhite
 omit [BEq V] in
-private lemma exchangeEOS [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+private lemma exchangeEOS (spec: LexerSpec α Γ σ)
   (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ)
   (hterm: ExtChar.eos ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
     ∃ w, (BuildDetokLexer (v := vocab) spec).evalFrom (Unit.unit, q) w = some ((Unit.unit, LexingState.id qwhite), [ExtChar.eos]) := by
@@ -583,7 +589,7 @@ private lemma exchangeEOS [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite q
   simp[LexingState.src, this]
 
 omit [BEq V] in
-private lemma whitespaceState_singleProducible [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+private lemma whitespaceState_singleProducible (spec: LexerSpec α Γ σ)
   (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) :
     ExtChar.char (whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa) ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, LexingState.id qwhite) := by
   simp[FST.singleProducible]
@@ -598,7 +604,8 @@ private lemma whitespaceState_singleProducible [BEq (Ch Γ)] [LawfulBEq (Ch Γ)]
   exists hqwhite
 
 omit [BEq V] in
-lemma moddedRealizableSequences_eq_not_contains_whitespace [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite tnonwhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+lemma moddedRealizableSequences_eq_not_contains_whitespace
+  [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] (spec: LexerSpec α Γ σ)
   (hempty : [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned)
   (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ)
   (hwsa: ExtChar.char (whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa) ∈ (BuildDetokLexer (v := vocab) spec).singleProducible (Unit.unit, q)) :
@@ -703,6 +710,8 @@ lemma moddedRealizableSequences_eq_not_contains_whitespace [BEq (Ch Γ)] [Lawful
     rw[←hv.right]
     simp
 
+end WhitespaceExchange
+
 private lemma find_first_nonempty { σ V Γ } [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] (filtered_step_list : List (σ × V × σ × List (Ch Γ)))
     (x : List (Ch Γ)) (he : x ≠ [])
     (h_filt : filtered_step_list.flatMap produce = x) :
@@ -756,6 +765,12 @@ private lemma first_eq_head_of_first_nonempty {Γ V σ} (x : List (Ch Γ)) (he :
   simp
   simp[hne]
 
+section SingleProducibleHead
+
+variable [BEq (Ch Γ)] [LawfulBEq (Ch Γ)]
+variable {tnonwhite twhite : α} {qnonwhite qwhite : σ}
+variable [vocab : Vocabulary (Ch α) V]
+
 omit [BEq V] in
 /-- If the composed detokenizing lexer produces nonempty output from state `q`,
 then the head of that output is singleton-producible from `q`.
@@ -772,7 +787,6 @@ run is the two-symbol EOS-triggered `[char t, eos]` pattern.  The
 hypothesis holds for all practical lexer specifications—see the project
 README for discussion. -/
 theorem BuildDetokLexer_singleProducible_of_evalFrom
-    [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] [vocab: Vocabulary (Ch α) V]
     (spec : LexerSpec α Γ σ)
     (_hempty : [] ∉ spec.automaton.accepts)
     (hrestart : ∀ s ∈ spec.automaton.accept,
@@ -994,7 +1008,7 @@ theorem BuildDetokLexer_singleProducible_of_evalFrom
       by rw[h_head_t]; exact h_eval_wfinal, by simp[h_head_t]⟩
 
 omit [BEq V] in
-private lemma tailModdedRealizableSequences_subset_singleProducibleHead [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { tnonwhite twhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+private lemma tailModdedRealizableSequences_subset_singleProducibleHead (spec: LexerSpec α Γ σ)
   (hempty : [] ∉ spec.automaton.accepts)
   (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ) :
   let white_term := (whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa)
@@ -1056,7 +1070,7 @@ private lemma tailModdedRealizableSequences_subset_singleProducibleHead [BEq (Ch
     simpa [lexer, hx_head] using hv_head_sp
 
 omit [BEq V] in
-private lemma singleProducibleHead_subset_tailModdedRealizableSequences [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite tnonwhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+private lemma singleProducibleHead_subset_tailModdedRealizableSequences (spec: LexerSpec α Γ σ)
   (hempty : [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned)
   (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ) :
   let white_term := (whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa)
@@ -1156,7 +1170,7 @@ private lemma singleProducibleHead_subset_tailModdedRealizableSequences [BEq (Ch
           _ = x := by simp [h_eq]
 
 omit [BEq V] in
-lemma tailModdedRealizableSequences_eq_singleProducibleHead [BEq (Ch Γ)] [LawfulBEq (Ch Γ)] { twhite tnonwhite qnonwhite qwhite } [vocab: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ)
+lemma tailModdedRealizableSequences_eq_singleProducibleHead (spec: LexerSpec α Γ σ)
   (hempty : [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned)
   (hwa: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) (q: LexingState σ) :
   let white_term := (whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa)
@@ -1172,5 +1186,7 @@ lemma tailModdedRealizableSequences_eq_singleProducibleHead [BEq (Ch Γ)] [Lawfu
     exact tailModdedRealizableSequences_subset_singleProducibleHead spec hempty hwa q x h
   . intro h
     exact singleProducibleHead_subset_tailModdedRealizableSequences spec hempty hpruned hwa q x h
+
+end SingleProducibleHead
 
 end Detokenizing

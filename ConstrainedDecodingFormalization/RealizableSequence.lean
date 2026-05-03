@@ -106,11 +106,11 @@ def BuildInverseTokenSpannerTable
 
   (re, tinv)
 
-omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
+omit [BEq α] [BEq Γ] [Inhabited α] [Inhabited Γ] [Fintype α] t in
 /-- The executable list `computeSingleProducible` agrees with the semantic set
 `singleProducible`. -/
 lemma mem_computeSingleProducible_iff_singleProducible
-  [LawfulBEq Γ] (fst_comp : FST α Γ σ2) (q0 : σ2) (T : Γ) :
+  (fst_comp : FST α Γ σ2) (q0 : σ2) (T : Γ) :
   T ∈ fst_comp.computeSingleProducible q0 ↔ T ∈ fst_comp.singleProducible q0 := by
   have h :
       T ∈ (↑((fst_comp.computeSingleProducible q0).toFinset) : Set Γ) ↔
@@ -119,9 +119,13 @@ lemma mem_computeSingleProducible_iff_singleProducible
     simp [FST.singleProducible]
   simpa using h
 
+section LawfulOutput
+
+variable [LawfulBEq Γ]
+
 /-- The first component of `BuildInverseTokenSpannerTable` enumerates exactly
 the realizable one-step output sequences. -/
-def itst_fst_eq_rs [LawfulBEq Γ]
+def itst_fst_eq_rs
   (fst_comp : FST α Γ σ2) : (BuildInverseTokenSpannerTable fst_comp).fst.toFinset = RealizableSequences fst_comp := by
   ext rs
   change rs ∈ (BuildInverseTokenSpannerTable fst_comp).fst.toFinset ↔ rs ∈ RealizableSequences fst_comp
@@ -154,11 +158,13 @@ def itst_fst_eq_rs [LawfulBEq Γ]
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
 /-- Membership in the computed list of realizable sequences is equivalent to
 semantic realizability. -/
-lemma mem_re_iff [LawfulBEq Γ]
+lemma mem_re_iff
   (fst_comp : FST α Γ σ2) (d : List Γ) :
   d ∈ (BuildInverseTokenSpannerTable fst_comp).fst ↔ d ∈ RealizableSequences fst_comp := by
   rw [← List.mem_toFinset]
   simpa using congrArg (fun s => d ∈ s) (itst_fst_eq_rs (fst_comp := fst_comp))
+
+end LawfulOutput
 
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
 /-- Unfold the second component of `BuildInverseTokenSpannerTable`. -/
@@ -175,10 +181,14 @@ lemma BuildInverseTokenSpannerTable_snd
     else [] := by
   rfl
 
+section LawfulOutput
+
+variable [LawfulBEq Γ]
+
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
 /-- The executable second component of `BuildInverseTokenSpannerTable` agrees
 with the semantic inverse token-spanner table. -/
-def itst_snd_eq_itst [LawfulBEq Γ] (fst_comp : FST α Γ σ2) :
+def itst_snd_eq_itst (fst_comp : FST α Γ σ2) :
     ∀ rs s, ((BuildInverseTokenSpannerTable fst_comp).snd rs s).toFinset = InverseTokenSpannerTable fst_comp rs s := by
   intro rs s
   ext tok
@@ -214,11 +224,13 @@ def itst_snd_eq_itst [LawfulBEq Γ] (fst_comp : FST α Γ σ2) :
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
 /-- Membership in the computed inverse table is equivalent to membership in the
 semantic inverse token-spanner table. -/
-lemma mem_itst_iff [LawfulBEq Γ]
+lemma mem_itst_iff
   (fst_comp : FST α Γ σ2) (d : List Γ) (qa : σ2) (tok : α) :
   tok ∈ (BuildInverseTokenSpannerTable fst_comp).snd d qa ↔ tok ∈ InverseTokenSpannerTable fst_comp d qa := by
   rw [← List.mem_toFinset]
   simpa using congrArg (fun s => tok ∈ s) (itst_snd_eq_itst (fst_comp := fst_comp) d qa)
+
+end LawfulOutput
 
 end Symbols
 

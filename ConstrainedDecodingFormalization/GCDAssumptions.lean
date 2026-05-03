@@ -83,10 +83,13 @@ lemma ParserIgnoresTerminal.fullStep_eq
     rw [ParserIgnoresTerminal.fullStep_singleton P white hignore q st]
     simp
 
+section ParserIgnoresFilter
+
+variable [BEq Γ] [LawfulBEq Γ]
+
 set_option linter.unusedSectionVars false in
 /-- Deleting a terminal ignored by the parser does not change PDA evaluation. -/
 lemma ParserIgnoresTerminal.evalFrom_filter_ne
-    [BEq Γ] [LawfulBEq Γ]
     (P : PDA Γ π σp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white)
     (S : Finset (σp × List π)) (w : List Γ) :
@@ -110,7 +113,6 @@ set_option linter.unusedSectionVars false in
 /-- Deleting a terminal ignored by the parser preserves acceptance from any
 configuration. -/
 lemma ParserIgnoresTerminal.acceptsFrom_filter_ne
-    [BEq Γ] [LawfulBEq Γ]
     (P : PDA Γ π σp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white)
     (q : σp) (st : List π) (w : List Γ) :
@@ -127,7 +129,6 @@ set_option linter.unusedSectionVars false in
 /-- If a parser ignores `white`, then replacing a suffix by the same suffix
 with ignored whitespace deleted preserves acceptance. -/
 lemma ParserIgnoresTerminal.accepts_append_filter_ne
-    [BEq Γ] [LawfulBEq Γ]
     (P : PDA Γ π σp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white)
     (pre tail : List Γ) :
@@ -147,7 +148,6 @@ set_option linter.unusedSectionVars false in
 /-- If a parser ignores `white`, then replacing a suffix by a version with
 ignored whitespace inserted preserves acceptance. -/
 lemma ParserIgnoresTerminal.accepts_append_of_filter_ne
-    [BEq Γ] [LawfulBEq Γ]
     (P : PDA Γ π σp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white)
     (pre tail filtered : List Γ)
@@ -164,6 +164,8 @@ lemma ParserIgnoresTerminal.accepts_append_of_filter_ne
   rw [ParserIgnoresTerminal.evalFrom_filter_ne P white hignore
     (P.evalFrom {(P.start, [])} pre) tail] at hfmem
   exact hfmem
+
+end ParserIgnoresFilter
 
 omit [DecidableEq Γ] in
 /-- The EOS-augmented parser ignores the EOS-lifted whitespace terminal when

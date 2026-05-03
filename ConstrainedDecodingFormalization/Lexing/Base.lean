@@ -223,12 +223,12 @@ instance {σ} [e : FinEnum σ] : FinEnum (LexingState σ) where
 
 /-- Recover the underlying lexer-automaton state represented by a lexing-FST
 state. -/
-def LexingState.src {σ : Type w} (spec: LexerSpec α Γ σ) : LexingState σ → σ
+def LexingState.src (spec: LexerSpec α Γ σ) : LexingState σ → σ
 | LexingState.id s => s
 | LexingState.start => spec.automaton.start
 
 @[simp]
-def LexingState_src_id [DecidableEq α] [BEq α] {σ : Type w} (spec: LexerSpec α Γ σ) (s : σ) :
+def LexingState_src_id (spec: LexerSpec α Γ σ) (s : σ) :
   LexingState.src spec (LexingState.id s) = s := by
   simp[LexingState.src]
 

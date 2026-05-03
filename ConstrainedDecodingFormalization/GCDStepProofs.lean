@@ -300,9 +300,15 @@ lemma PDA.evalFrom_nonempty_imp_nfa_nonempty (P : PDA Γ π σp)
 
 /-! ### List fold helpers -/
 
+universe uδ uε
+
+section ListFoldHelpers
+
+variable {δ : Type uδ} {ε : Type uε}
+
 /-- Characterize membership in a left fold of list concatenation with an
 arbitrary initial accumulator. -/
-lemma mem_foldl_append_iff_acc {δ : Type _} (x : δ) :
+lemma mem_foldl_append_iff_acc (x : δ) :
   ∀ acc : List δ, ∀ xs : List (List δ),
     x ∈ xs.foldl List.append acc ↔ x ∈ acc ∨ ∃ ys ∈ xs, x ∈ ys := by
   intro acc xs
@@ -312,13 +318,13 @@ lemma mem_foldl_append_iff_acc {δ : Type _} (x : δ) :
       simp [List.foldl_cons, ih, or_assoc, or_left_comm, or_comm]
 
 /-- Specialization of `mem_foldl_append_iff_acc` with empty initial accumulator. -/
-lemma mem_foldl_append_iff {δ : Type _} (x : δ) (xs : List (List δ)) :
+lemma mem_foldl_append_iff (x : δ) (xs : List (List δ)) :
   x ∈ xs.foldl List.append [] ↔ ∃ ys ∈ xs, x ∈ ys := by
   simpa using (mem_foldl_append_iff_acc (x := x) ([] : List δ) xs)
 
 /-- Membership in a conditional fold: element is in the accumulator or in some
 branch where the predicate holds. -/
-lemma mem_foldl_append_if_iff {δ ε : Type _} (x : δ) (f : ε → List δ) (p : ε → Prop)
+lemma mem_foldl_append_if_iff (x : δ) (f : ε → List δ) (p : ε → Prop)
   [DecidablePred p] :
   ∀ acc : List δ, ∀ xs : List ε,
     x ∈ xs.foldl (fun acc y => if p y then acc ++ f y else acc) acc ↔
@@ -332,8 +338,10 @@ lemma mem_foldl_append_if_iff {δ ε : Type _} (x : δ) (f : ε → List δ) (p 
       · simp [List.foldl_cons, hy, ih, List.mem_append, or_assoc]
       · simp [List.foldl_cons, hy, ih]
 
+variable [BEq δ] [LawfulBEq δ]
+
 /-- Removing an element from a nodup list removes that element. -/
-lemma not_mem_erase_of_nodup {δ : Type _} [BEq δ] [LawfulBEq δ] {x : δ} {l : List δ}
+lemma not_mem_erase_of_nodup {x : δ} {l : List δ}
   (h : l.Nodup) : x ∉ l.erase x := by
   induction l with
   | nil => simp
@@ -348,7 +356,7 @@ lemma not_mem_erase_of_nodup {δ : Type _} [BEq δ] [LawfulBEq δ] {x : δ} {l :
         have hxy : x ≠ y := fun hxy => hyx hxy.symm
         simp [List.erase_cons_tail, hbeq, hxy, ih hndys]
 
-lemma mem_diff_iff_of_nodup {δ : Type _} [BEq δ] [LawfulBEq δ] {x : δ} {l₁ l₂ : List δ}
+lemma mem_diff_iff_of_nodup {x : δ} {l₁ l₂ : List δ}
   (hnd : l₁.Nodup) : x ∈ l₁.diff l₂ ↔ x ∈ l₁ ∧ x ∉ l₂ := by
   induction l₂ generalizing l₁ with
   | nil => simp
@@ -368,7 +376,7 @@ lemma mem_diff_iff_of_nodup {δ : Type _} [BEq δ] [LawfulBEq δ] {x : δ} {l₁
       · simp [List.mem_erase_of_ne hxy, hxy, List.mem_cons]
 
 /-- `eraseDups` always produces a nodup list. -/
-lemma nodup_eraseDups {δ : Type _} [BEq δ] [LawfulBEq δ] :
+lemma nodup_eraseDups :
   ∀ l : List δ, l.eraseDups.Nodup := by
   intro l
   let P : Nat → Prop := fun n => ∀ l : List δ, l.length = n → l.eraseDups.Nodup
@@ -393,6 +401,8 @@ lemma nodup_eraseDups {δ : Type _} [BEq δ] [LawfulBEq δ] :
           exact ih _ hlt _ rfl
   have hP : P l.length := Nat.strongRecOn l.length hstep
   exact hP l rfl
+
+end ListFoldHelpers
 
 /-- Characterize the realizable sequences that land in the "accepted" part of
 `PreprocessParser`. -/

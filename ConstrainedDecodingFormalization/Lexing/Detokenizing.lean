@@ -31,8 +31,14 @@ def detokenize [v: Vocabulary α V] (w : List V) : List α :=
   | [] => []
   | w' :: ws => v.flatten w' ++ detokenize ws
 
+universe y
+
+section Vocabulary
+
+variable [v : Vocabulary α V] {σ0 : Type y}
+
 omit [DecidableEq α] [BEq V] in
-lemma detokenize_flatmap [v: Vocabulary α V] (w : List V) :
+lemma detokenize_flatmap (w : List V) :
   detokenize (v := v) w = (w.flatMap (fun big => v.flatten big)) := by
   induction w
   case nil => simp[detokenize, List.flatMap]
@@ -42,7 +48,7 @@ lemma detokenize_flatmap [v: Vocabulary α V] (w : List V) :
     rfl
 
 omit [DecidableEq α] [BEq V] in
-lemma detokenize_app [v: Vocabulary α V] (s1 s2 : List V) :
+lemma detokenize_app (s1 s2 : List V) :
   detokenize (v := v) (s1 ++ s2) = detokenize (v := v) s1 ++ detokenize (v := v) s2 := by
   induction s1
   case nil => simp[detokenize]
@@ -53,7 +59,7 @@ lemma detokenize_app [v: Vocabulary α V] (s1 s2 : List V) :
 omit [DecidableEq α] [BEq V] in
 /-- Executing `BuildDetokenizingFST` is equivalent to plain list
 detokenization. -/
-theorem detokenizerFST_eq_detokenizer [v: Vocabulary α V] :
+theorem detokenizerFST_eq_detokenizer :
   ∀ ( w : List V ), some ((Unit.unit, detokenize w,)) = (BuildDetokenizingFST (v := v)).eval w := by
   intro w
   induction w
@@ -80,7 +86,7 @@ theorem detokenizerFST_eq_detokenizer [v: Vocabulary α V] :
 omit [DecidableEq α] [BEq V] in
 /-- A single step of the detokenizer composed with an FST equals evaluating the
 second FST on the flattened token. -/
-lemma detokenizer_comp_step [v: Vocabulary α V] { σ0 } (f : FST α Γ σ0) (q: σ0) :
+lemma detokenizer_comp_step (f : FST α Γ σ0) (q: σ0) :
   ∀ a, ((FST.compose (BuildDetokenizingFST (v := v)) f).step (Unit.unit, q) a) =
     (f.evalFrom q (v.flatten a)).map (fun (q, out) => ((Unit.unit, q), out)) := by
   intro a
@@ -90,7 +96,7 @@ lemma detokenizer_comp_step [v: Vocabulary α V] { σ0 } (f : FST α Γ σ0) (q:
 omit [DecidableEq α] [BEq V] in
 /-- Composing the detokenizer with an FST is equivalent to first detokenizing
 and then evaluating the FST. -/
-theorem detokenizer_comp [v: Vocabulary α V] { σ0 } (f : FST α Γ σ0) (q: σ0) :
+theorem detokenizer_comp (f : FST α Γ σ0) (q: σ0) :
   ∀ w, ((FST.compose (BuildDetokenizingFST (v := v)) f).evalFrom (Unit.unit, q) w) =
     (f.evalFrom q (detokenize (v := v) w)).map (fun (q, out) => ((Unit.unit, q), out)) := by
   intro w
@@ -109,7 +115,7 @@ theorem detokenizer_comp [v: Vocabulary α V] { σ0 } (f : FST α Γ σ0) (q: σ
 omit [DecidableEq α] [BEq V] in
 /-- If two token words detokenize to the same character word, then any
 detokenizer-composed FST evaluates them identically. -/
-theorem detokenize_eq_comp [v: Vocabulary α V] { σ0 } (w1: List V) (w2: List V) (f : FST α Γ σ0) (q: σ0) :
+theorem detokenize_eq_comp (w1: List V) (w2: List V) (f : FST α Γ σ0) (q: σ0) :
   detokenize (v := v) w1 = detokenize (v := v) w2 → (FST.compose (BuildDetokenizingFST (v := v) ) f).evalFrom (Unit.unit, q) w1 = (FST.compose (BuildDetokenizingFST (v := v)) f).evalFrom (Unit.unit, q) w2 := by
   intro h
   have hw1 := detokenizer_comp (v := v) f q w1
@@ -124,7 +130,7 @@ theorem detokenize_eq_comp [v: Vocabulary α V] { σ0 } (w1: List V) (w2: List V
 omit [DecidableEq α] [BEq V] in
 /-- Any detokenized run can be replaced by one using only singleton-flattening
 tokens, thanks to the vocabulary axioms. -/
-theorem detokenize_singleton [v: Vocabulary α V] { σ0 } (f: FST α Γ σ0) (q: σ0) :
+theorem detokenize_singleton (f: FST α Γ σ0) (q: σ0) :
   ∀ ( w : List V ), ∃ ( ws : List V ),
     (FST.compose (BuildDetokenizingFST (v := v) ) f).evalFrom (Unit.unit, q) w = (FST.compose (BuildDetokenizingFST (v := v)) f).evalFrom (Unit.unit, q) ws
     ∧ (∀ t ∈ ws, ∃ t0, v.flatten t = [t0]) := by
@@ -149,6 +155,8 @@ theorem detokenize_singleton [v: Vocabulary α V] { σ0 } (f: FST α Γ σ0) (q:
   simp[ws]
   intro t x hx x_1 _ hx_1
   simp[←hx_1, v.fe]
+
+end Vocabulary
 
 /-- Compose detokenization with the lexing FST to obtain the token-level lexer
 used by grammar-constrained decoding. -/
