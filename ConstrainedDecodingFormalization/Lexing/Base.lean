@@ -22,7 +22,7 @@ transducer model used by the rest of the development.
 
 Its main ingredients are:
 
-* `LexerSpec`, which packages a character automaton together with token labels
+* `LexerSpec`, which packages a character automaton together with terminal labels
   on accepting states;
 * `PartialLexRel` and `PartialLex`, relational and executable formulations of
   incremental lexing;
@@ -45,7 +45,7 @@ variable
 
 /-! ### Lexer specification -/
 
-/-- A lexer specification given by a character automaton together with token
+/-- A lexer specification given by a character automaton together with terminal
 labels on accepting states.
 
 This is the interface from which the lexing FST and the grammar-constrained
@@ -58,14 +58,14 @@ structure LexerSpec (α Γ σ) where
   term_inj: ∀ s₁ s₂ t, term s₁ = some t ∧ term s₂ = some t → s₁ = s₂
   term_surj: ∀ t, ∃ s, term s = some t
 
-/-- Evaluate a character sequence and, if it is accepted, return the token
+/-- Evaluate a character sequence and, if it is accepted, return the terminal
 attached to its accepting state. -/
 def LexerSpec.seq_term (spec: LexerSpec α Γ σ) (seq: List α) : Option Γ :=
   match spec.automaton.eval seq with
   | some s => spec.term s
   | none => none
 
-/-- Extract the token attached to an accepted character sequence. -/
+/-- Extract the terminal attached to an accepted character sequence. -/
 def LexerSpec.accept_seq_term (spec: LexerSpec α Γ σ) (seq: List α) (h: seq ∈ spec.automaton.accepts) : Γ :=
   let s := (spec.automaton.eval seq).get <| by
     simp[FSA.accepts, FSA.acceptsFrom] at h
@@ -80,17 +80,17 @@ def LexerSpec.accept_seq_term (spec: LexerSpec α Γ σ) (seq: List α) (h: seq 
   let term := spec.term s
   term.get ((spec.hterm s).mp sa)
 
-/-- An executable lexer from EOS-extended characters to EOS-extended tokens,
-also returning the residual unlexed suffix of the current token candidate. -/
+/-- An executable lexer from EOS-extended characters to EOS-extended terminals,
+also returning the residual unlexed suffix of the current lexeme candidate. -/
 def Lexer (α : Type u) (Γ : Type v) := List (Ch α) -> Option (List (Ch Γ) × List α)
 
 /-! ### Relational and executable lexing -/
 
 /-- Relational semantics of incremental lexing.
 
-`PartialLexRel spec w tokens unlexed` means that after reading `w`, the lexer
-has committed `tokens` and retained `unlexed` as the unfinished suffix of the
-current token candidate.
+`PartialLexRel spec w terminals unlexed` means that after reading `w`, the lexer
+has committed `terminals` and retained `unlexed` as the unfinished suffix of the
+current lexeme candidate.
 -/
 inductive PartialLexRel (spec: LexerSpec α Γ σ)
   : List (Ch α) → List (Ch Γ) → List α → Prop
@@ -99,56 +99,56 @@ inductive PartialLexRel (spec: LexerSpec α Γ σ)
     PartialLexRel spec
       [] [] []
 -- case 0 (unmentioned in paper but implicitly done in the lexing transducer)
-| step_nil_eos { w wn tokens }:
-    PartialLexRel spec w tokens [] →
+| step_nil_eos { w wn terminals }:
+    PartialLexRel spec w terminals [] →
     wn = w ++ [ExtChar.eos] →
     [] ∉ spec.automaton.accepts →
-    PartialLexRel spec wn (tokens ++ [.eos]) []
+    PartialLexRel spec wn (terminals ++ [.eos]) []
   -- case 1
-| step_eos {w wn tokens unlexed} :
-    PartialLexRel spec w tokens unlexed →
+| step_eos {w wn terminals unlexed} :
+    PartialLexRel spec w terminals unlexed →
     -- this nonsense needs to be done to satisfy the eliminator for some reason
     -- related? https://github.com/leanprover/lean4/issues/9803
     wn = w ++ [ExtChar.eos] →
     (h : unlexed ∈ spec.automaton.accepts) →
-      PartialLexRel spec wn (tokens ++ [.char (spec.accept_seq_term unlexed h), .eos]) []
+      PartialLexRel spec wn (terminals ++ [.char (spec.accept_seq_term unlexed h), .eos]) []
   -- case 2
-| step_char_continue {w wn tokens unlexed ch} :
-    PartialLexRel spec w tokens unlexed →
+| step_char_continue {w wn terminals unlexed ch} :
+    PartialLexRel spec w terminals unlexed →
     wn = w ++ [ExtChar.char ch] →
     unlexed ++ [ch] ∈ spec.automaton.prefixLanguage →
-      PartialLexRel spec wn tokens (unlexed ++ [ch])
+      PartialLexRel spec wn terminals (unlexed ++ [ch])
   -- case 3
-| step_char_commit {w wn tokens unlexed ch} :
-    PartialLexRel spec w tokens unlexed →
+| step_char_commit {w wn terminals unlexed ch} :
+    PartialLexRel spec w terminals unlexed →
     wn = w ++ [ExtChar.char ch] →
     -- next is not in prefix language, but current is in accept, and ch is a prefix of something
     unlexed ++ [ch] ∉ spec.automaton.prefixLanguage →
     [ch] ∈ spec.automaton.prefixLanguage →
     (h : unlexed ∈ spec.automaton.accepts) →
-      PartialLexRel spec wn (tokens ++ [ExtChar.char (spec.accept_seq_term unlexed h)]) [ch]
+      PartialLexRel spec wn (terminals ++ [ExtChar.char (spec.accept_seq_term unlexed h)]) [ch]
 
 /-- One-step transition of the executable lexer.
 
-Decides, given a partial token `unlexed` and the next EOS-extended character,
-whether to commit the current token, continue extending it, or report failure. -/
+Decides, given a partial lexeme `unlexed` and the next EOS-extended character,
+whether to commit the current terminal, continue extending it, or report failure. -/
 def PartialLex_trans (spec: LexerSpec α Γ σ) (prev: Option (List (Ch Γ) × List α)) (c : Ch α)
   : Option (List (Ch Γ) × List α) :=
   match prev with
   | none => none
-  | some (tokens, unlexed) =>
+  | some (terminals, unlexed) =>
     match c with
     | ExtChar.eos =>
       if h : unlexed ∈ spec.automaton.accepts then
-        some (tokens ++ [.char (spec.accept_seq_term unlexed h), .eos], [])
+        some (terminals ++ [.char (spec.accept_seq_term unlexed h), .eos], [])
       else if unlexed = [] then
-        some (tokens ++ [.eos], [])
+        some (terminals ++ [.eos], [])
       else
         none
     | ExtChar.char ch =>
       let new_unlexed := unlexed ++ [ch]
       match spec.automaton.eval new_unlexed with
-      | some _ => some (tokens, new_unlexed)
+      | some _ => some (terminals, new_unlexed)
       | none =>
         let dst := spec.automaton.eval unlexed
         match dst with
@@ -159,7 +159,7 @@ def PartialLex_trans (spec: LexerSpec α Γ σ) (prev: Option (List (Ch Γ) × L
             have h2 := (spec.hterm σ).mp h
             let t := term.get h2
             if (spec.automaton.eval [ch]).isSome then
-              some (tokens ++ [ExtChar.char t], [ch])
+              some (terminals ++ [ExtChar.char t], [ch])
             else
               none
           else
@@ -233,10 +233,10 @@ def LexingState_src_id (spec: LexerSpec α Γ σ) (s : σ) :
   simp[LexingState.src]
 
 
-/-- Build the character-to-token lexing FST associated to a lexer
+/-- Build the character-to-terminal lexing FST associated to a lexer
 specification.
 
-The construction follows the convention that tokens are attached to accepting
+The construction follows the convention that terminals are attached to accepting
 states of the lexer automaton. This is the central machine-level object that is
 later composed with detokenization and parser preprocessing.
 -/

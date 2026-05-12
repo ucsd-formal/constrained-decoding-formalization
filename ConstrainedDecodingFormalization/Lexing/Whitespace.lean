@@ -17,7 +17,7 @@ universe u v w x
 variable {α : Type u} {Γ : Type v} {σ : Type w} {V : Type x}
 variable [DecidableEq α] [DecidableEq σ] [BEq α] [BEq σ] [LawfulBEq σ] [BEq V]
 
-/-- Assumptions isolating a distinguished whitespace character and token in the
+/-- Assumptions isolating a distinguished whitespace character and terminal in the
 lexer automaton.
 
 These hypotheses drive the whitespace-specific exchange arguments in the later
@@ -32,7 +32,7 @@ def WhitespaceAssumption (spec: LexerSpec α Γ σ) (tnonwhite : α) (twhite : �
   spec.automaton.step spec.automaton.start tnonwhite = some qnonwhite ∧
   tnonwhite ≠ twhite
 
-/-- The token emitted by the distinguished whitespace accepting state. -/
+/-- The terminal emitted by the distinguished whitespace accepting state. -/
 def whitespaceTerminal (spec: LexerSpec α Γ σ) (tnonwhite : α) (twhite : α) (qnonwhite : σ) (qwhite : σ) (hw: WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) : Γ :=
   let ret := spec.term qwhite
   have := (spec.hterm qwhite).mp hw.left
@@ -88,7 +88,7 @@ private lemma flatMap_prefix_suffix {σ V Γ} (l : List (σ × V × σ × List (
   exact h
 
 -- general exchange argument
--- remove to shortest prefix that produces the token
+-- remove to shortest prefix that produces the terminal
 -- may also assume that each word in the vocabulary is a singleton
 section WhitespaceExchange
 
@@ -781,7 +781,7 @@ producing `T ≠ []` to a witness in `singleProducible q`.
 The `hrestart` hypothesis asks that every accepting state of the character
 automaton has at least one character that does **not** extend the current
 lexeme but **can** start a new one from the start state.  This ensures
-the lexer can always complete a token with a single-symbol emission
+the lexer can always complete a lexeme with a single-terminal emission
 (without appending EOS), which is required when the first emission on a
 run is the two-symbol EOS-triggered `[char t, eos]` pattern.  The
 hypothesis holds for all practical lexer specifications—see the project

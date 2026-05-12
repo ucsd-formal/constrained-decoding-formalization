@@ -22,34 +22,34 @@ equivalent in both directions. This is the technical core behind the later
 equivalence theorems. -/
 private lemma PartialLexRel_append_singleton_tail (spec: LexerSpec α Γ σ)
     {tail wp : List (Ch α)} {c : Ch α}
-    {tokens : List (Ch Γ)} {unlexed : List α}
-    (h : PartialLexRel spec ((wp ++ [c]) ++ tail) tokens unlexed) :
-    PartialLexRel spec (wp ++ c :: tail) tokens unlexed := by
+    {terminals : List (Ch Γ)} {unlexed : List α}
+    (h : PartialLexRel spec ((wp ++ [c]) ++ tail) terminals unlexed) :
+    PartialLexRel spec (wp ++ c :: tail) terminals unlexed := by
   simpa using h
 
 omit [DecidableEq α] [DecidableEq σ] [BEq α] in
 lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
-  (∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) →
-    PartialLex_seed spec (some ([], [])) w = some (tokens, unlexed)) ∧
-  (∀ wp ws seed_f seed_s tokens unlexed,
+  (∀ w terminals unlexed, (PartialLexRel spec w terminals unlexed) →
+    PartialLex_seed spec (some ([], [])) w = some (terminals, unlexed)) ∧
+  (∀ wp ws seed_f seed_s terminals unlexed,
     (PartialLexRel spec wp seed_f seed_s) ∧
-      PartialLex_seed spec (some (seed_f, seed_s)) ws = some (tokens, unlexed) →
-    PartialLexRel spec (wp ++ ws) tokens unlexed) := by
+      PartialLex_seed spec (some (seed_f, seed_s)) ws = some (terminals, unlexed) →
+    PartialLexRel spec (wp ++ ws) terminals unlexed) := by
   have hprune := spec.automaton.pruned_prefixLanguage hp
-  have left : (∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) → PartialLex_seed spec (some ([], [])) w = some (tokens, unlexed)) := by
-    intro w tokens unlexed h
+  have left : (∀ w terminals unlexed, (PartialLexRel spec w terminals unlexed) → PartialLex_seed spec (some ([], [])) w = some (terminals, unlexed)) := by
+    intro w terminals unlexed h
     induction h
     case nil =>
       simp[PartialLex_seed]
-    case step_nil_eos w wn tokens ih wwn h hacc =>
+    case step_nil_eos w wn terminals ih wwn h hacc =>
       simp[PartialLex_seed] at hacc ⊢
       simp[wwn, hacc, PartialLex_trans]
       exact h
-    case step_eos w wn tokens unlexed ih wwn h hacc =>
+    case step_eos w wn terminals unlexed ih wwn h hacc =>
       simp[PartialLex_seed] at hacc ⊢
       simp[wwn, hacc, PartialLex_trans]
       simp[h]
-    case step_char_continue w wn tokens unlexed ch ih wwn h hacc =>
+    case step_char_continue w wn terminals unlexed ch ih wwn h hacc =>
       simp[PartialLex_seed] at hacc ⊢
       simp[wwn, hacc, PartialLex_trans]
       cases he: spec.automaton.eval (unlexed ++ [ch]) with
@@ -60,7 +60,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
       | some σ' =>
         simp at he
         simp[he]
-    case step_char_commit w wn tokens unlexed ch ih wwn hni hc_pfx ht hacc =>
+    case step_char_commit w wn terminals unlexed ch ih wwn hni hc_pfx ht hacc =>
       simp[PartialLex_seed] at hacc ⊢
       simp[wwn, hacc, PartialLex_trans]
       cases he: spec.automaton.eval (unlexed ++ [ch]) with
@@ -106,75 +106,75 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
 
   constructor
   . exact left
-  . intro wp ws seed_f seed_s tokens unlexed h
+  . intro wp ws seed_f seed_s terminals unlexed h
     induction ws generalizing wp seed_f seed_s
     case nil =>
       simp[PartialLex_seed] at h
       cases h.left
       <;> simp_all
       case step_nil_eos =>
-        have ⟨hl, htokens, _⟩ := h
-        simp[←htokens]
+        have ⟨hl, hterminals, _⟩ := h
+        simp[←hterminals]
         exact hl
       case step_eos =>
-        have ⟨hl, htokens, _⟩ := h
-        simp[←htokens]
+        have ⟨hl, hterminals, _⟩ := h
+        simp[←hterminals]
         exact hl
       case step_char_continue =>
-        have ⟨hl, htokens, hunlexed⟩ := h
-        simp[←htokens, ←hunlexed]
+        have ⟨hl, hterminals, hunlexed⟩ := h
+        simp[←hterminals, ←hunlexed]
         exact hl
       case step_char_commit =>
-        have ⟨hl, htokens, hunlexed⟩ := h
-        simp[←htokens, ←hunlexed]
+        have ⟨hl, hterminals, hunlexed⟩ := h
+        simp[←hterminals, ←hunlexed]
         exact hl
     case cons ch tail ih =>
       have my_inductive_seed := h.left
       have computable_eq_some := left wp seed_f seed_s my_inductive_seed
-      have h_token_unlexed := h.right
+      have h_terminals_unlexed := h.right
 
-      simp[PartialLex_seed] at h_token_unlexed
+      simp[PartialLex_seed] at h_terminals_unlexed
       cases hns : (PartialLex_trans spec (some (seed_f, seed_s)) ch) with
       | none =>
-        rw[hns] at h_token_unlexed
+        rw[hns] at h_terminals_unlexed
         have : foldl (PartialLex_trans spec) none tail = none := by
           exact PartialLex_trans_foldl_nil spec tail
-        rw[this] at h_token_unlexed
+        rw[this] at h_terminals_unlexed
         contradiction
       | some qp =>
-        rw[hns] at h_token_unlexed
-        let ⟨step_tokens, step_unlexed⟩ := qp
+        rw[hns] at h_terminals_unlexed
+        let ⟨step_terminals, step_unlexed⟩ := qp
 
         match ch with
         | ExtChar.eos =>
           simp[PartialLex_trans] at hns
           by_cases haccept : seed_s ∈ spec.automaton.accepts
-          . let new_tokens := seed_f ++ [.char (spec.accept_seq_term seed_s haccept), .eos]
+          . let new_terminals := seed_f ++ [.char (spec.accept_seq_term seed_s haccept), .eos]
             have step := PartialLexRel.step_eos my_inductive_seed rfl haccept
-            have htail : PartialLex_seed spec (some (new_tokens, [])) tail = some (tokens, unlexed) := by
+            have htail : PartialLex_seed spec (some (new_terminals, [])) tail = some (terminals, unlexed) := by
               simp[PartialLex_seed]
               simp[haccept] at hns
-              have := h_token_unlexed
-              simp[←hns.left, ←hns.right, new_tokens] at h_token_unlexed ⊢
-              exact h_token_unlexed
-            exact PartialLexRel_append_singleton_tail spec (ih (wp ++ [ExtChar.eos]) new_tokens [] ⟨step, htail⟩)
+              have := h_terminals_unlexed
+              simp[←hns.left, ←hns.right, new_terminals] at h_terminals_unlexed ⊢
+              exact h_terminals_unlexed
+            exact PartialLexRel_append_singleton_tail spec (ih (wp ++ [ExtChar.eos]) new_terminals [] ⟨step, htail⟩)
           . simp[haccept] at hns
-            let new_tokens := seed_f ++ [.eos]
+            let new_terminals := seed_f ++ [.eos]
             simp[hns.left] at my_inductive_seed
             simp[hns] at haccept
             have step := PartialLexRel.step_nil_eos my_inductive_seed rfl haccept
-            have htail : PartialLex_seed spec (some (new_tokens, [])) tail = some (tokens, unlexed) := by
+            have htail : PartialLex_seed spec (some (new_terminals, [])) tail = some (terminals, unlexed) := by
               simp[PartialLex_seed]
-              have := h_token_unlexed
-              simp[←hns.right, new_tokens] at h_token_unlexed ⊢
-              exact h_token_unlexed
-            exact PartialLexRel_append_singleton_tail spec (ih (wp ++ [ExtChar.eos]) new_tokens [] ⟨step, htail⟩)
+              have := h_terminals_unlexed
+              simp[←hns.right, new_terminals] at h_terminals_unlexed ⊢
+              exact h_terminals_unlexed
+            exact PartialLexRel_append_singleton_tail spec (ih (wp ++ [ExtChar.eos]) new_terminals [] ⟨step, htail⟩)
         | ExtChar.char ch =>
           simp[PartialLex_trans] at hns
           cases hp : spec.automaton.evalFrom spec.automaton.start (seed_s ++ [ch]) with
           | some σ' =>
             simp[hp] at hns
-            let new_tokens := seed_f
+            let new_terminals := seed_f
             let new_unlexed := seed_s ++ [ch]
 
             have hint : (seed_s ++ [ch] ∈ spec.automaton.intermediateLanguage) := by
@@ -183,13 +183,13 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
             have hpfx : (seed_s ++ [ch] ∈ spec.automaton.prefixLanguage) := by
               rw[←hprune]
               exact hint
-            have hstep_rel : PartialLexRel spec (wp ++ [ExtChar.char ch]) new_tokens new_unlexed :=
+            have hstep_rel : PartialLexRel spec (wp ++ [ExtChar.char ch]) new_terminals new_unlexed :=
               PartialLexRel.step_char_continue my_inductive_seed rfl hpfx
-            have htail : PartialLex_seed spec (some (new_tokens, new_unlexed)) tail = some (tokens, unlexed) := by
+            have htail : PartialLex_seed spec (some (new_terminals, new_unlexed)) tail = some (terminals, unlexed) := by
               simp[PartialLex_seed]
-              simp[new_tokens, new_unlexed, hns]
-              exact h_token_unlexed
-            exact PartialLexRel_append_singleton_tail spec (ih (wp ++ [ExtChar.char ch]) new_tokens new_unlexed ⟨hstep_rel, htail⟩)
+              simp[new_terminals, new_unlexed, hns]
+              exact h_terminals_unlexed
+            exact PartialLexRel_append_singleton_tail spec (ih (wp ++ [ExtChar.char ch]) new_terminals new_unlexed ⟨hstep_rel, htail⟩)
           | none =>
             cases ha : spec.automaton.evalFrom spec.automaton.start seed_s with
             | none => simp[hp, ha] at hns
@@ -231,10 +231,10 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
                     pattern spec.automaton.evalFrom spec.automaton.start seed_s
                     rw[ha]
                   simp[ht]
-                let new_tokens := seed_f ++ [ExtChar.char tused]
+                let new_terminals := seed_f ++ [ExtChar.char tused]
                 let new_unlexed := [ch]
 
-                have hstep_rel : PartialLexRel spec (wp ++ [ExtChar.char ch]) new_tokens new_unlexed := by
+                have hstep_rel : PartialLexRel spec (wp ++ [ExtChar.char ch]) new_terminals new_unlexed := by
                   have ⟨⟨_, hseed⟩, ht'⟩ := hns.right
                   apply PartialLexRel.step_char_commit h.left
                   simp
@@ -247,24 +247,24 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
                   change spec.automaton.evalFrom spec.automaton.start step_unlexed ≠ none
                   rw[hbo]
                   simp
-                have htail : PartialLex_seed spec (some (new_tokens, new_unlexed)) tail = some (tokens, unlexed) := by
+                have htail : PartialLex_seed spec (some (new_terminals, new_unlexed)) tail = some (terminals, unlexed) := by
                   have ⟨⟨_, hseed⟩, ht'⟩ := hns.right
-                  simp[new_tokens, new_unlexed, ←ht', ←hseed, ←htused, ht, term] at h_token_unlexed ⊢
-                  exact h_token_unlexed
-                exact PartialLexRel_append_singleton_tail spec (ih (wp ++ [ExtChar.char ch]) new_tokens new_unlexed hstep_rel htail)
+                  simp[new_terminals, new_unlexed, ←ht', ←hseed, ←htused, ht, term] at h_terminals_unlexed ⊢
+                  exact h_terminals_unlexed
+                exact PartialLexRel_append_singleton_tail spec (ih (wp ++ [ExtChar.char ch]) new_terminals new_unlexed hstep_rel htail)
 
 /-! ### Equivalence of relational and executable lexing -/
 
 omit [DecidableEq α] [DecidableEq σ] [BEq α] in
 /-- Pruning lets us identify `PartialLex` with the relational lexer semantics. -/
 theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
-  ∀ w tokens unlexed, (PartialLexRel spec w tokens unlexed) ↔
-    PartialLex spec w = some (tokens, unlexed) := by
-  intro w tokens unlexed
+  ∀ w terminals unlexed, (PartialLexRel spec w terminals unlexed) ↔
+    PartialLex spec w = some (terminals, unlexed) := by
+  intro w terminals unlexed
   apply Iff.intro
-  . exact (PartialLex_pruned_eq_PartialLexRel_seed spec hp).left w tokens unlexed
+  . exact (PartialLex_pruned_eq_PartialLexRel_seed spec hp).left w terminals unlexed
   . intro h
-    have : PartialLexRel spec ([] ++ w) tokens unlexed := by
+    have : PartialLexRel spec ([] ++ w) terminals unlexed := by
       apply (PartialLex_pruned_eq_PartialLexRel_seed spec hp).right [] w
       exact ⟨PartialLexRel.nil, by simp[PartialLex] at h; exact h⟩
     simp at this
@@ -273,7 +273,7 @@ theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.
 /-! ### Lexing FST correctness -/
 
 /-- A character-level FSA run lifts to a lexing-FST run that produces no
-output tokens. -/
+output terminals. -/
 private def FSA_ch_to_LexingFST (spec: LexerSpec α Γ σ) :
   ∀ (w : List α) q q', (q ≠ LexingState.start ∨ w ≠ []) →
     (spec.automaton.evalFrom (q.src spec) w = some q' ↔
@@ -426,17 +426,17 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
           simp[hfsa] at h₂
           exact Eq.symm h₂
 
-        -- find out the token that is produced
-        let produced_token := spec.accept_seq_term seed_wr haccept
+        -- find out the terminal that is produced
+        let produced_terminal := spec.accept_seq_term seed_wr haccept
         -- have hseq_term : aq = spec_term
         have hlex_trans :
-          (BuildLexingFST spec).evalFrom_fold_step (some (q', seed_ts)) head = some (LexingState.start, seed_ts ++ [ExtChar.char produced_token, ExtChar.eos]) := by
+          (BuildLexingFST spec).evalFrom_fold_step (some (q', seed_ts)) head = some (LexingState.start, seed_ts ++ [ExtChar.char produced_terminal, ExtChar.eos]) := by
           simp at h₁ ⊢
           rw[←FST.evalFrom_fold_eq_evalFrom] at h₁
           simp[FST.evalFrom_fold_seed] at h₁ ⊢
           simp[FST.evalFrom_fold_step, BuildLexingFST, Id.run, hh]
           simp[hq'aq', LexingState.src, haq']
-          simp[produced_token]
+          simp[produced_terminal]
           simp[LexerSpec.accept_seq_term]
           have : afinal = spec.automaton.evalFrom spec.automaton.start seed_wr := by simp[afinal]
           conv =>
@@ -445,18 +445,18 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] 
             rw[←this]
           simp[haq', this]
 
-        have hlex_wp_step : fst.eval (wp ++ [head]) = some (LexingState.start, seed_ts ++ [.char produced_token, ExtChar.eos]) :=
+        have hlex_wp_step : fst.eval (wp ++ [head]) = some (LexingState.start, seed_ts ++ [.char produced_terminal, ExtChar.eos]) :=
           hlex_append hlex_trans
 
-        have hplex_step : PartialLex spec (wp ++ [head]) = some (seed_ts ++ [.char produced_token, ExtChar.eos], []) :=
+        have hplex_step : PartialLex spec (wp ++ [head]) = some (seed_ts ++ [.char produced_terminal, ExtChar.eos], []) :=
           hplex_append (by
-            simp [PartialLex_trans, hh, produced_token, haccept])
+            simp [PartialLex_trans, hh, produced_terminal, haccept])
 
-        have ih := ih (wp ++ [head]) LexingState.start (seed_ts ++ [.char produced_token, ExtChar.eos]) [] hplex_step hlex_wp_step hlex_nil
+        have ih := ih (wp ++ [head]) LexingState.start (seed_ts ++ [.char produced_terminal, ExtChar.eos]) [] hplex_step hlex_wp_step hlex_nil
 
         simp[hh] at hlex_trans
         rw[hlex_trans]
-        simp[produced_token] at ih
+        simp[produced_terminal] at ih
 
         convert ih
       . simp[haccept]
@@ -693,8 +693,8 @@ theorem LexingFST_to_PartialLexRel (spec: LexerSpec α Γ σ) (he: [] ∉ spec.a
     simp only [hpl, heq] at hrel
     simp[hrel]
 
-/-- Every transition of the lexing FST emits either no tokens, a singleton
-token, or the special two-symbol output `[t, eos]` used on finalization. -/
+/-- Every transition of the lexing FST emits either no terminals, a singleton
+terminal, or the special two-symbol output `[t, eos]` used on finalization. -/
 lemma LexingFst_smallStep (spec: LexerSpec α Γ σ) :
   ∀ q a q' terminals,
     (BuildLexingFST spec).step q a = some (q', terminals) →
@@ -712,4 +712,3 @@ lemma LexingFst_smallStep (spec: LexerSpec α Γ σ) :
   rw[←h.right]
   simp
   simp[←h.right]
-
