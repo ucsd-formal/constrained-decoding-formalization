@@ -33,7 +33,7 @@ This formalization verifies that the composed system correctly computes the set 
 | `GCDAssumptions.lean` | End-to-end GCD assumptions, including parser-side whitespace ignoring |
 | `GCDAlgorithm.lean` | Preprocessing, valid-token mask computation, and executable GCD checker |
 | `GCDStepProofs.lean` | Step-level preprocessing, soundness, completeness, and EOS completeness |
-| `GCDCheckerLanguage.lean` | Bridge from step-level proofs to `checkerLanguage = GCDLanguage` |
+| `GCDCheckerLanguage.lean` | Bridge from step-level proofs to `checkerLanguage = TargetLanguage` |
 | `GCDProductivity.lean` | Productivity, path independence, and final checker correctness |
 | `GrammarConstrainedDecoding.lean` | Compatibility import for the split GCD proof development |
 
@@ -42,7 +42,7 @@ This formalization verifies that the composed system correctly computes the set 
 - **`GCDChecker_pathIndependent`** — `checkerAllows` is invariant under retokenizations with the same flattened character content.
 
 ## Other Theorems 
-- **`GCDChecker_checkerLanguage_eq_GCDLanguage`** — The accepted token language of `GCDChecker spec P` is exactly the lexer/parser target language.
+- **`GCDChecker_checkerLanguage_eq_TargetLanguage`** — The accepted token language of `GCDChecker spec P` is exactly the lexer/parser target language.
 - **`GCDChecker_productive`** — Every incrementally allowed prefix extends to an accepted checker word.
 - **Step-level soundness (`Soundness`)** — If a token's mask bit is true, then there exists a continuation where the composed FST+parser accepts. *(Paper Theorem C.4)*
 - **Step-level completeness (`Completeness`, `EOSCompleteness`)** — If a viable continuation exists through the composed system, the token's mask bit is true. *(Paper Theorem C.5)*
@@ -97,7 +97,7 @@ This table maps definitions, algorithms, and theorems from the paper to their Le
 | Always-accepted tokens | $A(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` (accepted bucket) | `GCDAlgorithm.lean` |
 | Context-dependent sequences | $D(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` (dependent bucket) | `GCDAlgorithm.lean` |
 | Checker | $\mathcal{C}$ | `Checker β` | `Checker.lean` |
-| GCD target language | $\mathcal{L}^{\text{Lex}}(\mathcal{G})$ | `GCDLanguage spec P` | `GCDCheckerLanguage.lean` |
+| GCD target language | $\mathcal{L}^{\text{Lex}}(\mathcal{G})$ | `TargetLanguage spec P` | `GCDCheckerLanguage.lean` |
 
 ### Algorithms
 
@@ -126,7 +126,7 @@ This table maps definitions, algorithms, and theorems from the paper to their Le
 | Soundness (Thm. C.4) | `Soundness` | `GCDStepProofs.lean` |
 | Completeness (Thm. C.5) | `Completeness`, `EOSCompleteness` | `GCDStepProofs.lean` |
 | Mask $\Rightarrow$ viable continuation | `accept_if_ComputedValidTokenMask` | `GCDStepProofs.lean` |
-| $\text{checkerLanguage} = \mathcal{L}^{\text{Lex}}(\mathcal{G})$ | `GCDChecker_checkerLanguage_eq_GCDLanguage` | `GCDCheckerLanguage.lean` |
+| $\text{checkerLanguage} = \mathcal{L}^{\text{Lex}}(\mathcal{G})$ | `GCDChecker_checkerLanguage_eq_TargetLanguage` | `GCDCheckerLanguage.lean` |
 | Checker productivity | `GCDChecker_productive` | `GCDProductivity.lean` |
 | Checker path independence | `GCDChecker_pathIndependent` | `GCDProductivity.lean` |
 | Full checker interface | `GCDChecker_correct` | `GCDProductivity.lean` |

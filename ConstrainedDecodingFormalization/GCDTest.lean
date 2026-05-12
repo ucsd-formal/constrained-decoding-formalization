@@ -495,7 +495,7 @@ def jsonPP := PreprocessParser jsonFullFST jsonParserWithEOS
 
 /-- The final correctness theorem instantiated for the JSON lexer/parser. -/
 theorem jsonChecker_correct :
-    checkerCorrect (β := JVocab) jsonChecker (GCDLanguage jsonLexer jsonPDA) :=
+    checkerCorrect (β := JVocab) jsonChecker (TargetLanguage jsonLexer jsonPDA) :=
   by
     simpa [jsonChecker] using
       (GCDChecker_correct (α := JChar) (β := JVocab) (Γ := JTok)

@@ -383,38 +383,38 @@ theorem GCDChecker_productive
   exact GCDChecker_checkerAllows_imp_checkerAccepts_extension spec P hassum w hw
 
 /-- The GCD checker's intermediate language is the prefix closure of
-`GCDLanguage`, assuming the full whitespace assumption. -/
-theorem GCDChecker_intermediateLanguage_eq_GCDLanguage_prefixes
+`TargetLanguage`, assuming the full whitespace assumption. -/
+theorem GCDChecker_intermediateLanguage_eq_TargetLanguage_prefixes
   [Vocabulary α β] [FinEnum β]
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
   {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite) :
   checkerIntermediateLanguage (β := β) (GCDChecker spec P) =
-    (GCDLanguage (β := β) spec P).prefixes := by
+    (TargetLanguage (β := β) spec P).prefixes := by
   have hproductive : checkerProductive (β := β) (GCDChecker spec P) :=
     GCDChecker_productive spec P hassum
   ext w
   simp only [checkerIntermediateLanguage, Language.prefixes]
   constructor
-  · -- (→): checkerAllows c w → ∃ v ∈ GCDLanguage, w <+: v
+  · -- (→): checkerAllows c w → ∃ v ∈ TargetLanguage, w <+: v
     intro hw
     -- Use hproductive to get w' with checkerAccepts c w' and w.isPrefixOf w'
     obtain ⟨w', haccepts, hprefix⟩ := hproductive w hw
     -- Convert isPrefixOf to <+:
     have hprefix' : w <+: w' := List.isPrefixOf_iff_prefix.mp hprefix
-    -- Use checkerLanguage = GCDLanguage: w' ∈ checkerLanguage c → w' ∈ GCDLanguage
-    have hw'_lang : w' ∈ GCDLanguage spec P := by
-      have heq : checkerLanguage (β := β) (GCDChecker spec P) = GCDLanguage spec P :=
-        GCDChecker_checkerLanguage_eq_GCDLanguage spec P hassum
+    -- Use checkerLanguage = TargetLanguage: w' ∈ checkerLanguage c → w' ∈ TargetLanguage
+    have hw'_lang : w' ∈ TargetLanguage spec P := by
+      have heq : checkerLanguage (β := β) (GCDChecker spec P) = TargetLanguage spec P :=
+        GCDChecker_checkerLanguage_eq_TargetLanguage spec P hassum
       rw [← heq]
       simp only [checkerLanguage]
       exact haccepts
     exact ⟨w', hw'_lang, hprefix'⟩
-  · -- (←): ∃ v ∈ GCDLanguage, w <+: v → checkerAllows c w
+  · -- (←): ∃ v ∈ TargetLanguage, w <+: v → checkerAllows c w
     intro ⟨v, hv_lang, hprefix⟩
     -- Write v = w ++ rest for some rest
     obtain ⟨rest, hrest⟩ := hprefix
-    exact GCDLanguage_checkerAllows_prefix spec P hassum v hv_lang w rest hrest.symm
+    exact TargetLanguage_checkerAllows_prefix spec P hassum v hv_lang w rest hrest.symm
 
 /-- The GCD checker's cumulative `checkerAllows` predicate is invariant under
 retokenizing a prefix with the same flattened character content under the full
@@ -429,22 +429,22 @@ theorem GCDChecker_pathIndependent
   intro w₁ w₂ hfm
   have hintermediate :
       checkerIntermediateLanguage (β := β) (GCDChecker spec P) =
-        (GCDLanguage (β := β) spec P).prefixes :=
-    GCDChecker_intermediateLanguage_eq_GCDLanguage_prefixes spec P hassum
+        (TargetLanguage (β := β) spec P).prefixes :=
+    GCDChecker_intermediateLanguage_eq_TargetLanguage_prefixes spec P hassum
   have hw₁ :
       checkerAllows (GCDChecker spec P) w₁ = true ↔
-        w₁ ∈ (GCDLanguage (β := β) spec P).prefixes := by
+        w₁ ∈ (TargetLanguage (β := β) spec P).prefixes := by
     have hmem := congrArg (fun l : Language β => w₁ ∈ l) hintermediate
     simpa [checkerIntermediateLanguage] using hmem
   have hw₂ :
       checkerAllows (GCDChecker spec P) w₂ = true ↔
-        w₂ ∈ (GCDLanguage (β := β) spec P).prefixes := by
+        w₂ ∈ (TargetLanguage (β := β) spec P).prefixes := by
     have hmem := congrArg (fun l : Language β => w₂ ∈ l) hintermediate
     simpa [checkerIntermediateLanguage] using hmem
   have hprefix :
-      w₁ ∈ (GCDLanguage (β := β) spec P).prefixes ↔
-        w₂ ∈ (GCDLanguage (β := β) spec P).prefixes :=
-    GCDLanguage_prefixes_iff_of_flatMap_eq spec P w₁ w₂ hfm
+      w₁ ∈ (TargetLanguage (β := β) spec P).prefixes ↔
+        w₂ ∈ (TargetLanguage (β := β) spec P).prefixes :=
+    TargetLanguage_prefixes_iff_of_flatMap_eq spec P w₁ w₂ hfm
   have hiff :
       checkerAllows (GCDChecker spec P) w₁ = true ↔
         checkerAllows (GCDChecker spec P) w₂ = true :=
@@ -473,8 +473,8 @@ theorem GCDChecker_correct
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
   {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite) :
-  checkerCorrect (β := β) (GCDChecker spec P) (GCDLanguage spec P) := by
+  checkerCorrect (β := β) (GCDChecker spec P) (TargetLanguage spec P) := by
   constructor
-  · exact GCDChecker_checkerLanguage_eq_GCDLanguage spec P hassum
-  · exact GCDChecker_intermediateLanguage_eq_GCDLanguage_prefixes
+  · exact GCDChecker_checkerLanguage_eq_TargetLanguage spec P hassum
+  · exact GCDChecker_intermediateLanguage_eq_TargetLanguage_prefixes
       spec P hassum

@@ -23,7 +23,7 @@ over the token prefix. The step-level theorems (`Soundness`, `Completeness`,
 trivial since `checkerAllows c [] = true`.
 
 The complete-string language equality is established by
-`GCDChecker_checkerLanguage_eq_GCDLanguage` below.  The intermediate-language
+`GCDChecker_checkerLanguage_eq_TargetLanguage` below.  The intermediate-language
 statement is packaged by `GCDChecker_correct`; its productivity obligation is
 now derived from the full whitespace assumption.
 -/
@@ -95,7 +95,7 @@ theorem GCDChecker_eq_of_flatMap_eq
 /-- The target language of the GCD checker: token sequences `w` such that the
 composed detokenizing lexer processes `w.map char ++ [.eos]` successfully and
 the EOS-augmented parser accepts the resulting terminal sequence. -/
-def GCDLanguage
+def TargetLanguage
   [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
   [FinEnum β] [FinEnum σa] [FinEnum α]
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) : Language β :=
@@ -104,15 +104,15 @@ def GCDLanguage
       (w.map ExtChar.char ++ [.eos]) = some (qa, gammas) ∧
     gammas ∈ (ParserWithEOS P).accepts }
 
-/-- `GCDLanguage` itself depends only on the flattened character content of the
+/-- `TargetLanguage` itself depends only on the flattened character content of the
 token sequence. -/
-lemma GCDLanguage_of_flatMap_eq
+lemma TargetLanguage_of_flatMap_eq
     [Vocabulary α β] [FinEnum β]
     (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
     (w₁ w₂ : List β)
     (hfm : w₁.flatMap (Vocabulary.flatten (α := α)) =
       w₂.flatMap (Vocabulary.flatten (α := α))) :
-    w₁ ∈ GCDLanguage spec P → w₂ ∈ GCDLanguage spec P := by
+    w₁ ∈ TargetLanguage spec P → w₂ ∈ TargetLanguage spec P := by
   intro hw₁
   obtain ⟨qa, gammas, heval, hacc⟩ := hw₁
   refine ⟨qa, gammas, ?_, hacc⟩
@@ -138,46 +138,46 @@ lemma GCDLanguage_of_flatMap_eq
   rw [← heq]
   exact heval
 
-/-- The prefix closure of `GCDLanguage` is invariant under retokenizing the
+/-- The prefix closure of `TargetLanguage` is invariant under retokenizing the
 same flattened character content. -/
-lemma GCDLanguage_prefixes_iff_of_flatMap_eq
+lemma TargetLanguage_prefixes_iff_of_flatMap_eq
     [Vocabulary α β] [FinEnum β]
     (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
     (w₁ w₂ : List β)
     (hfm : w₁.flatMap (Vocabulary.flatten (α := α)) =
       w₂.flatMap (Vocabulary.flatten (α := α))) :
-    w₁ ∈ (GCDLanguage spec P).prefixes ↔
-      w₂ ∈ (GCDLanguage spec P).prefixes := by
+    w₁ ∈ (TargetLanguage spec P).prefixes ↔
+      w₂ ∈ (TargetLanguage spec P).prefixes := by
   constructor
   · rintro ⟨v, hv, hprefix⟩
     obtain ⟨rest, hrest⟩ := hprefix
     refine ⟨w₂ ++ rest, ?_, ⟨rest, rfl⟩⟩
-    apply GCDLanguage_of_flatMap_eq spec P v (w₂ ++ rest)
+    apply TargetLanguage_of_flatMap_eq spec P v (w₂ ++ rest)
     · rw [← hrest]
       simp [List.flatMap_append, hfm]
     · exact hv
   · rintro ⟨v, hv, hprefix⟩
     obtain ⟨rest, hrest⟩ := hprefix
     refine ⟨w₁ ++ rest, ?_, ⟨rest, rfl⟩⟩
-    apply GCDLanguage_of_flatMap_eq spec P v (w₁ ++ rest)
+    apply TargetLanguage_of_flatMap_eq spec P v (w₁ ++ rest)
     · rw [← hrest]
       simp [List.flatMap_append, hfm]
     · exact hv
 
-/-- Any prefix of a word in `GCDLanguage` passes `checkerAllows` for the GCD checker.
+/-- Any prefix of a word in `TargetLanguage` passes `checkerAllows` for the GCD checker.
 
 This is the key inductive step for completeness: we strengthen the IH from
 "the full word is in the language" to "any prefix passes checkerAllows".
 The induction is on the length of the prefix `w'`. -/
-theorem GCDLanguage_checkerAllows_prefix
+theorem TargetLanguage_checkerAllows_prefix
   [Vocabulary α β] [FinEnum β]
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
   {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite)
-  (w : List β) (hw : w ∈ GCDLanguage spec P)
+  (w : List β) (hw : w ∈ TargetLanguage spec P)
   (w' : List β) (rest : List β) (hrest : w = w' ++ rest) :
   checkerAllows (GCDChecker spec P) w' = true := by
-  -- Extract the GCDLanguage witness
+  -- Extract the TargetLanguage witness
   obtain ⟨qa, gammas, heval, hacc⟩ := hw
   -- We proceed by strong induction on w'.length.
   -- The key property: for any prefix w' of w (i.e. w = w' ++ rest),
@@ -229,18 +229,18 @@ theorem GCDLanguage_checkerAllows_prefix
       rw [heq]
       exact heval
 
-/-- If `w ∈ GCDLanguage spec P`, then the GCD checker accepts `w`. -/
-theorem GCDLanguage_imp_checkerAccepts
+/-- If `w ∈ TargetLanguage spec P`, then the GCD checker accepts `w`. -/
+theorem TargetLanguage_imp_checkerAccepts
   [Vocabulary α β] [FinEnum β]
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
   {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite)
-  (w : List β) (hw : w ∈ GCDLanguage spec P) :
+  (w : List β) (hw : w ∈ TargetLanguage spec P) :
   checkerAccepts (GCDChecker spec P) w = true := by
   obtain ⟨qa, gammas, heval, hacc⟩ := hw
   -- Show checkerAllows holds via the prefix lemma
   have hallows : checkerAllows (GCDChecker spec P) w = true :=
-    GCDLanguage_checkerAllows_prefix spec P hassum w
+    TargetLanguage_checkerAllows_prefix spec P hassum w
       ⟨qa, gammas, heval, hacc⟩ w [] (by simp)
   -- Show GCDChecker w .eos = true via EOSCompleteness
   have heos : GCDChecker spec P w .eos = true := by
@@ -251,95 +251,107 @@ theorem GCDLanguage_imp_checkerAccepts
   -- Combine: checkerAccepts = checkerAllows && c w .eos = true
   simp only [checkerAccepts, hallows, heos, decide_true, Bool.and_self]
 
-/-- The checker language of `GCDChecker spec P` equals `GCDLanguage spec P`. -/
-theorem GCDChecker_checkerLanguage_eq_GCDLanguage
+/-- If the GCD checker accepts `w`, then `w ∈ TargetLanguage spec P`. -/
+theorem checkerAccepts_imp_TargetLanguage
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  (w : List β)
+  (hw : checkerAccepts (GCDChecker spec P) w = true) :
+  w ∈ TargetLanguage spec P := by
+  -- Extract GCDChecker spec P w .eos = true from checkerAccepts.
+  have heos_true : GCDChecker spec P w .eos = true := by
+    have h :
+        checkerAllows (GCDChecker spec P) w &&
+          GCDChecker spec P w .eos = true := by
+      simpa [checkerAccepts] using hw
+    have := (Bool.and_eq_true_iff.mp h).2
+    simpa using this
+  -- By GCDChecker_eos_true_imp_viable, get a viable FST run with suffix.
+  obtain ⟨suffix, qa_full, gammas_full, heval_full, hparse_full⟩ :=
+    GCDChecker_eos_true_imp_viable spec P w heos_true
+  -- Abbreviate
+  let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
+  -- Split FST run at w.map char: get comb.eval (w.map char) = some (q_fst, terms)
+  have heval_full_from : comb.evalFrom comb.start
+      (w.map ExtChar.char ++ (.eos :: suffix)) = some (qa_full, gammas_full) := by
+    simpa [FST.eval] using heval_full
+  have hcurr_some : ∃ q_fst terms,
+      comb.evalFrom comb.start (w.map ExtChar.char) = some (q_fst, terms) := by
+    by_contra hall
+    push_neg at hall
+    have happ := FST.evalFrom_append (M := comb) comb.start
+      (w.map ExtChar.char) (.eos :: suffix)
+    cases hc : comb.evalFrom comb.start (w.map ExtChar.char) with
+    | none => rw [hc] at happ; simp at happ; rw [happ] at heval_full_from; simp at heval_full_from
+    | some p => exact (hall p.1 p.2 hc).elim
+  obtain ⟨q_fst, terms, hcurr⟩ := hcurr_some
+  -- Split FST run at [.eos]: get comb.step q_fst .eos = some (q₁, S)
+  have hrest_from : ∃ out_rest,
+      comb.evalFrom q_fst (.eos :: suffix) = some (qa_full, out_rest) ∧
+      gammas_full = terms ++ out_rest := by
+    have happ := FST.evalFrom_append (M := comb) comb.start
+      (w.map ExtChar.char) (.eos :: suffix)
+    rw [hcurr] at happ; rw [happ] at heval_full_from
+    cases hrest : comb.evalFrom q_fst (.eos :: suffix) with
+    | none => simp [hrest] at heval_full_from
+    | some p =>
+      simp only [hrest, Option.map_some, Option.some.injEq, Prod.mk.injEq] at heval_full_from
+      obtain ⟨hqa, hterms⟩ := heval_full_from
+      refine ⟨p.2, ?_, hterms.symm⟩
+      have heqp : p = (qa_full, p.2) := Prod.ext hqa rfl
+      rw [heqp]
+  obtain ⟨out_rest, hrest, hgammas_split⟩ := hrest_from
+  -- Split the .eos cons step: step at .eos gives (q₁, S)
+  rcases (FST.evalFrom_cons_some_iff (M := comb)).1 hrest with
+    ⟨q₁, S, T, hstep, _htail, hout_eq⟩
+  -- Define gammas₁ = terms ++ S (output after processing w ++ [.eos])
+  set gammas₁ := terms ++ S with hgammas₁_def
+  -- comb.eval (w.map char ++ [.eos]) = some (q₁, gammas₁)
+  have heval_eos : comb.eval (w.map ExtChar.char ++ [.eos]) = some (q₁, gammas₁) := by
+    simp only [FST.eval]
+    have happ := FST.evalFrom_append (M := comb) comb.start
+      (w.map ExtChar.char) [.eos]
+    rw [hcurr] at happ
+    simp only [happ]
+    -- comb.evalFrom q_fst [.eos] = some (q₁, S)
+    have hstep_eos : comb.evalFrom q_fst [ExtChar.eos] = some (q₁, S) := by
+      rw [FST.evalFrom_cons_some_iff]
+      exact ⟨q₁, S, [], hstep, by simp [FST.evalFrom], by simp⟩
+    simp [hstep_eos, hgammas₁_def]
+  -- .eos ∈ gammas₁ (since .eos ∈ S by BuildDetokLexer_eos_step_eos_in_output)
+  have heos_in_S : ExtChar.eos ∈ S :=
+    BuildDetokLexer_eos_step_eos_in_output spec q_fst q₁ S hstep
+  have heos_in_gammas₁ : ExtChar.eos ∈ gammas₁ := by
+    simp [hgammas₁_def, List.mem_append]
+    right; exact heos_in_S
+  -- (ParserWithEOS P).evalFull gammas₁ ≠ ∅
+  -- from evalFull gammas_full ≠ ∅ where gammas_full = gammas₁ ++ T
+  have hgammas_full_split : gammas_full = gammas₁ ++ T := by
+    rw [hgammas_split, hout_eq, hgammas₁_def, List.append_assoc]
+  have hparse_gammas₁ : (ParserWithEOS P).evalFull gammas₁ ≠ ∅ := by
+    intro h
+    apply hparse_full
+    rw [hgammas_full_split, (ParserWithEOS P).evalFull_append gammas₁ T, h]
+    simp
+  -- gammas₁ ∈ (ParserWithEOS P).accepts
+  have hacc_gammas₁ : gammas₁ ∈ (ParserWithEOS P).accepts :=
+    ParserWithEOS_evalFull_eos_imp_accepts P gammas₁ hparse_gammas₁ heos_in_gammas₁
+  -- Therefore w ∈ TargetLanguage
+  exact ⟨q₁, gammas₁, heval_eos, hacc_gammas₁⟩
+
+/-- The checker language of `GCDChecker spec P` equals `TargetLanguage spec P`. -/
+theorem GCDChecker_checkerLanguage_eq_TargetLanguage
   [Vocabulary α β] [FinEnum β]
   (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
   {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite) :
-  checkerLanguage (β := β) (GCDChecker spec P) = GCDLanguage spec P := by
+  checkerLanguage (β := β) (GCDChecker spec P) = TargetLanguage spec P := by
   ext w
-  simp only [checkerLanguage, checkerAccepts]
+  simp only [checkerLanguage]
   constructor
-  · -- (→): if checker accepts w, then w ∈ GCDLanguage spec P
+  · -- (→): if checker accepts w, then w ∈ TargetLanguage spec P
     intro h
-    -- Extract GCDChecker spec P w .eos = true from h
-    have heos_true : GCDChecker spec P w .eos = true := by
-      have := (Bool.and_eq_true_iff.mp h).2
-      simpa using this
-    -- By GCDChecker_eos_true_imp_viable, get a viable FST run with suffix
-    obtain ⟨suffix, qa_full, gammas_full, heval_full, hparse_full⟩ :=
-      GCDChecker_eos_true_imp_viable spec P w heos_true
-    -- Abbreviate
-    let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
-    -- Split FST run at w.map char: get comb.eval (w.map char) = some (q_fst, terms)
-    have heval_full_from : comb.evalFrom comb.start
-        (w.map ExtChar.char ++ (.eos :: suffix)) = some (qa_full, gammas_full) := by
-      simpa [FST.eval] using heval_full
-    have hcurr_some : ∃ q_fst terms,
-        comb.evalFrom comb.start (w.map ExtChar.char) = some (q_fst, terms) := by
-      by_contra hall
-      push_neg at hall
-      have happ := FST.evalFrom_append (M := comb) comb.start
-        (w.map ExtChar.char) (.eos :: suffix)
-      cases hc : comb.evalFrom comb.start (w.map ExtChar.char) with
-      | none => rw [hc] at happ; simp at happ; rw [happ] at heval_full_from; simp at heval_full_from
-      | some p => exact (hall p.1 p.2 hc).elim
-    obtain ⟨q_fst, terms, hcurr⟩ := hcurr_some
-    -- Split FST run at [.eos]: get comb.step q_fst .eos = some (q₁, S)
-    have hrest_from : ∃ out_rest,
-        comb.evalFrom q_fst (.eos :: suffix) = some (qa_full, out_rest) ∧
-        gammas_full = terms ++ out_rest := by
-      have happ := FST.evalFrom_append (M := comb) comb.start
-        (w.map ExtChar.char) (.eos :: suffix)
-      rw [hcurr] at happ; rw [happ] at heval_full_from
-      cases hrest : comb.evalFrom q_fst (.eos :: suffix) with
-      | none => simp [hrest] at heval_full_from
-      | some p =>
-        simp only [hrest, Option.map_some, Option.some.injEq, Prod.mk.injEq] at heval_full_from
-        obtain ⟨hqa, hterms⟩ := heval_full_from
-        -- hqa : p.1 = qa_full, hterms : terms ++ p.2 = gammas_full
-        refine ⟨p.2, ?_, hterms.symm⟩
-        have heqp : p = (qa_full, p.2) := Prod.ext hqa rfl
-        rw [heqp]
-    obtain ⟨out_rest, hrest, hgammas_split⟩ := hrest_from
-    -- Split the .eos cons step: step at .eos gives (q₁, S)
-    rcases (FST.evalFrom_cons_some_iff (M := comb)).1 hrest with
-      ⟨q₁, S, T, hstep, htail, hout_eq⟩
-    -- Define gammas₁ = terms ++ S (output after processing w ++ [.eos])
-    set gammas₁ := terms ++ S with hgammas₁_def
-    -- comb.eval (w.map char ++ [.eos]) = some (q₁, gammas₁)
-    have heval_eos : comb.eval (w.map ExtChar.char ++ [.eos]) = some (q₁, gammas₁) := by
-      simp only [FST.eval]
-      have happ := FST.evalFrom_append (M := comb) comb.start
-        (w.map ExtChar.char) [.eos]
-      rw [hcurr] at happ
-      simp only [happ]
-      -- comb.evalFrom q_fst [.eos] = some (q₁, S)
-      have hstep_eos : comb.evalFrom q_fst [ExtChar.eos] = some (q₁, S) := by
-        rw [FST.evalFrom_cons_some_iff]
-        exact ⟨q₁, S, [], hstep, by simp [FST.evalFrom], by simp⟩
-      simp [hstep_eos, hgammas₁_def]
-    -- .eos ∈ gammas₁ (since .eos ∈ S by BuildDetokLexer_eos_step_eos_in_output)
-    have heos_in_S : ExtChar.eos ∈ S :=
-      BuildDetokLexer_eos_step_eos_in_output spec q_fst q₁ S hstep
-    have heos_in_gammas₁ : ExtChar.eos ∈ gammas₁ := by
-      simp [hgammas₁_def, List.mem_append]
-      right; exact heos_in_S
-    -- (ParserWithEOS P).evalFull gammas₁ ≠ ∅
-    -- from evalFull gammas_full ≠ ∅ where gammas_full = gammas₁ ++ T
-    have hgammas_full_split : gammas_full = gammas₁ ++ T := by
-      rw [hgammas_split, hout_eq, hgammas₁_def, List.append_assoc]
-    have hparse_gammas₁ : (ParserWithEOS P).evalFull gammas₁ ≠ ∅ := by
-      intro h
-      apply hparse_full
-      rw [hgammas_full_split, (ParserWithEOS P).evalFull_append gammas₁ T, h]
-      simp
-    -- gammas₁ ∈ (ParserWithEOS P).accepts
-    have hacc_gammas₁ : gammas₁ ∈ (ParserWithEOS P).accepts :=
-      ParserWithEOS_evalFull_eos_imp_accepts P gammas₁ hparse_gammas₁ heos_in_gammas₁
-    -- Therefore w ∈ GCDLanguage
-    exact ⟨q₁, gammas₁, heval_eos, hacc_gammas₁⟩
-  · -- (←): if w ∈ GCDLanguage spec P, then checker accepts w
+    exact checkerAccepts_imp_TargetLanguage spec P w h
+  · -- (←): if w ∈ TargetLanguage spec P, then checker accepts w
     intro hw
-    exact GCDLanguage_imp_checkerAccepts spec P hassum w hw
+    exact TargetLanguage_imp_checkerAccepts spec P hassum w hw
