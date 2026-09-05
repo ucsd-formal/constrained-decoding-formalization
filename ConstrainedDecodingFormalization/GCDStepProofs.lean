@@ -26,19 +26,19 @@ The central flow is:
 -/
 
 universe u v w x y z
-variable {α : Type u} {β : Type x} {Γ : Type y} {π : Type v} {σp : Type w} {σa : Type z}
+variable {Input : Type u} {V : Type x} {Γ : Type y} {StackSym : Type v} {Qp : Type w} {Qa : Type z}
 
 variable
-  [FinEnum σp] [FinEnum Γ] [FinEnum α] [FinEnum σa] [FinEnum π]
-  [DecidableEq σp] [DecidableEq β] [DecidableEq Γ] [DecidableEq α] [DecidableEq π]
+  [FinEnum Qp] [FinEnum Γ] [FinEnum Input] [FinEnum Qa] [FinEnum StackSym]
+  [DecidableEq Qp] [DecidableEq V] [DecidableEq Γ] [DecidableEq Input] [DecidableEq StackSym]
 
 /-! ### ParserWithEOS: `.char` inputs preserve `.char` states -/
 
 omit [DecidableEq Γ] in
 /-- A single `.char` fullStep from `.char` states yields only `.char` states. -/
 private lemma ParserWithEOS_char_fullStep_char_states
-    (P : PDA Γ π σp)
-    (S : Finset (Ch σp × List π))
+    (P : PDA Γ StackSym Qp)
+    (S : Finset (Ch Qp × List StackSym))
     (c : Γ)
     (hall : ∀ x ∈ S, ∃ s, x.1 = ExtChar.char s) :
     ∀ x ∈ (ParserWithEOS P).fullStep S (ExtChar.char c), ∃ s, x.1 = ExtChar.char s := by
@@ -65,8 +65,8 @@ omit [DecidableEq Γ] in
 /-- Evaluating `ParserWithEOS P` on a list of `.char` inputs from all-`.char`
     configurations yields only `.char` configurations. -/
 private lemma ParserWithEOS_char_evalFrom_char_states
-    (P : PDA Γ π σp)
-    (S : Finset (Ch σp × List π))
+    (P : PDA Γ StackSym Qp)
+    (S : Finset (Ch Qp × List StackSym))
     (w : List Γ)
     (hall : ∀ x ∈ S, ∃ s, x.1 = ExtChar.char s) :
     ∀ x ∈ (ParserWithEOS P).evalFrom S (w.map ExtChar.char),
@@ -85,7 +85,7 @@ private lemma ParserWithEOS_char_evalFrom_char_states
     `.char P.start`, all-`.char` inputs keep us in `.char` states, so at least
     one `.eos` must appear in `gammas`. -/
 lemma ParserWithEOS_accepts_has_eos
-    (P : PDA Γ π σp)
+    (P : PDA Γ StackSym Qp)
     (gammas : List (Ch Γ))
     (hacc : gammas ∈ (ParserWithEOS P).accepts) :
     ExtChar.eos ∈ gammas := by
@@ -95,7 +95,7 @@ lemma ParserWithEOS_accepts_has_eos
   obtain ⟨f, hf_mem, hf_acc⟩ := hacc
   -- accept = {.eos}, so f = .eos
   have hf_eos : f = ExtChar.eos := by
-    change f ∈ ({ExtChar.eos} : Finset (Ch σp)) at hf_acc
+    change f ∈ ({ExtChar.eos} : Finset (Ch Qp)) at hf_acc
     exact Finset.mem_singleton.mp hf_acc
   subst hf_eos
   rw [Finset.mem_image] at hf_mem
@@ -103,7 +103,7 @@ lemma ParserWithEOS_accepts_has_eos
   -- Suppose .eos ∉ gammas, derive contradiction
   by_contra h_not_mem
   -- Extract the list of plain Γ values (since no .eos in gammas)
-  suffices h : ∀ x ∈ (ParserWithEOS P).evalFrom {(ExtChar.char P.start, ([] : List π))}
+  suffices h : ∀ x ∈ (ParserWithEOS P).evalFrom {(ExtChar.char P.start, ([] : List StackSym))}
       gammas, ∃ s, x.1 = ExtChar.char s by
     obtain ⟨s, hs⟩ := h ⟨q, st⟩ hcfg
     -- hs : q = .char s, but hq_eos : Prod.fst (q, st) = .eos
@@ -132,11 +132,11 @@ lemma ParserWithEOS_accepts_has_eos
 
 /-! ### BuildLexingFST: `.char` steps never produce `.eos` output -/
 
-omit [FinEnum Γ] [FinEnum α] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum Input] [DecidableEq Γ] in
 /-- A `.char` input step of `BuildLexingFST` never outputs `ExtChar.eos`. -/
 lemma BuildLexingFST_char_step_no_eos
-    (spec : LexerSpec α Γ σa)
-    (q : LexingState σa) (c : α) (q' : LexingState σa) (out : List (Ch Γ))
+    (spec : LexerSpec Input Γ Qa)
+    (q : LexingState Qa) (c : Input) (q' : LexingState Qa) (out : List (Ch Γ))
     (hstep : (BuildLexingFST spec).step q (ExtChar.char c) = some (q', out)) :
     ExtChar.eos ∉ out := by
   simp only [BuildLexingFST, Id.run] at hstep
@@ -155,12 +155,12 @@ lemma BuildLexingFST_char_step_no_eos
     · -- Case 3: none = some → contradiction
       simp at hstep
 
-omit [FinEnum Γ] [FinEnum α] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum Input] [DecidableEq Γ] in
 /-- Evaluating `BuildLexingFST` on a list of `.char` inputs never produces
     `ExtChar.eos` in the output. -/
 lemma BuildLexingFST_char_evalFrom_no_eos
-    (spec : LexerSpec α Γ σa)
-    (q : LexingState σa) (w : List α) (q' : LexingState σa) (out : List (Ch Γ))
+    (spec : LexerSpec Input Γ Qa)
+    (q : LexingState Qa) (w : List Input) (q' : LexingState Qa) (out : List (Ch Γ))
     (hrun : (BuildLexingFST spec).evalFrom q (w.map ExtChar.char) = some (q', out)) :
     ExtChar.eos ∉ out := by
   induction w generalizing q out with
@@ -176,26 +176,26 @@ lemma BuildLexingFST_char_evalFrom_no_eos
 
 /-! ### BuildDetokLexer: `.char` evaluation never produces `.eos` output -/
 
-omit [DecidableEq β] [FinEnum Γ] [FinEnum α] [DecidableEq Γ] in
+omit [DecidableEq V] [FinEnum Γ] [FinEnum Input] [DecidableEq Γ] in
 /-- A single `.char` input step of `BuildDetokLexer` never outputs `.eos`. -/
 lemma BuildDetokLexer_char_step_no_eos
-    [v : Vocabulary α β]
-    (spec : LexerSpec α Γ σa) (q : Unit × LexingState σa) (tok : β)
-    (q' : Unit × LexingState σa) (out : List (Ch Γ))
-    (hstep : (Detokenizing.BuildDetokLexer (V := Ch β) spec).step q (ExtChar.char tok) =
+    [v : Vocabulary Input V]
+    (spec : LexerSpec Input Γ Qa) (q : Unit × LexingState Qa) (tok : V)
+    (q' : Unit × LexingState Qa) (out : List (Ch Γ))
+    (hstep : (Detokenizing.BuildDetokLexer (V := Ch V) spec).step q (ExtChar.char tok) =
       some (q', out)) :
     ExtChar.eos ∉ out := by
   -- BuildDetokLexer = compose BuildDetokenizingFST BuildLexingFST
   -- Step on (.char tok): flatten (.char tok) = (v.flatten tok).map .char, fed to lexer
-  have hcomp : (Detokenizing.BuildDetokLexer (V := Ch β) spec).step q (ExtChar.char tok) =
+  have hcomp : (Detokenizing.BuildDetokLexer (V := Ch V) spec).step q (ExtChar.char tok) =
       ((BuildLexingFST spec).evalFrom q.2
         (Vocabulary.flatten (ExtChar.char tok))).map
         (fun (q_lex, out) => (((), q_lex), out)) := by
     simp only [Detokenizing.BuildDetokLexer]
     rw [Detokenizing.detokenizer_comp_step]
-  -- For the Vocabulary (Ch α) (Ch β) instance:
+  -- For the Vocabulary (Ch Input) (Ch V) instance:
   -- flatten (.char tok) = (v.flatten tok).map .char
-  have hflatten : (Vocabulary.flatten (β := Ch β) (ExtChar.char tok)) =
+  have hflatten : (Vocabulary.flatten (V := Ch V) (ExtChar.char tok)) =
       (v.flatten tok).map ExtChar.char := by
     simp [Vocabulary.flatten]
   rw [hcomp, hflatten] at hstep
@@ -212,14 +212,14 @@ lemma BuildDetokLexer_char_step_no_eos
     subst hout
     exact BuildLexingFST_char_evalFrom_no_eos spec q.2 (v.flatten tok) q_lex out heval
 
-omit [DecidableEq β] [FinEnum Γ] [FinEnum α] [DecidableEq Γ] in
+omit [DecidableEq V] [FinEnum Γ] [FinEnum Input] [DecidableEq Γ] in
 /-- Evaluating `BuildDetokLexer` on a list of `.char` token inputs produces
     no `.eos` in the output. -/
 lemma BuildDetokLexer_char_evalFrom_no_eos
-    [v : Vocabulary α β]
-    (spec : LexerSpec α Γ σa) (q : Unit × LexingState σa)
-    (toks : List β) (q' : Unit × LexingState σa) (out : List (Ch Γ))
-    (hrun : (Detokenizing.BuildDetokLexer (V := Ch β) spec).evalFrom q
+    [v : Vocabulary Input V]
+    (spec : LexerSpec Input Γ Qa) (q : Unit × LexingState Qa)
+    (toks : List V) (q' : Unit × LexingState Qa) (out : List (Ch Γ))
+    (hrun : (Detokenizing.BuildDetokLexer (V := Ch V) spec).evalFrom q
       (toks.map ExtChar.char) = some (q', out)) :
     ExtChar.eos ∉ out := by
   induction toks generalizing q out with
@@ -239,9 +239,9 @@ lemma BuildDetokLexer_char_evalFrom_no_eos
 -- TODO is there a better way to avoid this mess?
 namespace FinsetNFA
 
-omit [DecidableEq Γ] [DecidableEq π]
+omit [DecidableEq Γ] [DecidableEq StackSym]
 /-- The finite-set evaluator agrees with the NFA obtained from `PDA.toNFA`. -/
-theorem finsetEvalFrom_iff_evalFrom (p: PDA Γ π σp) (q : Finset σp) (s : List Γ) :
+theorem finsetEvalFrom_iff_evalFrom (p: PDA Γ StackSym Qp) (q : Finset Qp) (s : List Γ) :
   ∀ u, u ∈ FinsetNFA.evalFrom p q s ↔ u ∈ p.toNFA.evalFrom q s := by
   intro u
   simp[NFA.evalFrom, FinsetNFA.evalFrom]
@@ -254,14 +254,14 @@ theorem finsetEvalFrom_iff_evalFrom (p: PDA Γ π σp) (q : Finset σp) (s : Lis
       rw[←this]
       apply ih
     exact Finset.coe_biUnion
-lemma evalFrom_append (p : PDA Γ π σp) (S : Finset σp)
+lemma evalFrom_append (p : PDA Γ StackSym Qp) (S : Finset Qp)
     (xs ys : List Γ) :
     FinsetNFA.evalFrom p S (xs ++ ys) =
       FinsetNFA.evalFrom p (FinsetNFA.evalFrom p S xs) ys := by
   simp [FinsetNFA.evalFrom, List.foldl_append]
 
 @[simp]
-lemma evalFrom_empty (p : PDA Γ π σp) (w : List Γ) :
+lemma evalFrom_empty (p : PDA Γ StackSym Qp) (w : List Γ) :
     FinsetNFA.evalFrom p ∅ w = ∅ := by
   induction w with
   | nil => simp [FinsetNFA.evalFrom]
@@ -271,7 +271,7 @@ lemma evalFrom_empty (p : PDA Γ π σp) (w : List Γ) :
     rw [this]
     exact ih
 
-lemma evalFrom_prefix_nonempty (p : PDA Γ π σp) (S : Finset σp)
+lemma evalFrom_prefix_nonempty (p : PDA Γ StackSym Qp) (S : Finset Qp)
     (xs ys : List Γ) :
     FinsetNFA.evalFrom p S (xs ++ ys) ≠ ∅ →
       FinsetNFA.evalFrom p S xs ≠ ∅ := by
@@ -284,8 +284,8 @@ end FinsetNFA
 omit [DecidableEq Γ] in
 /-- If the PDA reaches a nonempty configuration set, the NFA overapproximation
 also reaches a nonempty state set. -/
-lemma PDA.evalFrom_nonempty_imp_nfa_nonempty (P : PDA Γ π σp)
-    (qp : σp) (st : List π) (w : List Γ) :
+lemma PDA.evalFrom_nonempty_imp_nfa_nonempty (P : PDA Γ StackSym Qp)
+    (qp : Qp) (st : List StackSym) (w : List Γ) :
     P.evalFrom {(qp, st)} w ≠ ∅ →
       FinsetNFA.evalFrom P {qp} w ≠ ∅ := by
   intro hne habs
@@ -407,7 +407,7 @@ end ListFoldHelpers
 /-- Characterize the realizable sequences that land in the "accepted" part of
 `PreprocessParser`. -/
 lemma mem_preprocess_accepted_sequences_iff
-  (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (qa : σa) (d : List Γ) :
+  (fst_comp : FST Input Γ Qa) (p : PDA Γ StackSym Qp) (qp : Qp) (qa : Qa) (d : List Γ) :
   d ∈ (PreprocessParser fst_comp p qp qa).2.2 ↔
     d ∈ RealizableSequences fst_comp ∧
     p.evalFrom {(qp, [])} d ≠ ∅ := by
@@ -425,10 +425,10 @@ lemma mem_preprocess_accepted_sequences_iff
       ⟨(mem_re_iff (fst_comp := fst_comp) (d := d)).2 hd, hp⟩
     simpa [PreprocessParser, List.mem_filter] using hacc
 
-omit [DecidableEq π] in
+omit [DecidableEq StackSym] in
 /-- Characterize the realizable sequences that land in the "rejected" part. -/
 lemma mem_rejected_sequences_iff
-  (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (d : List Γ) :
+  (fst_comp : FST Input Γ Qa) (p : PDA Γ StackSym Qp) (qp : Qp) (d : List Γ) :
   d ∈ ((BuildInverseTokenSpannerTable fst_comp).fst.filter
       (fun s => FinsetNFA.evalFrom p {qp} s = ∅)) ↔
     d ∈ RealizableSequences fst_comp ∧
@@ -449,8 +449,8 @@ lemma mem_rejected_sequences_iff
 
 /-- Characterize the accepted next tokens extracted by `PreprocessParser`. -/
 lemma mem_preprocess_accepted_tokens_iff
-  [BEq α] [ReflBEq α] [LawfulBEq α]
-  (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (qa : σa) (tok : α) :
+  [BEq Input] [ReflBEq Input] [LawfulBEq Input]
+  (fst_comp : FST Input Γ Qa) (p : PDA Γ StackSym Qp) (qp : Qp) (qa : Qa) (tok : Input) :
   tok ∈ (PreprocessParser fst_comp p qp qa).1 ↔
     ∃ d,
       d ∈ RealizableSequences fst_comp ∧
@@ -507,7 +507,7 @@ lemma mem_preprocess_accepted_tokens_iff
 /-- Characterize the "dependent" realizable sequences whose acceptance depends
 on the current stack contents. -/
 lemma mem_preprocess_dependent_sequences_iff
-  (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (qa : σa) (d : List Γ) :
+  (fst_comp : FST Input Γ Qa) (p : PDA Γ StackSym Qp) (qp : Qp) (qa : Qa) (d : List Γ) :
   d ∈ (PreprocessParser fst_comp p qp qa).2.1 ↔
     d ∈ RealizableSequences fst_comp ∧
     p.evalFrom {(qp, [])} d = ∅ ∧
@@ -521,8 +521,8 @@ lemma mem_preprocess_dependent_sequences_iff
     unfold re
     simpa [BuildInverseTokenSpannerTable] using
       (nodup_eraseDups
-        ((FinEnum.toList (α := σa)).flatMap (fun q =>
-          (FinEnum.toList (α := α)).flatMap (fun c =>
+        ((FinEnum.toList (α := Qa)).flatMap (fun q =>
+          (FinEnum.toList (α := Input)).flatMap (fun c =>
             match fst_comp.step q c with
             | none => []
             | some (q', Ts) =>
@@ -569,14 +569,14 @@ lemma mem_preprocess_dependent_sequences_iff
       simpa [List.mem_filter] using And.intro hdep hitst
     simpa [PreprocessParser, re, accepted, rejected, dependent, List.mem_filter, List.mem_dedup] using hdepf
 
-omit [FinEnum α] [FinEnum σa] [DecidableEq Γ] in
+omit [FinEnum Input] [FinEnum Qa] [DecidableEq Γ] in
 /-- Membership in `ComputeValidTokenMask` is exactly membership in either the
 preaccepted token list or a dependent sequence that succeeds on the current
 stack. -/
 lemma mem_ComputeValidTokenMask_iff
-  [BEq α] [ReflBEq α] [LawfulBEq α]
-  (P : PDA Γ π σp) (itst : List Γ → σa → List α) (table : PPTable α σp σa Γ)
-  (qa : σa) (qp : σp) (st : List π) (tok : α) :
+  [BEq Input] [ReflBEq Input] [LawfulBEq Input]
+  (P : PDA Γ StackSym Qp) (itst : List Γ → Qa → List Input) (table : PPTable Input Qp Qa Γ)
+  (qa : Qa) (qp : Qp) (st : List StackSym) (tok : Input) :
   tok ∈ ComputeValidTokenMask P itst table qa qp st ↔
     tok ∈ (table qp qa).fst ∨
       ∃ d ∈ (table qp qa).2.1, P.evalFrom {(qp, st)} d ≠ ∅ ∧ tok ∈ itst d qa := by
@@ -592,8 +592,8 @@ lemma mem_ComputeValidTokenMask_iff
 /-- Specialize `mem_ComputeValidTokenMask_iff` to the preprocessing table built
 from an FST and a PDA. -/
 lemma mem_ComputeValidTokenMask_preprocess_iff
-  [BEq α] [ReflBEq α] [LawfulBEq α]
-  (fst_comp : FST α Γ σa) (P : PDA Γ π σp) (qa : σa) (qp : σp) (st : List π) (tok : α) :
+  [BEq Input] [ReflBEq Input] [LawfulBEq Input]
+  (fst_comp : FST Input Γ Qa) (P : PDA Γ StackSym Qp) (qa : Qa) (qp : Qp) (st : List StackSym) (tok : Input) :
   tok ∈ ComputeValidTokenMask P (BuildInverseTokenSpannerTable fst_comp).snd
       (PreprocessParser fst_comp P) qa qp st ↔
     (∃ d,
@@ -634,19 +634,19 @@ lemma mem_ComputeValidTokenMask_preprocess_iff
         hcur,
         (mem_itst_iff (fst_comp := fst_comp) (d := d) (qa := qa) (tok := tok)).2 htok⟩
       intro hnil
-      have : tok ∈ ([] : List α) := by simpa [hnil] using
+      have : tok ∈ ([] : List Input) := by simpa [hnil] using
         ((mem_itst_iff (fst_comp := fst_comp) (d := d) (qa := qa) (tok := tok)).2 htok)
       simp at this
 
-omit [FinEnum σa] [DecidableEq Γ] in
+omit [FinEnum Qa] [DecidableEq Γ] in
 /-- `MaskChecker` depends on `curr` only through `comb.eval (curr.map ExtChar.char)`.
 Two prefixes producing the same FST evaluation yield identical mask decisions. -/
 lemma MaskChecker_eq_of_eval_eq
-    [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa]
-    (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
-    (pp_table : PPTable (Ch β) σp σa (Ch Γ))
-    (itst : List (Ch Γ) → σa → List (Ch β))
-    (curr₁ curr₂ : List β) (cand : Ch β)
+    [BEq V] [BEq Γ] [BEq Qa] [LawfulBEq Qa]
+    (comb : FST (Ch V) (Ch Γ) Qa) (parser : PDA (Ch Γ) StackSym Qp)
+    (pp_table : PPTable (Ch V) Qp Qa (Ch Γ))
+    (itst : List (Ch Γ) → Qa → List (Ch V))
+    (curr₁ curr₂ : List V) (cand : Ch V)
     (heq : comb.eval (curr₁.map ExtChar.char) = comb.eval (curr₂.map ExtChar.char)) :
     MaskChecker comb parser pp_table itst curr₁ cand =
     MaskChecker comb parser pp_table itst curr₂ cand := by
@@ -668,12 +668,12 @@ lemma Finset.fold_or_eq_true_iff (s : Finset Bool) :
 
 omit [DecidableEq Γ] in
 private lemma ParserWithEOS_fullStep_char_image
-    (P : PDA Γ π σp) (S : Finset (σp × List π)) (c : Γ) :
+    (P : PDA Γ StackSym Qp) (S : Finset (Qp × List StackSym)) (c : Γ) :
     (ParserWithEOS P).fullStep
-        (S.image (fun cfg : σp × List π => (ExtChar.char cfg.1, cfg.2)))
+        (S.image (fun cfg : Qp × List StackSym => (ExtChar.char cfg.1, cfg.2)))
         (ExtChar.char c) =
       (P.fullStep S c).image
-        (fun cfg : σp × List π => (ExtChar.char cfg.1, cfg.2)) := by
+        (fun cfg : Qp × List StackSym => (ExtChar.char cfg.1, cfg.2)) := by
   ext cfg
   constructor
   · intro hcfg
@@ -712,14 +712,14 @@ private lemma ParserWithEOS_fullStep_char_image
             simp [hmatch] at hstack
         | some rem =>
             simp only [hmatch, Finset.mem_singleton] at hstack ⊢
-            exact congrArg (fun cfg : σp × List π => (ExtChar.char cfg.1, cfg.2)) hstack
+            exact congrArg (fun cfg : Qp × List StackSym => (ExtChar.char cfg.1, cfg.2)) hstack
 
-omit [FinEnum σp] [FinEnum π] [DecidableEq Γ] in
+omit [FinEnum Qp] [FinEnum StackSym] [DecidableEq Γ] in
 private lemma ParserWithEOS_singleton_char_image
-    (q : σp) (st : List π) :
-    ({(ExtChar.char q, st)} : Finset (Ch σp × List π)) =
-      ({(q, st)} : Finset (σp × List π)).image
-        (fun cfg : σp × List π => (ExtChar.char cfg.1, cfg.2)) := by
+    (q : Qp) (st : List StackSym) :
+    ({(ExtChar.char q, st)} : Finset (Ch Qp × List StackSym)) =
+      ({(q, st)} : Finset (Qp × List StackSym)).image
+        (fun cfg : Qp × List StackSym => (ExtChar.char cfg.1, cfg.2)) := by
   ext cfg
   simp only [Finset.mem_singleton, Finset.mem_image]
   constructor
@@ -733,12 +733,12 @@ private lemma ParserWithEOS_singleton_char_image
 
 omit [DecidableEq Γ] in
 private lemma ParserWithEOS_evalFrom_char_image
-    (P : PDA Γ π σp) (S : Finset (σp × List π)) (w : List Γ) :
+    (P : PDA Γ StackSym Qp) (S : Finset (Qp × List StackSym)) (w : List Γ) :
     (ParserWithEOS P).evalFrom
-        (S.image (fun cfg : σp × List π => (ExtChar.char cfg.1, cfg.2)))
+        (S.image (fun cfg : Qp × List StackSym => (ExtChar.char cfg.1, cfg.2)))
         (w.map ExtChar.char) =
       (P.evalFrom S w).image
-        (fun cfg : σp × List π => (ExtChar.char cfg.1, cfg.2)) := by
+        (fun cfg : Qp × List StackSym => (ExtChar.char cfg.1, cfg.2)) := by
   induction w generalizing S with
   | nil =>
       simp [PDA.evalFrom]
@@ -749,16 +749,16 @@ private lemma ParserWithEOS_evalFrom_char_image
 
 omit [DecidableEq Γ] in
 private lemma ParserWithEOS_evalFull_char_mem_imp
-    (P : PDA Γ π σp) (w : List Γ) (q : σp) (st : List π)
+    (P : PDA Γ StackSym Qp) (w : List Γ) (q : Qp) (st : List StackSym)
     (hmem : (ExtChar.char q, st) ∈
       (ParserWithEOS P).evalFull (w.map ExtChar.char)) :
     (q, st) ∈ P.evalFull w := by
-  have heq := ParserWithEOS_evalFrom_char_image P ({(P.start, [])} : Finset (σp × List π)) w
+  have heq := ParserWithEOS_evalFrom_char_image P ({(P.start, [])} : Finset (Qp × List StackSym)) w
   simp only [PDA.evalFull] at hmem ⊢
   change (ExtChar.char q, st) ∈
-    (ParserWithEOS P).evalFrom ({(ExtChar.char P.start, [])} : Finset (Ch σp × List π))
+    (ParserWithEOS P).evalFrom ({(ExtChar.char P.start, [])} : Finset (Ch Qp × List StackSym))
       (w.map ExtChar.char) at hmem
-  rw [ParserWithEOS_singleton_char_image P.start ([] : List π)] at hmem
+  rw [ParserWithEOS_singleton_char_image P.start ([] : List StackSym)] at hmem
   rw [heq] at hmem
   simp only [Finset.mem_image] at hmem
   obtain ⟨⟨q', st'⟩, horig, hmap⟩ := hmem
@@ -812,18 +812,18 @@ lemma List.exists_map_char_append_eos_of_mem_eos
 
 -- want to say that for any lexer state
 -- any thing that starts with a realizable sequence is producible
-omit [FinEnum Γ] [FinEnum α] [FinEnum σa] [DecidableEq Γ] [DecidableEq α] in
+omit [FinEnum Γ] [FinEnum Input] [FinEnum Qa] [DecidableEq Γ] [DecidableEq Input] in
 /-- Unfold `singleProducible` into an explicit singleton-output run. -/
 lemma mem_singleProducible_iff_exists_evalFrom_singleton
-  (fst_comp : FST α Γ σa) (q : σa) (T : Γ) :
+  (fst_comp : FST Input Γ Qa) (q : Qa) (T : Γ) :
   T ∈ fst_comp.singleProducible q ↔
     ∃ ts q', fst_comp.evalFrom q ts = some (q', [T]) := by
   simp [FST.singleProducible]
 
-omit [FinEnum Γ] [FinEnum α] [FinEnum σa] [DecidableEq Γ] [DecidableEq α] in
+omit [FinEnum Γ] [FinEnum Input] [FinEnum Qa] [DecidableEq Γ] [DecidableEq Input] in
 /-- Any token found in the inverse token-spanner table extends to a concrete FST
 run realizing the corresponding output sequence. -/
-theorem realizableSequencesComplete (fst_comp : FST α Γ σa) :
+theorem realizableSequencesComplete (fst_comp : FST Input Γ Qa) :
   ∀ qa t gammas,
     t ∈ InverseTokenSpannerTable fst_comp gammas qa →
     ∃ ts qa', fst_comp.evalFrom qa (t :: ts) = some (qa', gammas) := by
@@ -850,7 +850,7 @@ omit [DecidableEq Γ] in
 /-- Nonemptiness from the empty stack lifts to nonemptiness from any larger
 stack by stack invariance. -/
 lemma evalFrom_empty_stack_nonempty_any_stack
-  (p : PDA Γ π σp) (q : σp) (w : List Γ) (st : List π) :
+  (p : PDA Γ StackSym Qp) (q : Qp) (w : List Γ) (st : List StackSym) :
   p.evalFrom {(q, [])} w ≠ ∅ → p.evalFrom {(q, st)} w ≠ ∅ := by
   intro hnonempty hempty
   rcases Finset.nonempty_iff_ne_empty.mpr hnonempty with ⟨⟨qf, stf⟩, hmem⟩
@@ -862,7 +862,7 @@ lemma evalFrom_empty_stack_nonempty_any_stack
 /-- Every token admitted by the computed valid-token mask extends to a concrete
 FST run whose emitted terminals remain parseable by `P`. -/
 theorem accept_if_ComputedValidTokenMask
-  (fst_comp : FST α Γ σa) (P : PDA Γ π σp) :
+  (fst_comp : FST Input Γ Qa) (P : PDA Γ StackSym Qp) :
   ∀ qp st qa t,
     t ∈ ComputeValidTokenMask P (BuildInverseTokenSpannerTable fst_comp).snd
       (PreprocessParser fst_comp P) qa qp st →
@@ -880,9 +880,9 @@ theorem accept_if_ComputedValidTokenMask
     exact ⟨ts, qa', gammas, hrun, hcur⟩
 
 theorem MaskChecker_true_witness
-  [BEq σa] [LawfulBEq σa] [FinEnum β]
-  (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
-  (curr : List β) (cand : Ch β)
+  [BEq Qa] [LawfulBEq Qa] [FinEnum V]
+  (comb : FST (Ch V) (Ch Γ) Qa) (parser : PDA (Ch Γ) StackSym Qp)
+  (curr : List V) (cand : Ch V)
   (h : MaskChecker comb parser (PreprocessParser comb parser)
     (BuildInverseTokenSpannerTable comb).snd curr cand = true) :
   ∃ q_fst terms qp st,
@@ -900,7 +900,7 @@ theorem MaskChecker_true_witness
       cases hfalse
   | some result =>
       rcases result with ⟨q_fst, terms⟩
-      let qPda : Finset (σp × List π) := parser.evalFrom {(parser.start, [])} terms
+      let qPda : Finset (Qp × List StackSym) := parser.evalFrom {(parser.start, [])} terms
       let inCurr : Finset Bool :=
         qPda.image (fun (q_parse, st) =>
           (ComputeValidTokenMask parser (BuildInverseTokenSpannerTable comb).snd
@@ -920,9 +920,9 @@ theorem MaskChecker_true_witness
       exact (List.contains_iff_mem).1 hcontains
 
 theorem MaskChecker_char_true_imp_viable
-  [BEq σa] [LawfulBEq σa] [FinEnum β]
-  (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
-  (curr : List β) (cand : β)
+  [BEq Qa] [LawfulBEq Qa] [FinEnum V]
+  (comb : FST (Ch V) (Ch Γ) Qa) (parser : PDA (Ch Γ) StackSym Qp)
+  (curr : List V) (cand : V)
   (h : MaskChecker comb parser (PreprocessParser comb parser)
     (BuildInverseTokenSpannerTable comb).snd curr (.char cand) = true) :
   ∃ suffix qa gammas,
@@ -955,7 +955,7 @@ theorem MaskChecker_char_true_imp_viable
   · rw [parser.evalFull_append terms gammas]
     rcases Finset.nonempty_iff_ne_empty.mpr hparse with ⟨cfg, hcfg⟩
     have hsingle :
-        ({(qp, st)} : Finset (σp × List π)) ⊆ parser.evalFull terms := by
+        ({(qp, st)} : Finset (Qp × List StackSym)) ⊆ parser.evalFull terms := by
       intro x hx
       simp at hx
       rcases hx with rfl
@@ -968,9 +968,9 @@ theorem MaskChecker_char_true_imp_viable
 can be extended with `.eos` to form a sequence that the FST processes and the
 parser accepts. -/
 theorem MaskChecker_eos_true_imp_viable
-  [BEq σa] [LawfulBEq σa] [FinEnum β]
-  (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
-  (curr : List β)
+  [BEq Qa] [LawfulBEq Qa] [FinEnum V]
+  (comb : FST (Ch V) (Ch Γ) Qa) (parser : PDA (Ch Γ) StackSym Qp)
+  (curr : List V)
   (h : MaskChecker comb parser (PreprocessParser comb parser)
     (BuildInverseTokenSpannerTable comb).snd curr .eos = true) :
   ∃ suffix qa gammas,
@@ -1003,7 +1003,7 @@ theorem MaskChecker_eos_true_imp_viable
   · rw [parser.evalFull_append terms gammas]
     rcases Finset.nonempty_iff_ne_empty.mpr hparse with ⟨cfg, hcfg⟩
     have hsingle :
-        ({(qp, st)} : Finset (σp × List π)) ⊆ parser.evalFull terms := by
+        ({(qp, st)} : Finset (Qp × List StackSym)) ⊆ parser.evalFull terms := by
       intro x hx
       simp at hx
       rcases hx with rfl
@@ -1012,24 +1012,24 @@ theorem MaskChecker_eos_true_imp_viable
       (parser.evalFrom_subset {(qp, st)} (parser.evalFull terms) hsingle gammas) hcfg
     exact Finset.nonempty_iff_ne_empty.mp ⟨cfg, hcfg'⟩
 
-omit [FinEnum α] in
+omit [FinEnum Input] in
 /-- GCD-specialized EOS theorem: if the checker accepts EOS, the current token
 sequence extends to a viable run through the combined FST and parser. -/
 theorem GCDChecker_eos_true_imp_viable
-  [BEq σa] [LawfulBEq σa] [FinEnum β] [Vocabulary α β]
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β)
+  [BEq Qa] [LawfulBEq Qa] [FinEnum V] [Vocabulary Input V]
+  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp) (curr : List V)
   (h : MaskChecker
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec)
     (ParserWithEOS P)
-    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
-    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch V) spec) (ParserWithEOS P))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch V) spec)).snd
     curr .eos = true) :
   ∃ suffix qa gammas,
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval
       (curr.map ExtChar.char ++ (.eos :: suffix)) = some (qa, gammas) ∧
     (ParserWithEOS P).evalFull gammas ≠ ∅ :=
   MaskChecker_eos_true_imp_viable
-    (comb := Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (comb := Detokenizing.BuildDetokLexer (V := Ch V) spec)
     (parser := ParserWithEOS P)
     (curr := curr) h
 
@@ -1055,10 +1055,10 @@ is `BuildDetokLexer_singleProducible_of_evalFrom` (Lemma D).
 This is the reverse direction of `MaskChecker_char_true_imp_viable` and
 corresponds to paper Theorem C.5. -/
 theorem MaskChecker_viable_imp_char_true
-  [BEq σa] [LawfulBEq σa] [FinEnum β]
-  (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
-  (curr : List β) (cand : β)
-  (hsingle : ∀ (q₁ : σa) (w : List (Ch β)) (qa' : σa) (T : List (Ch Γ))
+  [BEq Qa] [LawfulBEq Qa] [FinEnum V]
+  (comb : FST (Ch V) (Ch Γ) Qa) (parser : PDA (Ch Γ) StackSym Qp)
+  (curr : List V) (cand : V)
+  (hsingle : ∀ (q₁ : Qa) (w : List (Ch V)) (qa' : Qa) (T : List (Ch Γ))
     (_ : comb.evalFrom q₁ w = some (qa', T)) (hne : T ≠ []),
       T.head hne ∈ comb.singleProducible q₁)
   (hviable : ∃ suffix qa gammas,
@@ -1187,53 +1187,53 @@ theorem MaskChecker_viable_imp_char_true
       rw [hgammas] at hparse; simpa [List.append_assoc] using hparse
     exact absurd rfl (hviable_tail_ne suffix qa q_fst terms q₁ S [] hcurr hstep htail hparse')
 
-omit [FinEnum σp] [FinEnum α] [FinEnum σa] [FinEnum π] in
+omit [FinEnum Qp] [FinEnum Input] [FinEnum Qa] [FinEnum StackSym] in
 /-- `GCDChecker` is definitionally the concrete `MaskChecker` built from the
 detokenizing lexer/parser pair and their preprocessing artifacts. -/
 lemma GCDChecker_eq_MaskChecker
-  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
-  [DecidableEq σa]
-  [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β) (cand : Ch β) :
+  [BEq Input] [BEq V] [BEq Γ] [BEq Qa] [LawfulBEq Qa] [Vocabulary Input V]
+  [DecidableEq Qa]
+  [FinEnum V] [FinEnum Qp] [FinEnum Qa] [FinEnum StackSym] [FinEnum Input]
+  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp) (curr : List V) (cand : Ch V) :
   GCDChecker spec P curr cand =
     MaskChecker
-      (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+      (Detokenizing.BuildDetokLexer (V := Ch V) spec)
       (ParserWithEOS P)
-      (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
-      (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+      (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch V) spec) (ParserWithEOS P))
+      (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch V) spec)).snd
       curr cand := by
   rfl
 
-omit [FinEnum σp] [FinEnum α] [FinEnum σa] [FinEnum π] [DecidableEq β] [DecidableEq Γ] in
+omit [FinEnum Qp] [FinEnum Input] [FinEnum Qa] [FinEnum StackSym] [DecidableEq V] [DecidableEq Γ] in
 /-- Unfold `GCDViablePrefix` into the concrete witness used by the wrapper
 theorems. -/
 lemma GCDViablePrefix_iff
-  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
-  [DecidableEq σa]
-  [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (w : List β) :
+  [BEq Input] [BEq V] [BEq Γ] [BEq Qa] [LawfulBEq Qa] [Vocabulary Input V]
+  [DecidableEq Qa]
+  [FinEnum V] [FinEnum Qp] [FinEnum Qa] [FinEnum StackSym] [FinEnum Input]
+  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp) (w : List V) :
   GCDViablePrefix spec P w ↔
     ∃ suffix qa gammas,
-      (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (w.map ExtChar.char ++ suffix) =
+      (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval (w.map ExtChar.char ++ suffix) =
         some (qa, gammas) ∧
       (ParserWithEOS P).evalFull gammas ≠ ∅ := by
   rfl
 
-omit [FinEnum α] in theorem GCDChecker_char_true_imp_viable
-  [BEq σa] [LawfulBEq σa] [FinEnum β] [Vocabulary α β]
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β) (cand : β)
+omit [FinEnum Input] in theorem GCDChecker_char_true_imp_viable
+  [BEq Qa] [LawfulBEq Qa] [FinEnum V] [Vocabulary Input V]
+  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp) (curr : List V) (cand : V)
   (h : MaskChecker
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec)
     (ParserWithEOS P)
-    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
-    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch V) spec) (ParserWithEOS P))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch V) spec)).snd
     curr (.char cand) = true) :
   ∃ suffix qa gammas,
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval
       (((curr ++ [cand]).map ExtChar.char) ++ suffix) = some (qa, gammas) ∧
     (ParserWithEOS P).evalFull gammas ≠ ∅ :=
   MaskChecker_char_true_imp_viable
-    (comb := Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (comb := Detokenizing.BuildDetokLexer (V := Ch V) spec)
     (parser := ParserWithEOS P)
     (curr := curr) (cand := cand) h
 
@@ -1247,21 +1247,21 @@ checker accepts the token. Uses `BuildDetokLexer_singleProducible_of_evalFrom`
 (Lemma D) to discharge the `hsingle` hypothesis.
 -/
 
-omit [FinEnum α] in
+omit [FinEnum Input] in
 /-- **Theorem C.8 (Soundness)**: If token `cand` passes the GCD mask checker
 after prefix `curr`, then `curr ++ [cand]` extends to a viable run through
 the detokenizing lexer and parser. Fully proved. -/
 theorem Soundness
-  [BEq σa] [LawfulBEq σa] [FinEnum β] [Vocabulary α β]
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β) (cand : β)
+  [BEq Qa] [LawfulBEq Qa] [FinEnum V] [Vocabulary Input V]
+  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp) (curr : List V) (cand : V)
   (h : MaskChecker
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec)
     (ParserWithEOS P)
-    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
-    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch V) spec) (ParserWithEOS P))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch V) spec)).snd
     curr (.char cand) = true) :
   ∃ suffix qa gammas,
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval
       (((curr ++ [cand]).map ExtChar.char) ++ suffix) = some (qa, gammas) ∧
     (ParserWithEOS P).evalFull gammas ≠ ∅ :=
   GCDChecker_char_true_imp_viable spec P curr cand h
@@ -1270,14 +1270,14 @@ theorem Soundness
 `w` is a semantic viable prefix. This direction uses only one-step soundness and
 does not require the whitespace assumption. -/
 theorem GCDChecker_checkerAllows_imp_viablePrefix
-  [BEq σa] [LawfulBEq σa] [FinEnum β] [Vocabulary α β]
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (w : List β)
+  [BEq Qa] [LawfulBEq Qa] [FinEnum V] [Vocabulary Input V]
+  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp) (w : List V)
   (hw : checkerAllows (GCDChecker spec P) w = true) :
   GCDViablePrefix spec P w := by
   cases List.eq_nil_or_concat w with
   | inl hnil =>
       subst hnil
-      refine ⟨[], (Detokenizing.BuildDetokLexer (V := Ch β) spec).start, [], ?_, ?_⟩
+      refine ⟨[], (Detokenizing.BuildDetokLexer (V := Ch V) spec).start, [], ?_, ?_⟩
       · simp [FST.eval]
       · simp [PDA.evalFull]
   | inr hsnoc =>
@@ -1293,27 +1293,27 @@ theorem GCDChecker_checkerAllows_imp_viablePrefix
           (GCDChecker_char_true_imp_viable spec P pref last hlast)
       simpa [List.concat_eq_append] using hviable_append
 
-omit [FinEnum Γ] [FinEnum α] [DecidableEq β] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum Input] [DecidableEq V] [DecidableEq Γ] in
 /-- Helper packaging the singleProducible hypothesis for the detokenizing lexer. -/
 lemma BuildDetokLexer_hsingle
-  [BEq σa] [LawfulBEq σa] [FinEnum β] [Vocabulary α β]
+  [BEq Qa] [LawfulBEq Qa] [FinEnum V] [Vocabulary Input V]
   [BEq (Ch Γ)] [LawfulBEq (Ch Γ)]
-  (spec : LexerSpec α Γ σa)
+  (spec : LexerSpec Input Γ Qa)
   (hempty : [] ∉ spec.automaton.accepts)
   (hrestart : ∀ s ∈ spec.automaton.accept,
-    ∃ c : α, spec.automaton.step s c = none ∧
+    ∃ c : Input, spec.automaton.step s c = none ∧
       (spec.automaton.step spec.automaton.start c).isSome) :
-  ∀ (q₁ : Unit × LexingState σa) (w : List (Ch β))
-    (qa' : Unit × LexingState σa) (T : List (Ch Γ)),
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec).evalFrom q₁ w = some (qa', T) →
+  ∀ (q₁ : Unit × LexingState Qa) (w : List (Ch V))
+    (qa' : Unit × LexingState Qa) (T : List (Ch Γ)),
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec).evalFrom q₁ w = some (qa', T) →
     ∀ (hne : T ≠ []), T.head hne ∈
-      (Detokenizing.BuildDetokLexer (V := Ch β) spec).singleProducible q₁ := by
+      (Detokenizing.BuildDetokLexer (V := Ch V) spec).singleProducible q₁ := by
   intro ⟨_, q_lex⟩ w qa' T hrun hne
   exact Detokenizing.BuildDetokLexer_singleProducible_of_evalFrom
     spec hempty hrestart q_lex w qa' T hrun hne
 
 set_option maxHeartbeats 1600000 in
-omit [FinEnum α] in
+omit [FinEnum Input] in
 /-- **Theorem C.5 (Completeness)**: If `curr ++ [cand]` extends to an
 **accepted** run through the detokenizing lexer and parser, then `cand` passes
 the GCD mask checker after prefix `curr`.
@@ -1332,22 +1332,22 @@ suffix-produced output `T` must contain `.eos`.
 Requires `hempty` and the full whitespace assumption; the latter rederives the
 lexer restart hypothesis used by `BuildDetokLexer_hsingle`. -/
 theorem Completeness
-  [FinEnum β] [Vocabulary α β]
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β) (cand : β)
-  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
+  [FinEnum V] [Vocabulary Input V]
+  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp) (curr : List V) (cand : V)
+  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite)
   (hviable : ∃ suffix qa gammas,
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval
       (((curr ++ [cand]).map ExtChar.char) ++ suffix) = some (qa, gammas) ∧
     gammas ∈ (ParserWithEOS P).accepts) :
   MaskChecker
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec)
     (ParserWithEOS P)
-    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
-    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch V) spec) (ParserWithEOS P))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch V) spec)).snd
     curr (.char cand) = true := by
   -- Abbreviations
-  let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
+  let comb := Detokenizing.BuildDetokLexer (V := Ch V) spec
   let parser := ParserWithEOS P
   have hrestart := GCDWhitespaceAssumption.existsRestartChar spec P hassum.hempty hassum.whitespace
   -- Extract the viable run witnesses
@@ -1454,7 +1454,7 @@ theorem Completeness
   have hcomb_eval : comb.eval (curr.map ExtChar.char) = some (q_fst, terms) := by
     simp [FST.eval, hcurr]
   -- Simplify the match using hcomb_eval
-  simp only [show (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (List.map ExtChar.char curr) =
+  simp only [show (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval (List.map ExtChar.char curr) =
     some (q_fst, terms) from hcomb_eval]
   rw [Finset.fold_or_eq_true_iff, Finset.mem_image]
   refine ⟨(qp, st_p), hmem_qp, ?_⟩
@@ -1479,7 +1479,7 @@ omit [DecidableEq Γ] in
 /-- `ParserWithEOS` at `.eos` state is a fixed point: `fullStep` returns the
 same configuration. -/
 private lemma ParserWithEOS_eos_fullStep_eq
-    (P : PDA Γ π σp) (st : List π) (c : Ch Γ) :
+    (P : PDA Γ StackSym Qp) (st : List StackSym) (c : Ch Γ) :
     (ExtChar.eos, st) ∈ (ParserWithEOS P).fullStep {(ExtChar.eos, st)} c := by
   simp only [PDA.fullStep, Finset.mem_biUnion, Finset.mem_singleton]
   refine ⟨(ExtChar.eos, st), rfl, ?_⟩
@@ -1493,7 +1493,7 @@ omit [DecidableEq Γ] in
 /-- `ParserWithEOS` at `.eos` state loops: `fullStep` on any input from
 a configuration at `.eos` state is nonempty. -/
 private lemma ParserWithEOS_eos_fullStep_nonempty
-    (P : PDA Γ π σp) (st : List π) (c : Ch Γ) :
+    (P : PDA Γ StackSym Qp) (st : List StackSym) (c : Ch Γ) :
     (ParserWithEOS P).fullStep {(ExtChar.eos, st)} c ≠ ∅ := by
   intro h
   have := ParserWithEOS_eos_fullStep_eq P st c
@@ -1504,7 +1504,7 @@ omit [DecidableEq Γ] in
 /-- If a PDA evaluation from a set `S` contains an `.eos` configuration, then
 extending by one more element keeps the evaluation nonempty (for `ParserWithEOS`). -/
 private lemma ParserWithEOS_evalFrom_eos_extend
-    (P : PDA Γ π σp) (S : Finset (Ch σp × List π)) (e : Ch Γ)
+    (P : PDA Γ StackSym Qp) (S : Finset (Ch Qp × List StackSym)) (e : Ch Γ)
     (heos : ∃ st', (ExtChar.eos, st') ∈ S) :
     (ParserWithEOS P).fullStep S e ≠ ∅ := by
   obtain ⟨st', hst'⟩ := heos
@@ -1520,24 +1520,24 @@ private lemma ParserWithEOS_evalFrom_eos_extend
     exact (Finset.eq_empty_iff_forall_notMem.mp h x) (hsub hx)
   exact hne this
 
-omit [FinEnum Γ] [FinEnum α] [DecidableEq β] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum Input] [DecidableEq V] [DecidableEq Γ] in
 /-- `singleProducible` of `BuildDetokLexer` at the start state is nonempty:
 `.eos` is singleton-producible from the start state (via one `.eos` input step
 when the start state is not accepting). -/
 private lemma BuildDetokLexer_singleProducible_start_nonempty
-    [Vocabulary α β]
-    (spec : LexerSpec α Γ σa)
+    [Vocabulary Input V]
+    (spec : LexerSpec Input Γ Qa)
     (hempty : [] ∉ spec.automaton.accepts) :
     (ExtChar.eos : Ch Γ) ∈
-      (Detokenizing.BuildDetokLexer (V := Ch β) spec).singleProducible
-        ((), LexingState.start (σ := σa)) := by
+      (Detokenizing.BuildDetokLexer (V := Ch V) spec).singleProducible
+        ((), LexingState.start (Q := Qa)) := by
   -- Witness: w = [.eos], evalFrom ((), start) [.eos] = some (((), start), [.eos])
   rw [mem_singleProducible_iff_exists_evalFrom_singleton]
   -- start ∉ accept (from hempty)
   have hstart_not_accept : spec.automaton.start ∉ spec.automaton.accept := by
     intro h; apply hempty; rw [FSA.accepts_iff]; exact ⟨spec.automaton.start, rfl, h⟩
   -- Provide the witness
-  refine ⟨[ExtChar.eos], ((), LexingState.start (σ := σa)), ?_⟩
+  refine ⟨[ExtChar.eos], ((), LexingState.start (Q := Qa)), ?_⟩
   -- Reduce the step through the composed FST
   -- evalFrom ((), start) [.eos] unfolds to: step ((), start) .eos >>= evalFrom _ []
   simp only [FST.evalFrom]
@@ -1548,18 +1548,18 @@ private lemma BuildDetokLexer_singleProducible_start_nonempty
     hstart_not_accept, dite_false, ite_true]
   simp
 
-omit [FinEnum Γ] [FinEnum α] [DecidableEq β] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum Input] [DecidableEq V] [DecidableEq Γ] in
 lemma BuildDetokLexer_whitespace_singleProducible_start
-    [Vocabulary α β]
-    {tnonwhite twhite : α} {qnonwhite qwhite : σa}
-    (spec : LexerSpec α Γ σa)
+    [Vocabulary Input V]
+    {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+    (spec : LexerSpec Input Γ Qa)
     (hwa : Detokenizing.WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite) :
     (ExtChar.char
       (Detokenizing.whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa) : Ch Γ) ∈
-      (Detokenizing.BuildDetokLexer (V := Ch β) spec).singleProducible
-        ((), LexingState.start (σ := σa)) := by
+      (Detokenizing.BuildDetokLexer (V := Ch V) spec).singleProducible
+        ((), LexingState.start (Q := Qa)) := by
   rw [mem_singleProducible_iff_exists_evalFrom_singleton]
-  let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
+  let comb := Detokenizing.BuildDetokLexer (V := Ch V) spec
   let whiteTerm := Detokenizing.whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hwa
   refine ⟨[ExtChar.char (Vocabulary.embed twhite),
       ExtChar.char (Vocabulary.embed tnonwhite)],
@@ -1589,19 +1589,19 @@ lemma BuildDetokLexer_whitespace_singleProducible_start
   refine ⟨((), LexingState.id qnonwhite), [ExtChar.char whiteTerm], [], hstep2, ?_, by simp [whiteTerm]⟩
   simp [FST.evalFrom]
 
-omit [FinEnum Γ] [FinEnum α] [DecidableEq β] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum Input] [DecidableEq V] [DecidableEq Γ] in
 /-- After `.eos` step in `BuildDetokLexer`, the reached state is
 `((), LexingState.start)`. -/
 private lemma BuildDetokLexer_eos_step_reaches_start
-    [v : Vocabulary α β]
-    (spec : LexerSpec α Γ σa) (q_fst : Unit × LexingState σa)
-    (q₁ : Unit × LexingState σa) (S : List (Ch Γ))
-    (hstep : (Detokenizing.BuildDetokLexer (V := Ch β) spec).step q_fst
+    [v : Vocabulary Input V]
+    (spec : LexerSpec Input Γ Qa) (q_fst : Unit × LexingState Qa)
+    (q₁ : Unit × LexingState Qa) (S : List (Ch Γ))
+    (hstep : (Detokenizing.BuildDetokLexer (V := Ch V) spec).step q_fst
       ExtChar.eos = some (q₁, S)) :
     q₁ = ((), LexingState.start) := by
   simp only [Detokenizing.BuildDetokLexer] at hstep
   rw [Detokenizing.detokenizer_comp_step] at hstep
-  have hflatten : (Vocabulary.flatten (α := Ch α) (β := Ch β) ExtChar.eos) =
+  have hflatten : (Vocabulary.flatten (Input := Ch Input) (V := Ch V) ExtChar.eos) =
       [ExtChar.eos] := by
     simp [Vocabulary.flatten]
   rw [hflatten] at hstep
@@ -1628,13 +1628,13 @@ private lemma BuildDetokLexer_eos_step_reaches_start
         · simp at heq
     rw [← hstep.1, hs]
 
-omit [FinEnum Γ] [FinEnum α] [DecidableEq β] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum Input] [DecidableEq V] [DecidableEq Γ] in
 /-- After `.eos` step in `BuildDetokLexer`, the output is nonempty. -/
 private lemma BuildDetokLexer_eos_step_output_ne_nil
-    [Vocabulary α β]
-    (spec : LexerSpec α Γ σa) (q_fst : Unit × LexingState σa)
-    (q₁ : Unit × LexingState σa) (S : List (Ch Γ))
-    (hstep : (Detokenizing.BuildDetokLexer (V := Ch β) spec).step q_fst
+    [Vocabulary Input V]
+    (spec : LexerSpec Input Γ Qa) (q_fst : Unit × LexingState Qa)
+    (q₁ : Unit × LexingState Qa) (S : List (Ch Γ))
+    (hstep : (Detokenizing.BuildDetokLexer (V := Ch V) spec).step q_fst
       ExtChar.eos = some (q₁, S)) :
     S ≠ [] := by
   intro h; subst h
@@ -1653,13 +1653,13 @@ private lemma BuildDetokLexer_eos_step_output_ne_nil
     rw [this] at heq
     split at heq <;> simp at heq
 
-omit [FinEnum Γ] [FinEnum α] [DecidableEq β] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum Input] [DecidableEq V] [DecidableEq Γ] in
 /-- After `.eos` step in `BuildDetokLexer`, `.eos` appears in the output. -/
 lemma BuildDetokLexer_eos_step_eos_in_output
-    [Vocabulary α β]
-    (spec : LexerSpec α Γ σa) (q_fst : Unit × LexingState σa)
-    (q₁ : Unit × LexingState σa) (S : List (Ch Γ))
-    (hstep : (Detokenizing.BuildDetokLexer (V := Ch β) spec).step q_fst
+    [Vocabulary Input V]
+    (spec : LexerSpec Input Γ Qa) (q_fst : Unit × LexingState Qa)
+    (q₁ : Unit × LexingState Qa) (S : List (Ch Γ))
+    (hstep : (Detokenizing.BuildDetokLexer (V := Ch V) spec).step q_fst
       ExtChar.eos = some (q₁, S)) :
     ExtChar.eos ∈ S := by
   simp only [Detokenizing.BuildDetokLexer] at hstep
@@ -1685,14 +1685,14 @@ lemma BuildDetokLexer_eos_step_eos_in_output
       · -- none case
         simp at heq
 
-omit [FinEnum Γ] [FinEnum α] [DecidableEq β] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum Input] [DecidableEq V] [DecidableEq Γ] in
 /-- After `.eos` step in `BuildDetokLexer`, there exists `S_init` such that
 `S = S_init ++ [.eos]`. -/
 private lemma BuildDetokLexer_eos_step_snoc
-    [Vocabulary α β]
-    (spec : LexerSpec α Γ σa) (q_fst : Unit × LexingState σa)
-    (q₁ : Unit × LexingState σa) (S : List (Ch Γ))
-    (hstep : (Detokenizing.BuildDetokLexer (V := Ch β) spec).step q_fst
+    [Vocabulary Input V]
+    (spec : LexerSpec Input Γ Qa) (q_fst : Unit × LexingState Qa)
+    (q₁ : Unit × LexingState Qa) (S : List (Ch Γ))
+    (hstep : (Detokenizing.BuildDetokLexer (V := Ch V) spec).step q_fst
       ExtChar.eos = some (q₁, S)) :
     ∃ S_init, S = S_init ++ [ExtChar.eos] := by
   simp only [Detokenizing.BuildDetokLexer] at hstep
@@ -1733,8 +1733,8 @@ omit [DecidableEq Γ] in
 /-- In `ParserWithEOS`, after `fullStep` on `.eos` input, every config in the
 result is at `.eos` state. -/
 private lemma ParserWithEOS_fullStep_eos_all_eos
-    (P : PDA Γ π σp) (X : Finset (Ch σp × List π))
-    (cfg : Ch σp × List π)
+    (P : PDA Γ StackSym Qp) (X : Finset (Ch Qp × List StackSym))
+    (cfg : Ch Qp × List StackSym)
     (hcfg : cfg ∈ (ParserWithEOS P).fullStep X ExtChar.eos) :
     ∃ st', cfg = (ExtChar.eos, st') := by
   simp only [PDA.fullStep, Finset.mem_biUnion] at hcfg
@@ -1772,7 +1772,7 @@ omit [DecidableEq Γ] in
 /-- In `ParserWithEOS`, evaluating from an all-`.eos`-state configuration set
     preserves the all-`.eos` invariant for any input word. -/
 lemma ParserWithEOS_evalFrom_eos_stays
-    (P : PDA Γ π σp) (S : Finset (Ch σp × List π)) (w : List (Ch Γ))
+    (P : PDA Γ StackSym Qp) (S : Finset (Ch Qp × List StackSym)) (w : List (Ch Γ))
     (hall : ∀ cfg ∈ S, ∃ st', cfg = (ExtChar.eos, st')) :
     ∀ cfg ∈ (ParserWithEOS P).evalFrom S w, ∃ st', cfg = (ExtChar.eos, st') := by
   induction w generalizing S with
@@ -1800,8 +1800,8 @@ lemma ParserWithEOS_evalFrom_eos_stays
 
 omit [DecidableEq Γ] in
 private lemma ParserWithEOS_evalFrom_eos_mem_imp_eos_state
-    (P : PDA Γ π σp) (pre post : List (Ch Γ))
-    (cfg : Ch σp × List π)
+    (P : PDA Γ StackSym Qp) (pre post : List (Ch Γ))
+    (cfg : Ch Qp × List StackSym)
     (hmem : cfg ∈ (ParserWithEOS P).evalFull (pre ++ ExtChar.eos :: post)) :
     ∃ st', cfg = (ExtChar.eos, st') := by
   have hsplit :
@@ -1828,7 +1828,7 @@ private lemma ParserWithEOS_evalFrom_eos_mem_imp_eos_state
 omit [DecidableEq Γ] in
 /-- If the original parser is pruned, then the EOS-augmented parser is pruned. -/
 lemma ParserWithEOS_pruned
-    (P : PDA Γ π σp) (hpruned : P.pruned) :
+    (P : PDA Γ StackSym Qp) (hpruned : P.pruned) :
     (ParserWithEOS P).pruned := by
   intro q st hreach
   cases q with
@@ -1867,7 +1867,7 @@ lemma ParserWithEOS_pruned
             (ParserWithEOS P).fullStep
               ((ParserWithEOS P).evalFrom {(ExtChar.char q, st)}
                 (tail.map ExtChar.char)) ExtChar.eos
-          have hchar_eval := ParserWithEOS_evalFrom_char_image P ({(q, st)} : Finset (σp × List π)) tail
+          have hchar_eval := ParserWithEOS_evalFrom_char_image P ({(q, st)} : Finset (Qp × List StackSym)) tail
           have hchar_mem :
               (ExtChar.char f', stf) ∈
                 (ParserWithEOS P).evalFrom {(ExtChar.char q, st)} (tail.map ExtChar.char) := by
@@ -1889,7 +1889,7 @@ lemma ParserWithEOS_pruned
 
 omit [DecidableEq Γ] in
 lemma PDA.exists_accepts_extension_of_pruned_evalFull_nonempty
-    (P : PDA Γ π σp) (hpruned : P.pruned)
+    (P : PDA Γ StackSym Qp) (hpruned : P.pruned)
     (pref : List Γ) (hne : P.evalFull pref ≠ ∅) :
     ∃ suffix : List Γ, pref ++ suffix ∈ P.accepts := by
   have hpref : pref ∈ P.intermediate := by
@@ -1914,7 +1914,7 @@ omit [DecidableEq Γ] in
 /-- If `(ParserWithEOS P).evalFull gammas ≠ ∅` and `ExtChar.eos ∈ gammas`,
     then `gammas ∈ (ParserWithEOS P).accepts`. -/
 lemma ParserWithEOS_evalFull_eos_imp_accepts
-    (P : PDA Γ π σp) (gammas : List (Ch Γ))
+    (P : PDA Γ StackSym Qp) (gammas : List (Ch Γ))
     (hne : (ParserWithEOS P).evalFull gammas ≠ ∅)
     (heos : ExtChar.eos ∈ gammas) :
     gammas ∈ (ParserWithEOS P).accepts := by
@@ -1966,7 +1966,7 @@ lemma ParserWithEOS_evalFull_eos_imp_accepts
   · simp [ParserWithEOS]
 
 set_option maxHeartbeats 3200000 in
-omit [FinEnum α] in
+omit [FinEnum Input] in
 /-- **EOS Completeness**: If `curr` extends to an **accepted** run through the
 detokenizing lexer and parser via `.eos`, then `.eos` passes the GCD mask
 checker after prefix `curr`.
@@ -1979,22 +1979,22 @@ extended sequence via the `.eos` dead-loop property of `ParserWithEOS`.
 Requires `hempty` and the full whitespace assumption; the latter rederives the
 lexer restart hypothesis used by `BuildDetokLexer_hsingle`. -/
 theorem EOSCompleteness
-  [FinEnum β] [Vocabulary α β]
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (curr : List β)
-  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
+  [FinEnum V] [Vocabulary Input V]
+  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp) (curr : List V)
+  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite)
   (hviable : ∃ suffix qa gammas,
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval
       (curr.map ExtChar.char ++ (.eos :: suffix)) = some (qa, gammas) ∧
     gammas ∈ (ParserWithEOS P).accepts) :
   MaskChecker
-    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
+    (Detokenizing.BuildDetokLexer (V := Ch V) spec)
     (ParserWithEOS P)
-    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS P))
-    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch V) spec) (ParserWithEOS P))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch V) spec)).snd
     curr .eos = true := by
   -- Abbreviations
-  let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
+  let comb := Detokenizing.BuildDetokLexer (V := Ch V) spec
   let parser := ParserWithEOS P
   have hrestart := GCDWhitespaceAssumption.existsRestartChar spec P hassum.hempty hassum.whitespace
   -- Extract the viable run witnesses
@@ -2082,7 +2082,7 @@ theorem EOSCompleteness
     unfold MaskChecker
     have hcomb_eval : comb.eval (curr.map ExtChar.char) = some (q_fst, terms) := by
       simp [FST.eval, hcurr]
-    simp only [show (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (List.map ExtChar.char curr) =
+    simp only [show (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval (List.map ExtChar.char curr) =
       some (q_fst, terms) from hcomb_eval]
     rw [Finset.fold_or_eq_true_iff, Finset.mem_image]
     refine ⟨(qp, st_p), hmem_qp, ?_⟩
@@ -2093,7 +2093,7 @@ theorem EOSCompleteness
     -- gammas = terms ++ S
     have hgammas' : gammas = terms ++ S := by simp [hgammas]
     -- q₁ is the start state
-    have hq₁_start : q₁ = ((), LexingState.start (σ := σa)) :=
+    have hq₁_start : q₁ = ((), LexingState.start (Q := Qa)) :=
       BuildDetokLexer_eos_step_reaches_start spec q_fst q₁ S hstep
     -- Pick e = .eos from singleProducible q₁
     have he_sp : (ExtChar.eos : Ch Γ) ∈ comb.singleProducible q₁ := by
@@ -2152,7 +2152,7 @@ theorem EOSCompleteness
     unfold MaskChecker
     have hcomb_eval : comb.eval (curr.map ExtChar.char) = some (q_fst, terms) := by
       simp [FST.eval, hcurr]
-    simp only [show (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (List.map ExtChar.char curr) =
+    simp only [show (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval (List.map ExtChar.char curr) =
       some (q_fst, terms) from hcomb_eval]
     rw [Finset.fold_or_eq_true_iff, Finset.mem_image]
     refine ⟨(qp, st_p), hmem_qp, ?_⟩

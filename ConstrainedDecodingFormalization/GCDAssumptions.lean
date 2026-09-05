@@ -16,24 +16,24 @@ instead of being exposed as a separate end-to-end assumption.
 -/
 
 universe u v w x y z
-variable {α : Type u} {β : Type x} {Γ : Type y} {π : Type v} {σp : Type w} {σa : Type z}
+variable {Input : Type u} {V : Type x} {Γ : Type y} {StackSym : Type v} {Qp : Type w} {Qa : Type z}
 
 variable
-  [FinEnum σp] [FinEnum Γ] [FinEnum α] [FinEnum σa] [FinEnum π]
-  [DecidableEq σp] [DecidableEq β] [DecidableEq Γ] [DecidableEq α] [DecidableEq π]
+  [FinEnum Qp] [FinEnum Γ] [FinEnum Input] [FinEnum Qa] [FinEnum StackSym]
+  [DecidableEq Qp] [DecidableEq V] [DecidableEq Γ] [DecidableEq Input] [DecidableEq StackSym]
 
 /-- A parser ignores a terminal if reading it from any parser state is exactly
 the identity transition on both the parser state and stack. -/
-def ParserIgnoresTerminal (P : PDA Γ π σp) (white : Γ) : Prop :=
-  ∀ q : σp, P.step q white = {([], [], q)}
+def ParserIgnoresTerminal (P : PDA Γ StackSym Qp) (white : Γ) : Prop :=
+  ∀ q : Qp, P.step q white = {([], [], q)}
 
 set_option linter.unusedSectionVars false in
 /-- If the parser ignores `white`, then a one-symbol full step on `white` is the
 identity on every singleton parser configuration. -/
 lemma ParserIgnoresTerminal.fullStep_singleton
-    (P : PDA Γ π σp) (white : Γ)
+    (P : PDA Γ StackSym Qp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white)
-    (q : σp) (st : List π) :
+    (q : Qp) (st : List StackSym) :
     P.fullStep {(q, st)} white = {(q, st)} := by
   ext cfg
   constructor
@@ -61,9 +61,9 @@ set_option linter.unusedSectionVars false in
 /-- If the parser ignores `white`, then a one-symbol full step on `white` is
 the identity on every finite set of parser configurations. -/
 lemma ParserIgnoresTerminal.fullStep_eq
-    (P : PDA Γ π σp) (white : Γ)
+    (P : PDA Γ StackSym Qp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white)
-    (S : Finset (σp × List π)) :
+    (S : Finset (Qp × List StackSym)) :
     P.fullStep S white = S := by
   rw [PDA.fullStep_biUnion]
   ext cfg
@@ -90,9 +90,9 @@ variable [BEq Γ] [LawfulBEq Γ]
 set_option linter.unusedSectionVars false in
 /-- Deleting a terminal ignored by the parser does not change PDA evaluation. -/
 lemma ParserIgnoresTerminal.evalFrom_filter_ne
-    (P : PDA Γ π σp) (white : Γ)
+    (P : PDA Γ StackSym Qp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white)
-    (S : Finset (σp × List π)) (w : List Γ) :
+    (S : Finset (Qp × List StackSym)) (w : List Γ) :
     P.evalFrom S (w.filter (fun t => t != white)) = P.evalFrom S w := by
   induction w generalizing S with
   | nil =>
@@ -113,9 +113,9 @@ set_option linter.unusedSectionVars false in
 /-- Deleting a terminal ignored by the parser preserves acceptance from any
 configuration. -/
 lemma ParserIgnoresTerminal.acceptsFrom_filter_ne
-    (P : PDA Γ π σp) (white : Γ)
+    (P : PDA Γ StackSym Qp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white)
-    (q : σp) (st : List π) (w : List Γ) :
+    (q : Qp) (st : List StackSym) (w : List Γ) :
     w ∈ P.acceptsFrom q st →
       w.filter (fun t => t != white) ∈ P.acceptsFrom q st := by
   intro hacc
@@ -129,7 +129,7 @@ set_option linter.unusedSectionVars false in
 /-- If a parser ignores `white`, then replacing a suffix by the same suffix
 with ignored whitespace deleted preserves acceptance. -/
 lemma ParserIgnoresTerminal.accepts_append_filter_ne
-    (P : PDA Γ π σp) (white : Γ)
+    (P : PDA Γ StackSym Qp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white)
     (pre tail : List Γ) :
     pre ++ tail ∈ P.accepts →
@@ -148,7 +148,7 @@ set_option linter.unusedSectionVars false in
 /-- If a parser ignores `white`, then replacing a suffix by a version with
 ignored whitespace inserted preserves acceptance. -/
 lemma ParserIgnoresTerminal.accepts_append_of_filter_ne
-    (P : PDA Γ π σp) (white : Γ)
+    (P : PDA Γ StackSym Qp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white)
     (pre tail filtered : List Γ)
     (hfilter : tail.filter (fun t => t != white) = filtered) :
@@ -171,7 +171,7 @@ omit [DecidableEq Γ] in
 /-- The EOS-augmented parser ignores the EOS-lifted whitespace terminal when
 the original parser ignores the underlying whitespace terminal. -/
 lemma ParserWithEOS_ignoresTerminal
-    (P : PDA Γ π σp) (white : Γ)
+    (P : PDA Γ StackSym Qp) (white : Γ)
     (hignore : ParserIgnoresTerminal P white) :
     ParserIgnoresTerminal (ParserWithEOS P) (ExtChar.char white) := by
   intro q
@@ -201,31 +201,31 @@ parser-side component says that this terminal is ignored by the original parser:
 from every parser state, reading the whitespace terminal has exactly the
 identity transition on the parser state and stack. -/
 def GCDWhitespaceAssumption
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
-  (tnonwhite twhite : α) (qnonwhite qwhite : σa) : Prop :=
+  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
+  (tnonwhite twhite : Input) (qnonwhite qwhite : Qa) : Prop :=
   ∃ hlexer : Detokenizing.WhitespaceAssumption spec tnonwhite twhite qnonwhite qwhite,
     ParserIgnoresTerminal P
       (Detokenizing.whitespaceTerminal spec tnonwhite twhite qnonwhite qwhite hlexer)
 
 /-- Assumptions used by the final GCD correctness and productivity interface. -/
 structure GCDAssumptions
-  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
-  (tnonwhite twhite : α) (qnonwhite qwhite : σa) : Prop where
+  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
+  (tnonwhite twhite : Input) (qnonwhite qwhite : Qa) : Prop where
   hempty : [] ∉ spec.automaton.accepts
   lexer_pruned : spec.automaton.pruned
   parser_pruned : P.pruned
   whitespace : GCDWhitespaceAssumption spec P tnonwhite twhite qnonwhite qwhite
 
-omit [FinEnum α] [DecidableEq σp] [DecidableEq α] [DecidableEq π]
-  [DecidableEq β] [DecidableEq Γ] in
+omit [FinEnum Input] [DecidableEq Qp] [DecidableEq Input] [DecidableEq StackSym]
+  [DecidableEq V] [DecidableEq Γ] in
 /-- The full whitespace assumption rederives the old lexer restart hypothesis. -/
 lemma GCDWhitespaceAssumption.existsRestartChar
-    {tnonwhite twhite : α} {qnonwhite qwhite : σa}
-    (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+    {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+    (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
     (hempty : [] ∉ spec.automaton.accepts)
     (hws : GCDWhitespaceAssumption spec P tnonwhite twhite qnonwhite qwhite) :
     ∀ s ∈ spec.automaton.accept,
-      ∃ c : α, spec.automaton.step s c = none ∧
+      ∃ c : Input, spec.automaton.step s c = none ∧
         (spec.automaton.step spec.automaton.start c).isSome := by
   intro s hs
   obtain ⟨hlexer, _⟩ := hws

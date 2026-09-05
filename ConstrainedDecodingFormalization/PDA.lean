@@ -20,13 +20,13 @@ proof below. It shows how prefix witnesses compose transitively.
 -/
 section PrefixHelper
 universe u
-variable { α : Type u }
+variable { Input : Type u }
 open List
 
 /-- If `xs` is a prefix of `ys` and `ys` is a prefix of `zs`, then the witness
 returned by `isPrefixOf?` for `xs` and `zs` is obtained by extending the
 corresponding witness for `xs` and `ys`. -/
-theorem isPrefix_merge [ BEq α ] [ LawfulBEq α] ( xs ys zs : List α ) (h : ys <+: zs) :
+theorem isPrefix_merge [ BEq Input ] [ LawfulBEq Input] ( xs ys zs : List Input ) (h : ys <+: zs) :
       match xs.isPrefixOf? ys with
       | some rem => xs.isPrefixOf? zs = rem ++ zs.drop ys.length
       | none => True
@@ -60,32 +60,32 @@ theorem isPrefix_merge [ BEq α ] [ LawfulBEq α] ( xs ys zs : List α ) (h : ys
 
 end PrefixHelper
 
-/-- A pushdown automaton over terminals `Γ`, stack alphabet `π`, and control
-states `σ`.
+/-- A pushdown automaton over terminals `Γ`, stack alphabet `StackSym`, and control
+states `Q`.
 
 On input symbol `a`, a transition `(top, replace, dst)` may fire when `top` is
 a prefix of the current stack, replacing that prefix by `replace` and moving to
 state `dst`.
 -/
-structure PDA (Γ : Type u) ( π : Type v) ( σ : Type w) [Fintype Γ] [Fintype π] [Fintype σ] where
-  start : σ
-  step : σ → Γ → Finset (List π × List π × σ)
-  accept : Finset σ
+structure PDA (Γ : Type u) ( StackSym : Type v) ( Q : Type w) [Fintype Γ] [Fintype StackSym] [Fintype Q] where
+  start : Q
+  step : Q → Γ → Finset (List StackSym × List StackSym × Q)
+  accept : Finset Q
 
 namespace PDA
 
-variable { Γ π σ } [ DecidableEq σ ] [ DecidableEq π ] [Fintype Γ] [Fintype π] [sf: Fintype σ]
-variable ( P : PDA Γ π σ )
+variable { Γ StackSym Q } [ DecidableEq Q ] [ DecidableEq StackSym ] [Fintype Γ] [Fintype StackSym] [sf: Fintype Q]
+variable ( P : PDA Γ StackSym Q )
 
 /-! ### Step and evaluation -/
 
 
 /-- A default empty PDA, used only to satisfy typeclass requirements. -/
-instance [Inhabited σ] [Inhabited π] : Inhabited (PDA Γ π σ) :=
+instance [Inhabited Q] [Inhabited StackSym] : Inhabited (PDA Γ StackSym Q) :=
   ⟨PDA.mk default (fun _ _=> ∅) default⟩
 
 /-- Execute one input symbol from a set of parser configurations. -/
-def fullStep (S : Finset (σ × List π)) (t : Γ) : Finset (σ × List π) :=
+def fullStep (S : Finset (Q × List StackSym)) (t : Γ) : Finset (Q × List StackSym) :=
   S.biUnion fun (s, st) =>
     (P.step s t).biUnion fun (top, replace, dst) =>
       match top.isPrefixOf? st with
@@ -100,7 +100,7 @@ theorem fullStep_none ( t : Γ ) : P.fullStep ∅ t = ∅ :=
 /-- One-step stack invariance: if `(sn, stn)` is reachable from `(s, st)` in one
 step, and `st` is a prefix of `st'`, then the corresponding run from `(s, st')`
 appends the extra suffix. Used inductively in `stackInvariance_lem`. -/
-private theorem fullStep_stackInvariance [ LawfulBEq π  ] : ∀ s st sn stn st' t, st <+: st' →
+private theorem fullStep_stackInvariance [ LawfulBEq StackSym  ] : ∀ s st sn stn st' t, st <+: st' →
    (sn, stn) ∈ P.fullStep {(s, st)} t →
    (sn, stn ++ st'.drop st.length) ∈ P.fullStep {(s, st')} t
   := by
@@ -122,17 +122,17 @@ private theorem fullStep_stackInvariance [ LawfulBEq π  ] : ∀ s st sn stn st'
 /-! ### Multi-step evaluation (`evalFrom`) -/
 
 /-- Evaluate a PDA from a set of initial configurations on an input word. -/
-def evalFrom ( s: Finset ( σ × List π ) ) : List Γ → Finset (σ × List π) :=
+def evalFrom ( s: Finset ( Q × List StackSym ) ) : List Γ → Finset (Q × List StackSym) :=
   List.foldl ( fun s a => fullStep P s a) s
 
 /-- Evaluating from a singleton on the empty word returns the same singleton. -/
 @[simp]
-theorem evalFrom_nil (s : σ) (st : List π) : P.evalFrom {(s, st)} [] = {(s, st)} :=
+theorem evalFrom_nil (s : Q) (st : List StackSym) : P.evalFrom {(s, st)} [] = {(s, st)} :=
   rfl
 
 /-- Evaluating on a cons is one step followed by evaluation on the tail. -/
 @[simp]
-theorem evalFrom_cons (S : Finset (σ × List π)) (head: Γ) (tail : List Γ) : P.evalFrom S (head :: tail) = P.evalFrom (P.fullStep S head) tail := by
+theorem evalFrom_cons (S : Finset (Q × List StackSym)) (head: Γ) (tail : List Γ) : P.evalFrom S (head :: tail) = P.evalFrom (P.fullStep S head) tail := by
   simp[evalFrom]
 
 /-- Evaluating from the empty configuration set always yields the empty set. -/
@@ -145,13 +145,13 @@ theorem evalFrom_none  ( w : List Γ ) : P.evalFrom {} w = {} := by
   simp[this, fullStep_none, ih]
 
 /-- Evaluation distributes over word concatenation. -/
-theorem evalFrom_append' (S : Finset (σ × List π)) (xs ys : List Γ) :
+theorem evalFrom_append' (S : Finset (Q × List StackSym)) (xs ys : List Γ) :
     P.evalFrom S (xs ++ ys) = P.evalFrom (P.evalFrom S xs) ys := by
   simp [evalFrom, List.foldl_append]
 
 /-- If evaluation on `xs ++ ys` is nonempty, then evaluation on the prefix `xs`
 is also nonempty. -/
-theorem evalFrom_prefix_nonempty (S : Finset (σ × List π)) (xs ys : List Γ) :
+theorem evalFrom_prefix_nonempty (S : Finset (Q × List StackSym)) (xs ys : List Γ) :
     P.evalFrom S (xs ++ ys) ≠ ∅ → P.evalFrom S xs ≠ ∅ := by
   intro h habs
   rw [evalFrom_append', habs, evalFrom_none] at h
@@ -159,7 +159,7 @@ theorem evalFrom_prefix_nonempty (S : Finset (σ × List π)) (xs ys : List Γ) 
 
 /-- `fullStep` is monotone: larger configuration sets produce larger successor sets. -/
 @[simp]
-theorem fullStep_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) (h: u ⊆ v) ( w : Γ )
+theorem fullStep_subset (u: Finset (Q × List StackSym)) (v: Finset (Q × List StackSym)) (h: u ⊆ v) ( w : Γ )
   : P.fullStep u w ⊆ P.fullStep v w := by
   simp only[fullStep]
   apply Finset.biUnion_subset_biUnion_of_subset_left
@@ -168,7 +168,7 @@ theorem fullStep_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) 
 /-- `evalFrom` is monotone: larger initial configuration sets produce larger
 reachable sets. -/
 @[simp]
-theorem evalFrom_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) (h: u ⊆ v) ( w : List Γ )
+theorem evalFrom_subset (u: Finset (Q × List StackSym)) (v: Finset (Q × List StackSym)) (h: u ⊆ v) ( w : List Γ )
   : P.evalFrom u w ⊆ P.evalFrom v w := by
   induction w generalizing u v
   case nil =>
@@ -178,12 +178,12 @@ theorem evalFrom_subset (u: Finset (σ × List π)) (v: Finset (σ × List π)) 
     simp[this, ih]
 
 /-- `fullStep` distributes over union: `fullStep (S₁ ∪ S₂) t = fullStep S₁ t ∪ fullStep S₂ t`. -/
-theorem fullStep_biUnion (S : Finset (σ × List π)) (t : Γ) :
+theorem fullStep_biUnion (S : Finset (Q × List StackSym)) (t : Γ) :
     P.fullStep S t = S.biUnion (fun x => P.fullStep {x} t) := by
   simp [fullStep]
 
 /-- `evalFrom` distributes over its initial configuration set. -/
-theorem evalFrom_biUnion (S : Finset (σ × List π)) (w : List Γ) :
+theorem evalFrom_biUnion (S : Finset (Q × List StackSym)) (w : List Γ) :
     P.evalFrom S w = S.biUnion (fun x => P.evalFrom {x} w) := by
   induction w generalizing S with
   | nil => simp [evalFrom]
@@ -197,7 +197,7 @@ theorem evalFrom_biUnion (S : Finset (σ × List π)) (w : List Γ) :
     exact (ih (P.fullStep {a} h)).symm
 
 /-- If `evalFrom S w` is nonempty, some singleton from `S` also reaches a nonempty set. -/
-theorem evalFrom_nonempty_exists_singleton (S : Finset (σ × List π)) (w : List Γ)
+theorem evalFrom_nonempty_exists_singleton (S : Finset (Q × List StackSym)) (w : List Γ)
     (hne : P.evalFrom S w ≠ ∅) :
     ∃ x ∈ S, P.evalFrom {x} w ≠ ∅ := by
   rw [evalFrom_biUnion] at hne
@@ -215,16 +215,16 @@ theorem evalFrom_nonempty_exists_singleton (S : Finset (σ × List π)) (w : Lis
 /-! ### Acceptance and language definitions -/
 
 /-- Evaluate the PDA from its designated start configuration `(start, [])`. -/
-def evalFull : List Γ → Finset (σ × List π) :=
+def evalFull : List Γ → Finset (Q × List StackSym) :=
   fun w => (P.evalFrom {(P.start, [])} w)
 
 /-- Forget final stack contents and retain only reachable control states. -/
-def eval : List Γ → Finset σ :=
+def eval : List Γ → Finset Q :=
   fun w => (P.evalFrom {(P.start, [])} w).image Prod.fst
 
 /-- The language accepted when starting from state `s` with initial stack
 `st`. -/
-def acceptsFrom ( s: σ ) (st : List π ) : Language Γ :=
+def acceptsFrom ( s: Q ) (st : List StackSym ) : Language Γ :=
   { w | ∃ f, f ∈ (P.evalFrom {(s, st)} w).image Prod.fst ∧ f ∈ P.accept }
 
 /-- The language accepted from the start state and empty stack. -/
@@ -249,7 +249,7 @@ rule out tokens that cannot possibly lead to acceptance.
 -/
 
 /-- Forget the stack discipline and keep only the induced control-state NFA. -/
-def toNFA : NFA Γ σ :=
+def toNFA : NFA Γ Q :=
   NFA.mk
     (fun st a => ((P.step st a).image (fun q => q.2.2)))
     {P.start}

@@ -39,9 +39,9 @@ open List
 universe u v w
 
 variable
-  {α : Type u} {Γ : Type v} {σ : Type w}
-  [DecidableEq α] [DecidableEq σ]
-  [BEq α] [BEq σ] [LawfulBEq σ]
+  {Input : Type u} {Γ : Type v} {Q : Type w}
+  [DecidableEq Input] [DecidableEq Q]
+  [BEq Input] [BEq Q] [LawfulBEq Q]
 
 /-! ### Lexer specification -/
 
@@ -51,22 +51,22 @@ labels on accepting states.
 This is the interface from which the lexing FST and the grammar-constrained
 decoding checker are built.
 -/
-structure LexerSpec (α Γ σ) where
-  automaton : FSA α σ
-  term: σ → Option Γ
+structure LexerSpec (Input Γ Q) where
+  automaton : FSA Input Q
+  term: Q → Option Γ
   hterm: ∀ s, s ∈ automaton.accept ↔ (term s).isSome
   term_inj: ∀ s₁ s₂ t, term s₁ = some t ∧ term s₂ = some t → s₁ = s₂
   term_surj: ∀ t, ∃ s, term s = some t
 
 /-- Evaluate a character sequence and, if it is accepted, return the terminal
 attached to its accepting state. -/
-def LexerSpec.seq_term (spec: LexerSpec α Γ σ) (seq: List α) : Option Γ :=
+def LexerSpec.seq_term (spec: LexerSpec Input Γ Q) (seq: List Input) : Option Γ :=
   match spec.automaton.eval seq with
   | some s => spec.term s
   | none => none
 
 /-- Extract the terminal attached to an accepted character sequence. -/
-def LexerSpec.accept_seq_term (spec: LexerSpec α Γ σ) (seq: List α) (h: seq ∈ spec.automaton.accepts) : Γ :=
+def LexerSpec.accept_seq_term (spec: LexerSpec Input Γ Q) (seq: List Input) (h: seq ∈ spec.automaton.accepts) : Γ :=
   let s := (spec.automaton.eval seq).get <| by
     simp[FSA.accepts, FSA.acceptsFrom] at h
     have mem_set := Set.mem_setOf.mp h
@@ -82,7 +82,7 @@ def LexerSpec.accept_seq_term (spec: LexerSpec α Γ σ) (seq: List α) (h: seq 
 
 /-- An executable lexer from EOS-extended characters to EOS-extended terminals,
 also returning the residual unlexed suffix of the current lexeme candidate. -/
-def Lexer (α : Type u) (Γ : Type v) := List (Ch α) -> Option (List (Ch Γ) × List α)
+def Lexer (Input : Type u) (Γ : Type v) := List (Ch Input) -> Option (List (Ch Γ) × List Input)
 
 /-! ### Relational and executable lexing -/
 
@@ -92,8 +92,8 @@ def Lexer (α : Type u) (Γ : Type v) := List (Ch α) -> Option (List (Ch Γ) ×
 has committed `terminals` and retained `unlexed` as the unfinished suffix of the
 current lexeme candidate.
 -/
-inductive PartialLexRel (spec: LexerSpec α Γ σ)
-  : List (Ch α) → List (Ch Γ) → List α → Prop
+inductive PartialLexRel (spec: LexerSpec Input Γ Q)
+  : List (Ch Input) → List (Ch Γ) → List Input → Prop
   -- base case
 | nil :
     PartialLexRel spec
@@ -107,8 +107,6 @@ inductive PartialLexRel (spec: LexerSpec α Γ σ)
   -- case 1
 | step_eos {w wn terminals unlexed} :
     PartialLexRel spec w terminals unlexed →
-    -- this nonsense needs to be done to satisfy the eliminator for some reason
-    -- related? https://github.com/leanprover/lean4/issues/9803
     wn = w ++ [ExtChar.eos] →
     (h : unlexed ∈ spec.automaton.accepts) →
       PartialLexRel spec wn (terminals ++ [.char (spec.accept_seq_term unlexed h), .eos]) []
@@ -132,8 +130,8 @@ inductive PartialLexRel (spec: LexerSpec α Γ σ)
 
 Decides, given a partial lexeme `unlexed` and the next EOS-extended character,
 whether to commit the current terminal, continue extending it, or report failure. -/
-def PartialLex_trans (spec: LexerSpec α Γ σ) (prev: Option (List (Ch Γ) × List α)) (c : Ch α)
-  : Option (List (Ch Γ) × List α) :=
+def PartialLex_trans (spec: LexerSpec Input Γ Q) (prev: Option (List (Ch Γ) × List Input)) (c : Ch Input)
+  : Option (List (Ch Γ) × List Input) :=
   match prev with
   | none => none
   | some (terminals, unlexed) =>
@@ -153,10 +151,10 @@ def PartialLex_trans (spec: LexerSpec α Γ σ) (prev: Option (List (Ch Γ) × L
         let dst := spec.automaton.eval unlexed
         match dst with
         | none => none
-        | some σ =>
-          if h : σ ∈ spec.automaton.accept then
-            let term := spec.term σ
-            have h2 := (spec.hterm σ).mp h
+        | some q =>
+          if h : q ∈ spec.automaton.accept then
+            let term := spec.term q
+            have h2 := (spec.hterm q).mp h
             let t := term.get h2
             if (spec.automaton.eval [ch]).isSome then
               some (terminals ++ [ExtChar.char t], [ch])
@@ -166,42 +164,42 @@ def PartialLex_trans (spec: LexerSpec α Γ σ) (prev: Option (List (Ch Γ) × L
             none
 
 @[simp]
-def PartialLex_trans_nil (spec: LexerSpec α Γ σ) (c : Ch α) :
+def PartialLex_trans_nil (spec: LexerSpec Input Γ Q) (c : Ch Input) :
   PartialLex_trans spec none c = none := by
   simp[PartialLex_trans]
 
 @[simp]
-def PartialLex_trans_foldl_nil (spec: LexerSpec α Γ σ) (ws : List (Ch α)) :
+def PartialLex_trans_foldl_nil (spec: LexerSpec Input Γ Q) (ws : List (Ch Input)) :
   foldl (PartialLex_trans spec) none ws = none :=
   foldl_fixed' (congrFun rfl) ws
 
 @[simp]
-def PartialLex_seed (spec: LexerSpec α Γ σ) (seed: Option (List (Ch Γ) × List α)) : Lexer α Γ :=
+def PartialLex_seed (spec: LexerSpec Input Γ Q) (seed: Option (List (Ch Γ) × List Input)) : Lexer Input Γ :=
   fun w => List.foldl (PartialLex_trans spec) seed w
 
 @[simp]
-def PartialLex (spec: LexerSpec α Γ σ) : Lexer α Γ :=
+def PartialLex (spec: LexerSpec Input Γ Q) : Lexer Input Γ :=
   PartialLex_seed spec (some ([], []))
 
 /-! ### Lexing FST construction -/
 
 /-- States of the lexing FST: either the distinguished start state or a state
 tracking an underlying lexer-automaton state. -/
-inductive LexingState (σ : Type w) where
-| id : σ → LexingState σ
-| start : LexingState σ
+inductive LexingState (Q : Type w) where
+| id : Q → LexingState Q
+| start : LexingState Q
 deriving DecidableEq, Repr
 
-instance {σ} [e : FinEnum σ] : FinEnum (LexingState σ) where
-  card := FinEnum.card σ + 1
+instance {Q} [e : FinEnum Q] : FinEnum (LexingState Q) where
+  card := FinEnum.card Q + 1
   equiv :=
     let e := e.equiv
     { toFun := fun x =>
         match x with
-        | LexingState.start => ⟨FinEnum.card σ, Nat.lt_succ_self _⟩
+        | LexingState.start => ⟨FinEnum.card Q, Nat.lt_succ_self _⟩
         | LexingState.id s => ⟨e s, Nat.lt_succ_of_lt (Fin.is_lt (e s))⟩
       invFun := fun i =>
-        if h : i.val < FinEnum.card σ then LexingState.id (e.symm ⟨i.val, h⟩)
+        if h : i.val < FinEnum.card Q then LexingState.id (e.symm ⟨i.val, h⟩)
         else LexingState.start
       left_inv := by
         intro x
@@ -212,9 +210,9 @@ instance {σ} [e : FinEnum σ] : FinEnum (LexingState σ) where
           simp
       right_inv := by
         intro ⟨i, hi⟩
-        by_cases h : i < FinEnum.card σ
+        by_cases h : i < FinEnum.card Q
         · simp [h]
-        · have : i = FinEnum.card σ := by
+        · have : i = FinEnum.card Q := by
             linarith
           subst this
           simp
@@ -223,12 +221,12 @@ instance {σ} [e : FinEnum σ] : FinEnum (LexingState σ) where
 
 /-- Recover the underlying lexer-automaton state represented by a lexing-FST
 state. -/
-def LexingState.src (spec: LexerSpec α Γ σ) : LexingState σ → σ
+def LexingState.src (spec: LexerSpec Input Γ Q) : LexingState Q → Q
 | LexingState.id s => s
 | LexingState.start => spec.automaton.start
 
 @[simp]
-def LexingState_src_id (spec: LexerSpec α Γ σ) (s : σ) :
+def LexingState_src_id (spec: LexerSpec Input Γ Q) (s : Q) :
   LexingState.src spec (LexingState.id s) = s := by
   simp[LexingState.src]
 
@@ -240,15 +238,15 @@ The construction follows the convention that terminals are attached to accepting
 states of the lexer automaton. This is the central machine-level object that is
 later composed with detokenization and parser preprocessing.
 -/
-def BuildLexingFST [BEq α] [DecidableEq α] (spec: LexerSpec α Γ σ)
-  : FST (Ch α) (Ch Γ) (LexingState σ) := Id.run do
+def BuildLexingFST [BEq Input] [DecidableEq Input] (spec: LexerSpec Input Γ Q)
+  : FST (Ch Input) (Ch Γ) (LexingState Q) := Id.run do
   let ⟨A, term, hterm, _, _⟩ := spec
 
   let new_q0 := LexingState.start
   let q0 := spec.automaton.start
   let F := A.accept
 
-  let step := fun (q : LexingState σ) (c : Ch α) =>
+  let step := fun (q : LexingState Q) (c : Ch Input) =>
     let qorg := LexingState.src spec q
     match c with
     | ExtChar.char c =>
@@ -271,5 +269,5 @@ def BuildLexingFST [BEq α] [DecidableEq α] (spec: LexerSpec α Γ σ)
   ⟨new_q0, step, [new_q0]⟩
 
 @[simp]
-def LexingFST_start (spec: LexerSpec α Γ σ) : (BuildLexingFST spec).start = LexingState.start := by
+def LexingFST_start (spec: LexerSpec Input Γ Q) : (BuildLexingFST spec).start = LexingState.start := by
   simp[BuildLexingFST, Id.run]

@@ -11,13 +11,13 @@ to the distinguished EOS state, which then absorbs all remaining input.
 -/
 
 universe u v w
-variable {Γ : Type u} {π : Type v} {σp : Type w}
-variable [FinEnum Γ] [FinEnum π] [FinEnum σp]
-variable [DecidableEq π]
+variable {Γ : Type u} {StackSym : Type v} {Qp : Type w}
+variable [FinEnum Γ] [FinEnum StackSym] [FinEnum Qp]
+variable [DecidableEq StackSym]
 
 /-- Extend a token PDA with EOS so it can be composed with lexer outputs over
 `Ch Γ`. -/
-def ParserWithEOS [DecidableEq σp] (p : PDA Γ π σp) : PDA (Ch Γ) π (Ch σp) :=
+def ParserWithEOS [DecidableEq Qp] (p : PDA Γ StackSym Qp) : PDA (Ch Γ) StackSym (Ch Qp) :=
   let start := ExtChar.char p.start
   let accept := ExtChar.eos
   let step := fun s c =>
