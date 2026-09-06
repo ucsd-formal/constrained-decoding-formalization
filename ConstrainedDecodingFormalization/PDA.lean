@@ -334,13 +334,13 @@ lemma overApproximationLemma :
   intro w S s' st' h
 
   -- Monotonicity of NFA step and foldl, used to relate PDA and NFA runs
-  have subset_lem1 : ∀ u v head, u ⊆ v →
+  have stepSetSubset : ∀ u v head, u ⊆ v →
     P.toNFA.stepSet u head ⊆ P.toNFA.stepSet v head := by
       intro u v head uh
       simp[NFA.stepSet]
       exact fun i i_1 => Set.subset_iUnion₂_of_subset i (uh i_1) fun ⦃a⦄ a => a
 
-  have subset_lem : ∀ u v w, u ⊆ v →
+  have foldStepSubset : ∀ u v w, u ⊆ v →
     List.foldl P.toNFA.stepSet u w ⊆ List.foldl P.toNFA.stepSet v w
     :=  by
       intro u v w uh
@@ -348,7 +348,7 @@ lemma overApproximationLemma :
       case nil =>
         exact uh
       case cons head tail ih =>
-        have := subset_lem1 u v head uh
+        have := stepSetSubset u v head uh
         simp[this, ih]
 
   induction w generalizing S s' st'
@@ -374,9 +374,9 @@ lemma overApproximationLemma :
       exists top, replace
       have g := h_s.right
       split at g <;> simp_all
-    have pda_sub := subset_lem trans_pda trans_nfa tail p_s_n
+    have pda_sub := foldStepSubset trans_pda trans_nfa tail p_s_n
     suffices s' ∈ List.foldl P.toNFA.stepSet trans_pda tail by
-      exact subset_lem trans_pda (P.toNFA.stepSet ((SetLike.coe S).image Prod.fst) head) tail p_s_n
+      exact foldStepSubset trans_pda (P.toNFA.stepSet ((SetLike.coe S).image Prod.fst) head) tail p_s_n
           (ih (P.fullStep S head) s' st' h)
     exact ih'
 
