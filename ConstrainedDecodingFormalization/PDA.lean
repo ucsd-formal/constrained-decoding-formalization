@@ -67,9 +67,9 @@ On input symbol `a`, a transition `(top, replace, dst)` may fire when `top` is
 a prefix of the current stack, replacing that prefix by `replace` and moving to
 state `dst`.
 -/
-structure PDA (Γ : Type u) ( π : Type v) ( σ : Type w) [Fintype Γ] [Fintype π] [Fintype σ] where
+structure PDA (γ : Type u) ( π : Type v) ( σ : Type w) [Fintype γ] [Fintype π] [Fintype σ] where
   start : σ
-  step : σ → Γ → Finset (List π × List π × σ)
+  step : σ → γ → Finset (List π × List π × σ)
   accept : Finset σ
 
 namespace PDA
