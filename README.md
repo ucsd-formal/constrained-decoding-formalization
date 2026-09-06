@@ -27,6 +27,18 @@ the next tokens that can still be extended to a grammatical output.
   over-approximation (`PDA.lean`), and a verified finite graph search
   (`Producible.lean`).
 
+## Building
+
+Requires [Lean 4](https://lean-lang.org/), toolchain `leanprover/lean4:v4.29.0-rc6`
+(see `lean-toolchain`); mathlib is pinned in `lake-manifest.json`.
+
+```bash
+lake exe cache get   # prebuilt mathlib oleans, recommended before the first build
+lake build ConstrainedDecodingFormalization ConstrainedDecodingFormalization.GCDTest
+```
+
+The development contains no `sorry` and declares no axioms.
+
 ## The pipeline
 
 An LLM emits **tokens**; a grammar is defined over **terminals** that a lexer
@@ -135,18 +147,6 @@ The generic theorems are not reproved. `GCDTest.lean` does this for a shallow
 JSON grammar, using newline as the separator; `native_decide` discharges the
 finite side conditions there.
 
-## Building
-
-Requires [Lean 4](https://lean-lang.org/), toolchain `leanprover/lean4:v4.29.0-rc6`
-(see `lean-toolchain`); mathlib is pinned in `lake-manifest.json`.
-
-```bash
-lake exe cache get   # prebuilt mathlib oleans, recommended before the first build
-lake build ConstrainedDecodingFormalization ConstrainedDecodingFormalization.GCDTest
-```
-
-The development contains no `sorry` and declares no axioms.
-
 ## Dependency visualizer
 
 An interactive declaration dependency graph is at
@@ -166,22 +166,22 @@ counterparts.
 
 | Paper | Notation | Lean | File |
 |-------|----------|------|------|
-| EOS-extended alphabet | $\Sigma \cup \{$`EOS`$\}$ | `ExtChar α` (abbrev `Ch α`) | `Char.lean` |
-| Finite-state automaton | $\mathcal{A} = (\Sigma, Q, q_0, \delta, F)$ | `FSA α σ` | `Automata.lean` |
-| Finite-state transducer | $\mathcal{T} = (\Sigma, \Gamma, Q, q_0, \delta, F)$ | `FST α Γ σ` | `Automata.lean` |
-| Pushdown automaton | $\mathcal{P} = (\Sigma, \Pi, Q, q_0, Z_0, \delta, F)$ | `PDA Γ π σ` | `PDA.lean` |
-| Lexer specification | $\{(\mathcal{A}^i, T^i)\}_i$ | `LexerSpec α Γ σ` | `Lexing/Base.lean` |
-| Token vocabulary | $\mathcal{V} \subseteq \Sigma^+$ | `Vocabulary α β` | `Vocabulary.lean` |
-| Grammar language | $\mathcal{L}(\mathcal{G})$ | `PDA.accepts` | `PDA.lean` |
-| Prefix language | $\mathcal{L}_{\text{prefix}}(\mathcal{G})$ | `Language.prefixes` | `Language.lean` |
-| Single-producible terminals (Def. C.1) | $\textit{Prod}(q)$ | `FST.singleProducible q` | `Producible.lean` |
-| Realizable sequence heads (Def. 3.2) | $Re_{\mathcal{A} \circ \mathcal{V}}$ | `RealizableSequenceHeads fst_comp` | `RealizableSequence.lean` |
+| EOS-extended alphabet | Σ ∪ {EOS} | `ExtChar α` (abbrev `Ch α`) | `Char.lean` |
+| Finite-state automaton | (Σ, Q, q₀, δ, F) | `FSA α σ` | `Automata.lean` |
+| Finite-state transducer | (Σ, Γ, Q, q₀, δ, F) | `FST α Γ σ` | `Automata.lean` |
+| Pushdown automaton | (Σ, Π, Q, q₀, Z₀, δ, F) | `PDA Γ π σ` | `PDA.lean` |
+| Lexer specification | automaton + terminal label per class | `LexerSpec α Γ σ` | `Lexing/Base.lean` |
+| Token vocabulary | V ⊆ Σ⁺ | `Vocabulary α β` | `Vocabulary.lean` |
+| Grammar language | L(G) | `PDA.accepts` | `PDA.lean` |
+| Prefix language | prefixes of L(G) | `Language.prefixes` | `Language.lean` |
+| Single-producible terminals (Def. C.1) | Prod(q) | `FST.singleProducible q` | `Producible.lean` |
+| Realizable sequence heads (Def. 3.2) | Re | `RealizableSequenceHeads fst_comp` | `RealizableSequence.lean` |
 | Realizable terminal sequences | — | `FST.realizableSequences q` | `Automata.lean` |
-| Inverse token-spanner table (Def. 3.3) | $T_{\text{inv}}(q, \alpha)$ | `InverseTokenSpannerTable fst_comp` | `RealizableSequence.lean` |
-| Always-allowed tokens | $A(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` first component | `GCDAlgorithm.lean` |
-| Stack-dependent heads | $D(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` second component | `GCDAlgorithm.lean` |
-| Checker | $\mathcal{C}$ | `Checker β` | `Checker.lean` |
-| GCD target language | $\mathcal{L}^{\text{Lex}}(\mathcal{G})$ | `TargetLanguage spec P` | `GCDCheckerLanguage.lean` |
+| Inverse token-spanner table (Def. 3.3) | T_inv(q, a) | `InverseTokenSpannerTable fst_comp` | `RealizableSequence.lean` |
+| Always-allowed tokens | A(q_lex, q_parse) | `PPTable` first component | `GCDAlgorithm.lean` |
+| Stack-dependent heads | D(q_lex, q_parse) | `PPTable` second component | `GCDAlgorithm.lean` |
+| Checker | C | `Checker β` | `Checker.lean` |
+| GCD target language | Lex-language of G | `TargetLanguage spec P` | `GCDCheckerLanguage.lean` |
 
 ### Algorithms
 
@@ -190,12 +190,12 @@ counterparts.
 | Alg. 1: ConstrainedDecoding | `GCDChecker spec P` | `GCDAlgorithm.lean` |
 | Alg. 2: BuildLexingFST | `BuildLexingFST spec` | `Lexing/Base.lean` |
 | Alg. 3: BuildDetokenizingFST | `BuildDetokenizingFST` | `Lexing/Detokenizing.lean` |
-| FST composition $\mathcal{T}_{\mathcal{A} \circ \mathcal{V}}$ | `Detokenizing.BuildDetokLexer spec` | `Lexing/Detokenizing.lean` |
+| FST composition (detok ∘ lex) | `Detokenizing.BuildDetokLexer spec` | `Lexing/Detokenizing.lean` |
 | Alg. 4: BuildInverseTokenSpannerTable | `BuildInverseTokenSpannerTable fst_comp` | `RealizableSequence.lean` |
 | Alg. 5: PreprocessParser | `PreprocessParser fst_comp P` | `GCDAlgorithm.lean` |
 | Alg. 6: ComputeValidTokenMask | `ComputeValidTokenMask P itst table qa qp st` | `GCDAlgorithm.lean` |
-| Partial lexer $\text{Lex}$ | `PartialLex spec` | `Lexing/Base.lean` |
-| PDA $\to$ NFA over-approximation | `PDA.toNFA` | `PDA.lean` |
+| Partial lexer (Lex) | `PartialLex spec` | `Lexing/Base.lean` |
+| PDA → NFA over-approximation | `PDA.toNFA` | `PDA.lean` |
 | DFS for single-producible terminals | `FST.computeSingleProducible q` | `Producible.lean` |
 
 ### Propositions and theorems
@@ -209,8 +209,8 @@ counterparts.
 | Valid-mask characterization | `mem_ComputeValidTokenMask_preprocess_iff` | `GCDStepProofs.lean` |
 | Soundness (Thm. C.4) | `Soundness` | `GCDStepProofs.lean` |
 | Completeness (Thm. C.5) | `Completeness`, `EOSCompleteness` | `GCDStepProofs.lean` |
-| Mask $\Rightarrow$ viable continuation | `accept_if_ComputedValidTokenMask` | `GCDStepProofs.lean` |
-| $\text{checkerLanguage} = \mathcal{L}^{\text{Lex}}(\mathcal{G})$ | `GCDChecker_checkerLanguage_eq_TargetLanguage` | `GCDCheckerLanguage.lean` |
+| Mask ⇒ viable continuation | `accept_if_ComputedValidTokenMask` | `GCDStepProofs.lean` |
+| checkerLanguage = target language | `GCDChecker_checkerLanguage_eq_TargetLanguage` | `GCDCheckerLanguage.lean` |
 | Checker productivity | `GCDChecker_productive` | `GCDProductivity.lean` |
 | Checker path independence | `GCDChecker_pathIndependent` | `GCDProductivity.lean` |
 | Full checker interface | `GCDChecker_correct` | `GCDProductivity.lean` |
@@ -219,11 +219,11 @@ counterparts.
 
 | Variable | Role | Paper |
 |----------|------|-------|
-| `α` | Character / input alphabet | $\Sigma$ |
-| `β` | Token alphabet | $\mathcal{V}$ |
-| `Γ` | Terminal / output alphabet | $\Gamma$ |
-| `π` | Stack alphabet | $\Pi$ |
-| `σ`, `σa`, `σp` | Automaton / parser state types | $Q$ |
+| `α` | Character / input alphabet | Σ |
+| `β` | Token alphabet | V |
+| `Γ` | Terminal / output alphabet | Γ |
+| `π` | Stack alphabet | Π |
+| `σ`, `σa`, `σp` | Automaton / parser state types | Q |
 
 Most carry `FinEnum`, `DecidableEq`, or `BEq`/`LawfulBEq` instances.
 
