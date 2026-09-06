@@ -175,7 +175,8 @@ counterparts.
 | Grammar language | $\mathcal{L}(\mathcal{G})$ | `PDA.accepts` | `PDA.lean` |
 | Prefix language | $\mathcal{L}_{\text{prefix}}(\mathcal{G})$ | `Language.prefixes` | `Language.lean` |
 | Single-producible terminals (Def. C.1) | $\textit{Prod}(q)$ | `FST.singleProducible q` | `Producible.lean` |
-| Realizable terminal sequences (Def. 3.2) | $Re_{\mathcal{A} \circ \mathcal{V}}$ | `RealizableSequences fst_comp` | `RealizableSequence.lean` |
+| Realizable sequence heads (Def. 3.2) | $Re_{\mathcal{A} \circ \mathcal{V}}$ | `RealizableSequenceHeads fst_comp` | `RealizableSequence.lean` |
+| Realizable terminal sequences | — | `FST.realizableSequences q` | `Automata.lean` |
 | Inverse token-spanner table (Def. 3.3) | $T_{\text{inv}}(q, \alpha)$ | `InverseTokenSpannerTable fst_comp` | `RealizableSequence.lean` |
 | Always-allowed tokens | $A(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` first component | `GCDAlgorithm.lean` |
 | Stack-dependent heads | $D(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` second component | `GCDAlgorithm.lean` |

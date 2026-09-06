@@ -409,7 +409,7 @@ end ListFoldHelpers
 lemma mem_preprocess_accepted_sequences_iff
   (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (qa : σa) (d : List Γ) :
   d ∈ (PreprocessParser fst_comp p qp qa).2.2 ↔
-    d ∈ RealizableSequences fst_comp ∧
+    d ∈ RealizableSequenceHeads fst_comp ∧
     p.evalFrom {(qp, [])} d ≠ ∅ := by
   constructor
   · intro hd
@@ -431,7 +431,7 @@ lemma mem_rejected_sequences_iff
   (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (d : List Γ) :
   d ∈ ((BuildInverseTokenSpannerTable fst_comp).fst.filter
       (fun s => FinsetNFA.evalFrom p {qp} s = ∅)) ↔
-    d ∈ RealizableSequences fst_comp ∧
+    d ∈ RealizableSequenceHeads fst_comp ∧
     FinsetNFA.evalFrom p {qp} d = ∅ := by
   constructor
   · intro hd
@@ -453,7 +453,7 @@ lemma mem_preprocess_accepted_tokens_iff
   (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (qa : σa) (tok : α) :
   tok ∈ (PreprocessParser fst_comp p qp qa).1 ↔
     ∃ d,
-      d ∈ RealizableSequences fst_comp ∧
+      d ∈ RealizableSequenceHeads fst_comp ∧
       p.evalFrom {(qp, [])} d ≠ ∅ ∧
       tok ∈ InverseTokenSpannerTable fst_comp d qa := by
   constructor
@@ -509,7 +509,7 @@ on the current stack contents. -/
 lemma mem_preprocess_dependent_sequences_iff
   (fst_comp : FST α Γ σa) (p : PDA Γ π σp) (qp : σp) (qa : σa) (d : List Γ) :
   d ∈ (PreprocessParser fst_comp p qp qa).2.1 ↔
-    d ∈ RealizableSequences fst_comp ∧
+    d ∈ RealizableSequenceHeads fst_comp ∧
     p.evalFrom {(qp, [])} d = ∅ ∧
     FinsetNFA.evalFrom p {qp} d ≠ ∅ ∧
     (BuildInverseTokenSpannerTable fst_comp).snd d qa ≠ [] := by
@@ -597,11 +597,11 @@ lemma mem_ComputeValidTokenMask_preprocess_iff
   tok ∈ ComputeValidTokenMask P (BuildInverseTokenSpannerTable fst_comp).snd
       (PreprocessParser fst_comp P) qa qp st ↔
     (∃ d,
-      d ∈ RealizableSequences fst_comp ∧
+      d ∈ RealizableSequenceHeads fst_comp ∧
       P.evalFrom {(qp, [])} d ≠ ∅ ∧
       tok ∈ InverseTokenSpannerTable fst_comp d qa) ∨
     (∃ d,
-      d ∈ RealizableSequences fst_comp ∧
+      d ∈ RealizableSequenceHeads fst_comp ∧
       P.evalFrom {(qp, [])} d = ∅ ∧
       FinsetNFA.evalFrom P {qp} d ≠ ∅ ∧
       P.evalFrom {(qp, st)} d ≠ ∅ ∧
@@ -1129,9 +1129,9 @@ theorem MaskChecker_viable_imp_char_true
     -- T.head is singleton-producible from q₁ by hsingle
     have hhead_sp : (T.head hTne) ∈ comb.singleProducible q₁ :=
       hsingle q₁ suffix qa T htail hTne
-    -- d ∈ RealizableSequences comb
+    -- d ∈ RealizableSequenceHeads comb
     set d := S ++ [T.head hTne] with hd_def
-    have hd_rs : d ∈ RealizableSequences comb :=
+    have hd_rs : d ∈ RealizableSequenceHeads comb :=
       ⟨q_fst, ExtChar.char cand, S, q₁, T.head hTne, hstep, hhead_sp, rfl⟩
     -- .char cand ∈ InverseTokenSpannerTable comb d q_fst
     have hd_ne : d ≠ [] := by simp [hd_def]
@@ -1415,7 +1415,7 @@ theorem Completeness
   have hhead_sp : (T.head hTne) ∈ comb.singleProducible q₁ :=
     BuildDetokLexer_hsingle spec hassum.hempty hrestart q₁ suffix qa T htail hTne
   set d := S ++ [T.head hTne] with hd_def
-  have hd_rs : d ∈ RealizableSequences comb :=
+  have hd_rs : d ∈ RealizableSequenceHeads comb :=
     ⟨q_fst, ExtChar.char cand, S, q₁, T.head hTne, hstep, hhead_sp, rfl⟩
   have hd_ne : d ≠ [] := by simp [hd_def]
   have hd_dropLast : d.dropLast = S := by simp [hd_def]
@@ -2049,7 +2049,7 @@ theorem EOSCompleteness
     have hhead_sp : (T.head hTne) ∈ comb.singleProducible q₁ :=
       BuildDetokLexer_hsingle spec hassum.hempty hrestart q₁ suffix qa T htail hTne
     set d := S ++ [T.head hTne] with hd_def
-    have hd_rs : d ∈ RealizableSequences comb :=
+    have hd_rs : d ∈ RealizableSequenceHeads comb :=
       ⟨q_fst, .eos, S, q₁, T.head hTne, hstep, hhead_sp, rfl⟩
     have hd_ne : d ≠ [] := by simp [hd_def]
     have hd_dropLast : d.dropLast = S := by simp [hd_def]
@@ -2101,7 +2101,7 @@ theorem EOSCompleteness
       exact BuildDetokLexer_singleProducible_start_nonempty spec hassum.hempty
     set e := (ExtChar.eos : Ch Γ) with he_def
     set d := S ++ [e] with hd_def
-    have hd_rs : d ∈ RealizableSequences comb :=
+    have hd_rs : d ∈ RealizableSequenceHeads comb :=
       ⟨q_fst, .eos, S, q₁, e, hstep, he_sp, rfl⟩
     have hd_ne : d ≠ [] := by simp [hd_def]
     have hd_dropLast : d.dropLast = S := by simp [hd_def]

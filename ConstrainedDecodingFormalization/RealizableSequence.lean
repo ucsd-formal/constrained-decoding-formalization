@@ -32,7 +32,7 @@ abbrev Next (α : Type u) := List (State α)
 /-- Output words attached to explicit path descriptions. -/
 abbrev Output (α : Type u) := List (List α)
 
-/-- A finite list of realizable output sequences. -/
+/-- A finite list of realizable sequence heads (`Re` in Park et al.). -/
 abbrev Re (Γ : Type v) := List (List Γ)
 
 
@@ -47,9 +47,10 @@ variable
   [Fintype α] [Fintype Γ]
 
 
-/-- The set of output sequences obtainable by taking one transition of
-`fst_comp` and then finishing with a singleton-producible token. -/
-def RealizableSequences (fst_comp : FST α Γ σf) : Set (List Γ) :=
+/-- A *realizable sequence head*: the terminals one transition of `fst_comp`
+emits, followed by one further single-producible terminal. This is the finite
+summary Park et al. call a "realizable sequence" (`Re`). -/
+def RealizableSequenceHeads (fst_comp : FST α Γ σf) : Set (List Γ) :=
   -- all possible transitions, adjoined with singleton transitions afterwards
   { Ts' | ∃ q_0 t Ts q_1 T,
           fst_comp.step q_0 t = some (q_1, Ts) ∧
@@ -126,9 +127,9 @@ variable [LawfulBEq Γ]
 /-- The first component of `BuildInverseTokenSpannerTable` enumerates exactly
 the realizable one-step output sequences. -/
 def itst_fst_eq_rs
-  (fst_comp : FST α Γ σf) : (BuildInverseTokenSpannerTable fst_comp).fst.toFinset = RealizableSequences fst_comp := by
+  (fst_comp : FST α Γ σf) : (BuildInverseTokenSpannerTable fst_comp).fst.toFinset = RealizableSequenceHeads fst_comp := by
   ext rs
-  change rs ∈ (BuildInverseTokenSpannerTable fst_comp).fst.toFinset ↔ rs ∈ RealizableSequences fst_comp
+  change rs ∈ (BuildInverseTokenSpannerTable fst_comp).fst.toFinset ↔ rs ∈ RealizableSequenceHeads fst_comp
   constructor
   · intro hrs
     rw [List.mem_toFinset] at hrs
@@ -156,11 +157,11 @@ def itst_fst_eq_rs
     exact ⟨T, (mem_computeSingleProducible_iff_singleProducible (fst_comp := fst_comp) q1 T).2 hT, rfl⟩
 
 omit [BEq α] [Inhabited α] [Inhabited Γ] [Fintype α] t in
-/-- Membership in the computed list of realizable sequences is equivalent to
-semantic realizability. -/
+/-- Membership in the computed list of realizable sequence heads is equivalent
+to semantic realizability. -/
 lemma mem_re_iff
   (fst_comp : FST α Γ σf) (d : List Γ) :
-  d ∈ (BuildInverseTokenSpannerTable fst_comp).fst ↔ d ∈ RealizableSequences fst_comp := by
+  d ∈ (BuildInverseTokenSpannerTable fst_comp).fst ↔ d ∈ RealizableSequenceHeads fst_comp := by
   rw [← List.mem_toFinset]
   simpa using congrArg (fun s => d ∈ s) (itst_fst_eq_rs (fst_comp := fst_comp))
 
@@ -236,5 +237,5 @@ end Symbols
 
 /-- The empty sequence is never realizable in the one-step sense, since a final
 singleton token is always appended. -/
-theorem rs_ne_empty (fst_comp : FST α Γ σf) : [] ∉ RealizableSequences fst_comp := by
-  simp_all[RealizableSequences]
+theorem rs_ne_empty (fst_comp : FST α Γ σf) : [] ∉ RealizableSequenceHeads fst_comp := by
+  simp_all[RealizableSequenceHeads]
