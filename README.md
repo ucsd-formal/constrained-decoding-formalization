@@ -58,8 +58,8 @@ Requires [Lean 4](https://lean-lang.org/) (toolchain `leanprover/lean4:v4.29.0-r
 # Download prebuilt mathlib oleans (recommended before first build)
 lake exe cache get
 
-# Build the full project
-lake build
+# Build the library and worked example
+lake build ConstrainedDecodingFormalization ConstrainedDecodingFormalization.GCDTest
 ```
 
 ## Dependency Visualizer
