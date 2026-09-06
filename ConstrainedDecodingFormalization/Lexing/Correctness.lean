@@ -16,7 +16,7 @@ variable
   [DecidableEq α] [DecidableEq σ]
   [BEq α] [BEq σ] [LawfulBEq σ]
 
-omit [DecidableEq α] [DecidableEq σ] [BEq α] [BEq σ] [LawfulBEq σ] in
+omit [DecidableEq α] [BEq α] [BEq σ] [LawfulBEq σ] in
 /-- Under pruning, the seeded executable lexer and the relational semantics are
 equivalent in both directions. This is the technical core behind the later
 equivalence theorems. -/
@@ -27,7 +27,7 @@ private lemma PartialLexRel_append_singleton_tail (spec: LexerSpec α Γ σ)
     PartialLexRel spec (wp ++ c :: tail) terminals unlexed := by
   simpa using h
 
-omit [DecidableEq α] [DecidableEq σ] [BEq α] in
+omit [DecidableEq α] [BEq α] in
 lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
   (∀ w terminals unlexed, (PartialLexRel spec w terminals unlexed) →
     PartialLex_seed spec (some ([], [])) w = some (terminals, unlexed)) ∧
@@ -255,7 +255,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: sp
 
 /-! ### Equivalence of relational and executable lexing -/
 
-omit [DecidableEq α] [DecidableEq σ] [BEq α] in
+omit [DecidableEq α] [BEq α] in
 /-- Pruning lets us identify `PartialLex` with the relational lexer semantics. -/
 theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
   ∀ w terminals unlexed, (PartialLexRel spec w terminals unlexed) ↔
@@ -316,7 +316,7 @@ private def FSA_ch_to_LexingFST (spec: LexerSpec α Γ σ) :
       convert ih
       split <;> simp_all
 
-omit [DecidableEq α] [DecidableEq σ] [BEq α] in
+omit [DecidableEq α] [BEq α] in
 private lemma PartialLex_append_singleton_of_trans (spec: LexerSpec α Γ σ)
     {w : List (Ch α)} {head : Ch α}
     {seed_ts ts : List (Ch Γ)} {seed_wr wr : List α}

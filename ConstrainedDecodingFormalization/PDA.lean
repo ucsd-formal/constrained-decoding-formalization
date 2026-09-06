@@ -67,9 +67,9 @@ On input symbol `a`, a transition `(top, replace, dst)` may fire when `top` is
 a prefix of the current stack, replacing that prefix by `replace` and moving to
 state `dst`.
 -/
-structure PDA (Γ : Type u) ( π : Type v) ( σ : Type w) [Fintype Γ] [Fintype π] [Fintype σ] where
+structure PDA (γ : Type u) ( π : Type v) ( σ : Type w) [Fintype γ] [Fintype π] [Fintype σ] where
   start : σ
-  step : σ → Γ → Finset (List π × List π × σ)
+  step : σ → γ → Finset (List π × List π × σ)
   accept : Finset σ
 
 namespace PDA
@@ -99,7 +99,7 @@ theorem fullStep_none ( t : Γ ) : P.fullStep ∅ t = ∅ :=
 
 /-- One-step stack invariance: if `(sn, stn)` is reachable from `(s, st)` in one
 step, and `st` is a prefix of `st'`, then the corresponding run from `(s, st')`
-appends the extra suffix. Used inductively in `stackInvariance_lem`. -/
+appends the extra suffix. Used inductively in `stackInvarianceLemma`. -/
 private theorem fullStep_stackInvariance [ LawfulBEq π  ] : ∀ s st sn stn st' t, st <+: st' →
    (sn, stn) ∈ P.fullStep {(s, st)} t →
    (sn, stn ++ st'.drop st.length) ∈ P.fullStep {(s, st')} t
@@ -334,13 +334,13 @@ lemma overApproximationLemma :
   intro w S s' st' h
 
   -- Monotonicity of NFA step and foldl, used to relate PDA and NFA runs
-  have subset_lem1 : ∀ u v head, u ⊆ v →
+  have stepSetSubset : ∀ u v head, u ⊆ v →
     P.toNFA.stepSet u head ⊆ P.toNFA.stepSet v head := by
       intro u v head uh
       simp[NFA.stepSet]
       exact fun i i_1 => Set.subset_iUnion₂_of_subset i (uh i_1) fun ⦃a⦄ a => a
 
-  have subset_lem : ∀ u v w, u ⊆ v →
+  have foldStepSubset : ∀ u v w, u ⊆ v →
     List.foldl P.toNFA.stepSet u w ⊆ List.foldl P.toNFA.stepSet v w
     :=  by
       intro u v w uh
@@ -348,7 +348,7 @@ lemma overApproximationLemma :
       case nil =>
         exact uh
       case cons head tail ih =>
-        have := subset_lem1 u v head uh
+        have := stepSetSubset u v head uh
         simp[this, ih]
 
   induction w generalizing S s' st'
@@ -374,9 +374,9 @@ lemma overApproximationLemma :
       exists top, replace
       have g := h_s.right
       split at g <;> simp_all
-    have pda_sub := subset_lem trans_pda trans_nfa tail p_s_n
+    have pda_sub := foldStepSubset trans_pda trans_nfa tail p_s_n
     suffices s' ∈ List.foldl P.toNFA.stepSet trans_pda tail by
-      exact subset_lem trans_pda (P.toNFA.stepSet ((SetLike.coe S).image Prod.fst) head) tail p_s_n
+      exact foldStepSubset trans_pda (P.toNFA.stepSet ((SetLike.coe S).image Prod.fst) head) tail p_s_n
           (ih (P.fullStep S head) s' st' h)
     exact ih'
 
@@ -408,7 +408,7 @@ extra suffix appended to each intermediate stack.
 
 /-- Extending the initial stack by a suffix extends every run by the same
 suffix. This is the core stack-invariance lemma (Paper Prop. 3.1). -/
-lemma stackInvariance_lem  : ∀ s st sn stn st' w, st <+: st' →
+lemma stackInvarianceLemma  : ∀ s st sn stn st' w, st <+: st' →
    (sn, stn) ∈ P.evalFrom {(s, st)} w →
    (sn, stn ++ st'.drop st.length) ∈ P.evalFrom {(s, st')} w := by
   intro s st sn stn st' w pfx
@@ -443,7 +443,7 @@ theorem stackInvariance  : ∀ w s st st',
   intro w s st st' pfx wap
   simp[acceptsFrom] at wap
   obtain ⟨dst, ⟨⟨stk_f, h_eval⟩, h_accept⟩⟩ := wap
-  have := P.stackInvariance_lem s st dst stk_f st' w pfx h_eval
+  have := P.stackInvarianceLemma s st dst stk_f st' w pfx h_eval
   simp at this
   simp[acceptsFrom]
   constructor
