@@ -99,7 +99,7 @@ theorem fullStep_none ( t : Γ ) : P.fullStep ∅ t = ∅ :=
 
 /-- One-step stack invariance: if `(sn, stn)` is reachable from `(s, st)` in one
 step, and `st` is a prefix of `st'`, then the corresponding run from `(s, st')`
-appends the extra suffix. Used inductively in `stackInvariance_lem`. -/
+appends the extra suffix. Used inductively in `stackInvarianceLemma`. -/
 private theorem fullStep_stackInvariance [ LawfulBEq π  ] : ∀ s st sn stn st' t, st <+: st' →
    (sn, stn) ∈ P.fullStep {(s, st)} t →
    (sn, stn ++ st'.drop st.length) ∈ P.fullStep {(s, st')} t
@@ -408,7 +408,7 @@ extra suffix appended to each intermediate stack.
 
 /-- Extending the initial stack by a suffix extends every run by the same
 suffix. This is the core stack-invariance lemma (Paper Prop. 3.1). -/
-lemma stackInvariance_lem  : ∀ s st sn stn st' w, st <+: st' →
+lemma stackInvarianceLemma  : ∀ s st sn stn st' w, st <+: st' →
    (sn, stn) ∈ P.evalFrom {(s, st)} w →
    (sn, stn ++ st'.drop st.length) ∈ P.evalFrom {(s, st')} w := by
   intro s st sn stn st' w pfx
@@ -443,7 +443,7 @@ theorem stackInvariance  : ∀ w s st st',
   intro w s st st' pfx wap
   simp[acceptsFrom] at wap
   obtain ⟨dst, ⟨⟨stk_f, h_eval⟩, h_accept⟩⟩ := wap
-  have := P.stackInvariance_lem s st dst stk_f st' w pfx h_eval
+  have := P.stackInvarianceLemma s st dst stk_f st' w pfx h_eval
   simp at this
   simp[acceptsFrom]
   constructor

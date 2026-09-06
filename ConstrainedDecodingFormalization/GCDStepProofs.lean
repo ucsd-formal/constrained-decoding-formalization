@@ -854,7 +854,7 @@ lemma evalFrom_empty_stack_nonempty_any_stack
   p.evalFrom {(q, [])} w ≠ ∅ → p.evalFrom {(q, st)} w ≠ ∅ := by
   intro hnonempty hempty
   rcases Finset.nonempty_iff_ne_empty.mpr hnonempty with ⟨⟨qf, stf⟩, hmem⟩
-  have hlift := p.stackInvariance_lem q [] qf stf st w (by simp) hmem
+  have hlift := p.stackInvarianceLemma q [] qf stf st w (by simp) hmem
   simp [hempty] at hlift
 
 /-! ### Soundness direction -/
