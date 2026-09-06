@@ -1,128 +1,211 @@
-# Formal Verification of Grammar-Constrained Decoding
+# Verified Grammar-Constrained Decoding in Lean 4
 
-A Lean 4 formalization of the paper [*Flexible and Efficient Grammar-Constrained Decoding*](https://arxiv.org/pdf/2502.05111). This project proves correctness of a grammar-constrained decoding algorithm that composes a detokenizing lexer FST with a pushdown parser to compute valid next-token masks during LLM inference.
+A Lean 4 formalization of grammar-constrained decoding (GCD), following the
+algorithm of [*Flexible and Efficient Grammar-Constrained Decoding*](https://arxiv.org/pdf/2502.05111)
+(Park et al.). It builds an executable next-token checker by composing a
+detokenizing lexer transducer with a pushdown parser, and proves that the
+checker is **sound** and **complete**: after any token prefix it allows exactly
+the next tokens that can still be extended to a grammatical output.
 
-## Overview
+## Highlights
 
-Grammar-constrained decoding ensures that language model outputs conform to a given formal grammar (e.g., JSON, SQL, code). The core algorithm works by:
+- **An end-to-end machine-checked correctness theorem** (`GCDChecker_correct`)
+  for an executable GCD checker, under a small, explicit bundle of assumptions.
+- **A bug found in the published lexing construction.** The original lexer has no
+  distinguished start state, so it accepts end-of-stream whenever the lexing
+  automaton happens to return to its start state, i.e. in the middle of an
+  unfinished terminal. The regex `(ab)*a` triggers it. We give a corrected
+  construction with a separate start state and verify it.
+- **The assumptions made precise.** The paper leaves several conditions implicit.
+  The one that does real work is the *universal separator*: a distinguished
+  whitespace terminal that ends any lexeme and is a no-op for the parser. It is
+  what collapses the otherwise unbounded set of lexer continuations to a finite
+  check.
+- **Reusable infrastructure** with no GCD-specific dependencies: partial finite
+  automata and transducers with executable composition (`Automata.lean`),
+  nondeterministic pushdown automata with stack lemmas and a stack-forgetting NFA
+  over-approximation (`PDA.lean`), and a verified finite graph search
+  (`Producible.lean`).
 
-1. **Lexing** — An FST maps token sequences to character sequences, handling the mismatch between an LLM's token vocabulary and the grammar's character-level rules.
-2. **Parsing** — A pushdown automaton (PDA) checks whether character sequences belong to the target language.
-3. **Composition** — The lexer FST and parser are composed so that, at each decoding step, the system can determine which tokens lead to strings still accepted by the grammar.
+## The pipeline
 
-This formalization verifies that the composed system correctly computes the set of valid next tokens, establishing both **soundness** (every token in the mask extends to a valid parse) and **completeness** (no valid token is excluded).
+An LLM emits **tokens**; a grammar is defined over **terminals** that a lexer
+groups from **characters**. The target semantics is the composition
 
-## Formalization Structure
+```
+tokens --detokenize--> characters --lex--> terminals --parse--> accept
+```
 
-| File | Description |
-|------|-------------|
-| `Char.lean` | EOS-extended alphabet (`ExtChar α`) used throughout |
-| `Automata.lean` | Deterministic FSA and FST with composition and mathlib DFA/NFA conversions |
-| `Language.lean` | Language helpers and prefix closure, bridging to `Mathlib.Computability.Language` |
-| `Vocabulary.lean` | `Vocabulary α β` typeclass mapping tokens to character sequences |
-| `Producible.lean` | DFS-based computation of singleton-producible FST outputs with correctness proof |
-| `PDA.lean` | Pushdown automaton with stack semantics, `evalFrom`, and NFA overapproximation |
-| `Lexing.lean` | Compatibility import for the split lexing development |
-| `Lexing/Base.lean` | Lexer specs, partial lexing, and lexing FST construction |
-| `Lexing/Correctness.lean` | Equivalence between partial lexing, relational lexing, and the lexing FST |
-| `Lexing/Detokenizing.lean` | Detokenizing FST and its composition with the lexing FST |
-| `Lexing/Whitespace.lean` | Whitespace exchange and singleton-producibility lemmas |
-| `RealizableSequence.lean` | One-step output enumeration and inverse token spanner table |
-| `Checker.lean` | Executable checker interface with soundness/completeness specs |
-| `ParserWithEOS.lean` | EOS-augmented parser used when lexer outputs include an end marker |
-| `GCDAssumptions.lean` | End-to-end GCD assumptions, including parser-side whitespace ignoring |
-| `GCDAlgorithm.lean` | Preprocessing, valid-token mask computation, and executable GCD checker |
-| `GCDStepProofs.lean` | Step-level preprocessing, soundness, completeness, and EOS completeness |
-| `GCDCheckerLanguage.lean` | Bridge from step-level proofs to `checkerLanguage = TargetLanguage` |
-| `GCDProductivity.lean` | Productivity, path independence, and final checker correctness |
-| `GrammarConstrainedDecoding.lean` | Compatibility import for the split GCD proof development |
+A complete token sequence is valid exactly when this pipeline succeeds. The
+checker decides, incrementally, whether a candidate token keeps that pipeline
+completable.
 
-## Main Theorems
-- **`GCDChecker_correct`** — The checker satisfies the full `checkerCorrect` interface, which states that EOS is accepted if and only if the input string is in the target language, and any intermediate accepted token sequence is the prefix of some sequence in the target language.
-- **`GCDChecker_pathIndependent`** — `checkerAllows` is invariant under retokenizations with the same flattened character content.
+1. **Lexing.** `BuildLexingFST` compiles a lexer specification (a character
+   automaton labeled with terminals) into a one-lookahead maximal-munch
+   transducer. `Lexing/Correctness.lean` proves it equivalent to the relational
+   specification `PartialLexRel`.
+2. **Detokenization.** `BuildDetokenizingFST` flattens tokens to characters;
+   composing it with the lexer gives `BuildDetokLexer`, driven directly by tokens.
+3. **Realizable tails.** Modulo whitespace, the terminal sequences the lexer can
+   still produce from a state are exactly those whose first terminal is
+   *single-producible* there. This is the finiteness result the checker rests on.
+4. **Tables.** `BuildInverseTokenSpannerTable` records, per lexer state, the
+   *realizable sequence heads* each token exposes and inverts that map back to
+   tokens. `PreprocessParser` sorts heads into always-allowed, always-rejected,
+   and stack-dependent using stack invariance and NFA over-approximation.
+5. **Online mask.** `ComputeValidTokenMask` seeds the mask with the
+   always-allowed tokens and tests each stack-dependent head against the live
+   parser configuration. `GCDChecker` wires this to a prefix evaluation.
 
-## Other Theorems 
-- **`GCDChecker_checkerLanguage_eq_TargetLanguage`** — The accepted token language of `GCDChecker spec P` is exactly the lexer/parser target language.
-- **`GCDChecker_productive`** — Every incrementally allowed prefix extends to an accepted checker word.
-- **Step-level soundness (`Soundness`)** — If a token's mask bit is true, then there exists a continuation where the composed FST+parser accepts. *(Paper Theorem C.4)*
-- **Step-level completeness (`Completeness`, `EOSCompleteness`)** — If a viable continuation exists through the composed system, the token's mask bit is true. *(Paper Theorem C.5)*
-- **`accept_if_ComputedValidTokenMask`** — Tokens in the computed mask extend to valid FST runs through the parser.
-- **`mem_ComputeValidTokenMask_preprocess_iff`** — Semantic characterization of the valid-token mask: a token is in the mask iff it is realizable and the resulting output is accepted by the parser from the current state.
-- **`computeSingleProducible_correct`** — The executable DFS for singleton-producible outputs matches the semantic specification.
+## Module map
+
+| File | Role |
+|------|------|
+| `Char.lean` | EOS-extended alphabet `ExtChar α` (abbrev `Ch α`) |
+| `Language.lean` | Prefix closure `Language.prefixes`, bridging to `Mathlib.Computability.Language` |
+| `Automata.lean` | Partial deterministic FSA and FST, executable composition, mathlib DFA/NFA conversions |
+| `PDA.lean` | Pushdown automaton, stack semantics, `evalFrom`, `toNFA` over-approximation |
+| `Producible.lean` | Depth-first search for single-producible terminals, with its correctness proof |
+| `Vocabulary.lean` | `Vocabulary α β` typeclass: tokens to character strings, with the singleton-token law |
+| `Lexing/Base.lean` | Lexer specs, the partial lexer `PartialLex`/`PartialLexRel`, and `BuildLexingFST` |
+| `Lexing/Correctness.lean` | Equivalence of partial lexing, the relational lexer, and the lexing FST |
+| `Lexing/Detokenizing.lean` | Detokenizing FST and its composition `BuildDetokLexer` |
+| `Lexing/Whitespace.lean` | Whitespace-exchange lemmas and the realizable-tail characterization |
+| `Lexing.lean` | Compatibility import for the four `Lexing/` modules |
+| `RealizableSequence.lean` | Realizable sequence heads and the inverse token-spanner table |
+| `Checker.lean` | The executable `Checker β` interface and its language-level semantics |
+| `ParserWithEOS.lean` | EOS-augmented parser used when lexer output carries an end marker |
+| `GCDAssumptions.lean` | The `GCDAssumptions` bundle, including the universal-separator condition |
+| `GCDAlgorithm.lean` | `PreprocessParser`, `ComputeValidTokenMask`, and the executable `GCDChecker` |
+| `GCDStepProofs.lean` | Step-level mask correctness: `Soundness`, `Completeness`, `EOSCompleteness` |
+| `GCDCheckerLanguage.lean` | Bridge to `checkerLanguage = TargetLanguage` |
+| `GCDProductivity.lean` | Productivity, path independence, and the final `GCDChecker_correct` |
+| `GrammarConstrainedDecoding.lean` | Compatibility import for the GCD proof stack |
+| `GCDTest.lean` | A finite JSON-like grammar with all assumptions discharged (`jsonChecker_correct`) |
+
+## Main theorems
+
+| Theorem | Statement |
+|---------|-----------|
+| `GCDChecker_correct` | The checker satisfies the full `checkerCorrect` interface: EOS is allowed iff the prefix is in the target language, and every allowed token sequence is a prefix of some target-language word. |
+| `GCDChecker_checkerLanguage_eq_TargetLanguage` | The accepted token language of `GCDChecker spec P` equals the lexer/parser target language. |
+| `GCDChecker_intermediateLanguage_eq_TargetLanguage_prefixes` | The prefixes the checker allows equal the prefix closure of the target language. |
+| `GCDChecker_productive` | Every incrementally allowed prefix extends to an accepted word. |
+| `GCDChecker_pathIndependent` | The checker depends only on the flattened character content of the prefix. |
+| `Soundness` / `Completeness` / `EOSCompleteness` | Step level: a token's mask bit is true iff a viable continuation exists through the composed FST and parser. |
+| `computeSingleProducible_correct` | The executable DFS enumerates exactly the single-producible terminals. |
+| `mem_ComputeValidTokenMask_preprocess_iff` | Semantic membership characterization of the online mask. |
+
+## Assumptions
+
+The final theorems are parameterized by one package,
+`GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite`:
+
+```lean
+structure GCDAssumptions
+    (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+    (tnonwhite twhite : α) (qnonwhite qwhite : σa) : Prop where
+  hempty        : [] ∉ spec.automaton.accepts
+  lexer_pruned  : spec.automaton.pruned
+  parser_pruned : P.pruned
+  whitespace    : GCDWhitespaceAssumption spec P tnonwhite twhite qnonwhite qwhite
+```
+
+- **No empty lexeme (`hempty`).** The lexer automaton's start state is not
+  accepting, so no lexeme is empty.
+- **Lexer prunedness.** Every reachable lexer state can still reach an accepting
+  state. Used by the realizable-tail argument.
+- **Parser prunedness.** Every reachable parser configuration has an accepted
+  continuation.
+- **Universal separator (`GCDWhitespaceAssumption`).** The condition is organized
+  around a distinguished whitespace character `twhite` (with a witnessing
+  non-whitespace character `tnonwhite`, and the lexer states `qwhite`/`qnonwhite`
+  they lead to). On the lexer side, `twhite` belongs to no lexeme other than the
+  whitespace terminal, so it always ends the preceding lexeme and returns the
+  lexer to a clean post-separator state. On the parser side,
+  `ParserIgnoresTerminal` holds: every state reads the whitespace terminal with
+  the identity transition.
+- **Singleton tokens.** Carried by the `Vocabulary α β` instance: every single
+  character is itself a token (`flatten (embed a) = [a]`) and no token flattens
+  to nothing (`flatten b ≠ []`).
+
+To instantiate the end-to-end theorem for a grammar, supply finite/enumerable
+alphabets and states, a `Vocabulary` instance, and a proof of `GCDAssumptions`.
+The generic theorems are not reproved. `GCDTest.lean` does this for a shallow
+JSON grammar, using newline as the separator; `native_decide` discharges the
+finite side conditions there.
 
 ## Building
 
-Requires [Lean 4](https://lean-lang.org/) (toolchain `leanprover/lean4:v4.29.0-rc6`).
+Requires [Lean 4](https://lean-lang.org/), toolchain `leanprover/lean4:v4.29.0-rc6`
+(see `lean-toolchain`); mathlib is pinned in `lake-manifest.json`.
 
 ```bash
-# Download prebuilt mathlib oleans (recommended before first build)
-lake exe cache get
-
-# Build the library and worked example
+lake exe cache get   # prebuilt mathlib oleans, recommended before the first build
 lake build ConstrainedDecodingFormalization ConstrainedDecodingFormalization.GCDTest
 ```
 
-## Dependency Visualizer
+The development contains no `sorry` and declares no axioms.
 
-An interactive declaration dependency graph is available at:
+## Dependency visualizer
 
-**[ucsd-formal.github.io/constrained-decoding-formalization](https://ucsd-formal.github.io/constrained-decoding-formalization/)**
-
-To run locally:
+An interactive declaration dependency graph is at
+**[ucsd-formal.github.io/constrained-decoding-formalization](https://ucsd-formal.github.io/constrained-decoding-formalization/)**.
 
 ```bash
-./lean-dep-viz serve          # Serve at localhost:3000
-./lean-dep-viz build --output-dir site  # Generate static site
+./lean-dep-viz serve                     # serve at localhost:3000
+./lean-dep-viz build --output-dir site   # generate a static site
 ```
 
-## Paper-to-Formalization Reference
+## Paper-to-formalization reference
 
-This table maps definitions, algorithms, and theorems from the paper to their Lean 4 counterparts.
+Maps definitions, algorithms, and results from Park et al. to their Lean
+counterparts.
 
-### Structures and Definitions
+### Structures and definitions
 
-| Paper | Notation | Lean Name | File |
-|-------|----------|-----------|------|
+| Paper | Notation | Lean | File |
+|-------|----------|------|------|
 | EOS-extended alphabet | $\Sigma \cup \{$`EOS`$\}$ | `ExtChar α` (abbrev `Ch α`) | `Char.lean` |
-| Finite-state automaton (FSA) | $\mathcal{A} = (\Sigma, Q, q_0, \delta, F)$ | `FSA α σ` | `Automata.lean` |
-| Finite-state transducer (FST) | $\mathcal{T} = (\Sigma, \Gamma, Q, q_0, \delta, F)$ | `FST α Γ σ` | `Automata.lean` |
-| Pushdown automaton (PDA) | $\mathcal{P} = (\Sigma, \Pi, Q, q_0, Z_0, \delta, F)$ | `PDA Γ π σ` | `PDA.lean` |
+| Finite-state automaton | $\mathcal{A} = (\Sigma, Q, q_0, \delta, F)$ | `FSA α σ` | `Automata.lean` |
+| Finite-state transducer | $\mathcal{T} = (\Sigma, \Gamma, Q, q_0, \delta, F)$ | `FST α Γ σ` | `Automata.lean` |
+| Pushdown automaton | $\mathcal{P} = (\Sigma, \Pi, Q, q_0, Z_0, \delta, F)$ | `PDA Γ π σ` | `PDA.lean` |
 | Lexer specification | $\{(\mathcal{A}^i, T^i)\}_i$ | `LexerSpec α Γ σ` | `Lexing/Base.lean` |
 | Token vocabulary | $\mathcal{V} \subseteq \Sigma^+$ | `Vocabulary α β` | `Vocabulary.lean` |
-| Context-free grammar language | $\mathcal{L}(\mathcal{G})$ | `PDA.accepts` | `PDA.lean` |
+| Grammar language | $\mathcal{L}(\mathcal{G})$ | `PDA.accepts` | `PDA.lean` |
 | Prefix language | $\mathcal{L}_{\text{prefix}}(\mathcal{G})$ | `Language.prefixes` | `Language.lean` |
-| Producible terminals (Def. C.1) | $\textit{Prod}(q)$ | `FST.singleProducible q` | `Producible.lean` |
+| Single-producible terminals (Def. C.1) | $\textit{Prod}(q)$ | `FST.singleProducible q` | `Producible.lean` |
 | Realizable terminal sequences (Def. 3.2) | $Re_{\mathcal{A} \circ \mathcal{V}}$ | `RealizableSequences fst_comp` | `RealizableSequence.lean` |
-| Inverse token spanner table (Def. 3.3) | $T_{\text{inv}}(q, \alpha)$ | `InverseTokenSpannerTable fst_comp` | `RealizableSequence.lean` |
-| Always-accepted tokens | $A(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` (accepted bucket) | `GCDAlgorithm.lean` |
-| Context-dependent sequences | $D(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` (dependent bucket) | `GCDAlgorithm.lean` |
+| Inverse token-spanner table (Def. 3.3) | $T_{\text{inv}}(q, \alpha)$ | `InverseTokenSpannerTable fst_comp` | `RealizableSequence.lean` |
+| Always-allowed tokens | $A(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` first component | `GCDAlgorithm.lean` |
+| Stack-dependent heads | $D(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` second component | `GCDAlgorithm.lean` |
 | Checker | $\mathcal{C}$ | `Checker β` | `Checker.lean` |
 | GCD target language | $\mathcal{L}^{\text{Lex}}(\mathcal{G})$ | `TargetLanguage spec P` | `GCDCheckerLanguage.lean` |
 
 ### Algorithms
 
-| Paper Algorithm | Lean Name | File |
-|-----------------|-----------|------|
+| Paper | Lean | File |
+|-------|------|------|
 | Alg. 1: ConstrainedDecoding | `GCDChecker spec P` | `GCDAlgorithm.lean` |
 | Alg. 2: BuildLexingFST | `BuildLexingFST spec` | `Lexing/Base.lean` |
 | Alg. 3: BuildDetokenizingFST | `BuildDetokenizingFST` | `Lexing/Detokenizing.lean` |
-| FST composition ($\mathcal{T}_{\mathcal{A} \circ \mathcal{V}}$) | `Detokenizing.BuildDetokLexer spec` | `Lexing/Detokenizing.lean` |
+| FST composition $\mathcal{T}_{\mathcal{A} \circ \mathcal{V}}$ | `Detokenizing.BuildDetokLexer spec` | `Lexing/Detokenizing.lean` |
 | Alg. 4: BuildInverseTokenSpannerTable | `BuildInverseTokenSpannerTable fst_comp` | `RealizableSequence.lean` |
 | Alg. 5: PreprocessParser | `PreprocessParser fst_comp P` | `GCDAlgorithm.lean` |
 | Alg. 6: ComputeValidTokenMask | `ComputeValidTokenMask P itst table qa qp st` | `GCDAlgorithm.lean` |
-| Partial lexer ($\text{Lex}$) | `PartialLex spec` | `Lexing/Base.lean` |
-| PDA $\to$ NFA overapproximation | `PDA.toNFA` | `PDA.lean` |
-| DFS singleton-producible computation | `FST.computeSingleProducible q` | `Producible.lean` |
+| Partial lexer $\text{Lex}$ | `PartialLex spec` | `Lexing/Base.lean` |
+| PDA $\to$ NFA over-approximation | `PDA.toNFA` | `PDA.lean` |
+| DFS for single-producible terminals | `FST.computeSingleProducible q` | `Producible.lean` |
 
-### Propositions and Theorems
+### Propositions and theorems
 
-| Paper Result | Lean Name | File |
-|-------------|-----------|------|
+| Paper result | Lean | File |
+|--------------|------|------|
 | Stack invariance (Prop. 3.1) | `PDA.stackInvariance` | `PDA.lean` |
-| Overapproximation via FSA (Prop. 3.2) | `PDA.overApproximation` | `PDA.lean` |
-| Lexer-FST equivalence (Thm. C.1) | `PartialLex_to_LexingFST` | `Lexing/Correctness.lean` |
-| Producible $\Rightarrow$ singleton-producible (Lemma C.3) | `computeSingleProducible_correct` | `Producible.lean` |
-| Valid mask characterization | `mem_ComputeValidTokenMask_preprocess_iff` | `GCDStepProofs.lean` |
+| Over-approximation via FSA (Prop. 3.2) | `PDA.overApproximation` | `PDA.lean` |
+| Lexer-FST equivalence (Thm. C.1) | `PartialLex_to_LexingFST`, `LexingFST_to_PartialLexRel` | `Lexing/Correctness.lean` |
+| Single-producibility (Lemma C.3) | `computeSingleProducible_correct` | `Producible.lean` |
+| Valid-mask characterization | `mem_ComputeValidTokenMask_preprocess_iff` | `GCDStepProofs.lean` |
 | Soundness (Thm. C.4) | `Soundness` | `GCDStepProofs.lean` |
 | Completeness (Thm. C.5) | `Completeness`, `EOSCompleteness` | `GCDStepProofs.lean` |
 | Mask $\Rightarrow$ viable continuation | `accept_if_ComputedValidTokenMask` | `GCDStepProofs.lean` |
@@ -131,47 +214,18 @@ This table maps definitions, algorithms, and theorems from the paper to their Le
 | Checker path independence | `GCDChecker_pathIndependent` | `GCDProductivity.lean` |
 | Full checker interface | `GCDChecker_correct` | `GCDProductivity.lean` |
 
-### Type Parameters
+### Type parameters
 
-Throughout the codebase, these type variables recur:
-
-| Variable | Role | Paper notation |
-|----------|------|----------------|
-| `α` | Character/input alphabet | $\Sigma$ |
+| Variable | Role | Paper |
+|----------|------|-------|
+| `α` | Character / input alphabet | $\Sigma$ |
 | `β` | Token alphabet | $\mathcal{V}$ |
-| `Γ` | Terminal/output alphabet | $\Gamma$ |
+| `Γ` | Terminal / output alphabet | $\Gamma$ |
 | `π` | Stack alphabet | $\Pi$ |
-| `σ`, `σa`, `σp` | Automaton/parser state types | $Q$ |
+| `σ`, `σa`, `σp` | Automaton / parser state types | $Q$ |
 
-Most require `FinEnum`, `DecidableEq`, or `BEq`/`LawfulBEq` instances.
-
-## Assumptions
-
-The final checker theorems use one public package, `GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite`.
-
-```
-structure GCDAssumptions where
-  hempty        : [] ∉ spec.automaton.accepts
-  lexer_pruned  : spec.automaton.pruned
-  parser_pruned : P.pruned
-  whitespace    : GCDWhitespaceAssumption spec P tnonwhite twhite qnonwhite qwhite
-```
-
-**Non-empty-string lexing (`hempty`).** The lexer automaton's start state is not accepting. This rules out empty lexer tokens.
-
-**Lexer prunedness.** Every reachable lexer state can still reach an accepting lexer state (no dead states). This is used by the whitespace-modulo lexer realizability argument.
-
-**Parser prunedness.** Every reachable parser configuration has some accepted continuation (no dead states). 
-
-**Full whitespace assumption.** `GCDWhitespaceAssumption` intuitively states that the language must contain a whitespace token that acts as a universal separator. More formally, it states that there is a a distinguished whitespace terminal `twhite`, as well as at least one non whitespace terminal `tnonwhite`. The parser must ignore whitespace. Whitespace tokens must only be accepted by the lexer if and only if the current state is `qstart` or `qwhite`.
-
-
-**Singleton vocabulary tokens.** The `Vocabulary α β` instance is part of the theorem context. It provides an embedding of individual characters as singleton tokens (`flatten (embed a) = [a]`) and rules out empty tokens (`flatten b ≠ []`). The EOS-extended vocabulary preserves this singleton embedding for plain characters and maps EOS to the singleton EOS token. This is the vocabulary shape needed by the detokenization and whitespace-exchange proofs.
-
-### What this means for users
-
-The checker productivity and path-independence obligations are no longer external hypotheses. To instantiate the end-to-end theorem, provide finite/enumerable alphabets and states, a `Vocabulary` instance, and prove `GCDAssumptions`. The core files currently build with no Lean `sorry`.
+Most carry `FinEnum`, `DecidableEq`, or `BEq`/`LawfulBEq` instances.
 
 ## License
 
-This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
+Apache License 2.0. See [LICENSE](LICENSE).
