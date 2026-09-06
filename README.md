@@ -1,4 +1,4 @@
-# Verified Grammar-Constrained Decoding in Lean 4
+# Machine-Checked Grammar-Constrained Decoding
 
 A Lean 4 formalization of grammar-constrained decoding (GCD), following the
 algorithm of [*Flexible and Efficient Grammar-Constrained Decoding*](https://arxiv.org/pdf/2502.05111)
