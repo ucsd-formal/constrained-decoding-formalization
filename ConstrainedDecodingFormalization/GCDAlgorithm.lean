@@ -19,11 +19,11 @@ Proofs about these definitions live in `GrammarConstrainedDecoding.lean`.
 -/
 
 universe u v w x y z
-variable {Input : Type u} {V : Type x} {Γ : Type y} {StackSym : Type v} {Qp : Type w} {Qa : Type z}
+variable {α : Type u} {β : Type x} {Γ : Type y} {π : Type v} {σp : Type w} {σa : Type z}
 
 variable
-  [FinEnum Qp] [FinEnum Γ] [FinEnum Input] [FinEnum Qa] [FinEnum StackSym]
-  [DecidableEq Qp] [DecidableEq V] [DecidableEq Γ] [DecidableEq Input] [DecidableEq StackSym]
+  [FinEnum σp] [FinEnum Γ] [FinEnum α] [FinEnum σa] [FinEnum π]
+  [DecidableEq σp] [DecidableEq β] [DecidableEq Γ] [DecidableEq α] [DecidableEq π]
 
 /-- The preprocessing table indexed by parser state and automaton state.
 
@@ -33,19 +33,19 @@ For each pair of states it stores:
 * dependent realizable sequences,
 * all realizable sequences accepted from the parser state with empty stack.
 -/
-abbrev PPTable (Input Qp Qa Γ) := (Qp → Qa → (List Input × List (List Γ) × List (List Γ)))
+abbrev PPTable (α σp σa Γ) := (σp → σa → (List α × List (List Γ) × List (List Γ)))
 
 /-! ### Finset-based NFA evaluation -/
 
 namespace FinsetNFA
 
 /-- One NFA-style step on the control-state projection of a PDA. -/
-def stepSet (p: PDA Γ StackSym Qp) (q : Finset Qp) (s : Γ) : Finset Qp :=
+def stepSet (p: PDA Γ π σp) (q : Finset σp) (s : Γ) : Finset σp :=
   Finset.biUnion q (fun q' => (p.step q' s).image fun x => x.2.2)
 
 /-- Fold `stepSet` over a word. This is the finite-set presentation of the
 parser overapproximation. -/
-def evalFrom (p : PDA Γ StackSym Qp) (q : Finset Qp) (s : List Γ) : Finset Qp :=
+def evalFrom (p : PDA Γ π σp) (q : Finset σp) (s : List Γ) : Finset σp :=
   List.foldl (stepSet p) q s
 
 end FinsetNFA
@@ -59,7 +59,7 @@ For each parser state `qp` and automaton state `qa`, this separates realizable
 output sequences into immediately accepted ones, immediately rejected ones, and
 dependent ones whose acceptance depends on the current stack.
 -/
-def PreprocessParser (fst_comp : FST Input Γ Qa) (p : PDA Γ StackSym Qp) : PPTable Input Qp Qa Γ :=
+def PreprocessParser (fst_comp : FST α Γ σa) (p : PDA Γ π σp) : PPTable α σp σa Γ :=
   let (re, tist) := BuildInverseTokenSpannerTable fst_comp
   fun qp =>
     let accepted := re.filter (λ s => (p.evalFrom {(qp, [])} s) ≠  ∅)
@@ -77,8 +77,8 @@ def PreprocessParser (fst_comp : FST Input Γ Qa) (p : PDA Γ StackSym Qp) : PPT
 
 /-- Compute the valid next-token mask for a given parser state, automaton state,
 and current parser stack. -/
-def ComputeValidTokenMask (P : PDA Γ StackSym Qp) (itst : List Γ → Qa → List Input)
-  (table : PPTable Input Qp Qa Γ) (qa : Qa) (qp : Qp) (st : List StackSym) : List Input :=
+def ComputeValidTokenMask (P : PDA Γ π σp) (itst : List Γ → σa → List α)
+  (table : PPTable α σp σa Γ) (qa : σa) (qp : σp) (st : List π) : List α :=
   let accepted := (table qp qa).fst
   let dependent := (table qp qa).2.1
   let accepted :=
@@ -94,33 +94,33 @@ def ComputeValidTokenMask (P : PDA Γ StackSym Qp) (itst : List Γ → Qa → Li
 /-! ### Full GCD checker assembly -/
 
 /-- The combined detokenizing lexer FST used by grammar-constrained decoding. -/
-abbrev GCDComb [Vocabulary Input V] (spec : LexerSpec Input Γ Qa) :
-    FST (Ch V) (Ch Γ) (Unit × LexingState Qa) :=
-  Detokenizing.BuildDetokLexer (V := Ch V) spec
+abbrev GCDComb [Vocabulary α β] (spec : LexerSpec α Γ σa) :
+    FST (Ch β) (Ch Γ) (Unit × LexingState σa) :=
+  Detokenizing.BuildDetokLexer (V := Ch β) spec
 
 /-- The EOS-augmented parser used by grammar-constrained decoding. -/
-abbrev GCDParser (P : PDA Γ StackSym Qp) : PDA (Ch Γ) StackSym (Ch Qp) :=
+abbrev GCDParser (P : PDA Γ π σp) : PDA (Ch Γ) π (Ch σp) :=
   ParserWithEOS P
 
 /-- The preprocessing table used by the full GCD checker. -/
-abbrev GCDPPTable [Vocabulary Input V] [FinEnum V] (P : PDA Γ StackSym Qp) (spec : LexerSpec Input Γ Qa) :
-    PPTable (Ch V) (Ch Qp) (Unit × LexingState Qa) (Ch Γ) :=
-  PreprocessParser (GCDComb (Input := Input) (V := V) spec) (GCDParser P)
+abbrev GCDPPTable [Vocabulary α β] [FinEnum β] (P : PDA Γ π σp) (spec : LexerSpec α Γ σa) :
+    PPTable (Ch β) (Ch σp) (Unit × LexingState σa) (Ch Γ) :=
+  PreprocessParser (GCDComb (α := α) (β := β) spec) (GCDParser P)
 
 /-- The inverse token-spanner table specialized to the full GCD construction. -/
-abbrev GCDItst [Vocabulary Input V] [FinEnum V] (spec : LexerSpec Input Γ Qa) :
-    List (Ch Γ) → (Unit × LexingState Qa) → List (Ch V) :=
-  (BuildInverseTokenSpannerTable (GCDComb (Input := Input) (V := V) spec)).snd
+abbrev GCDItst [Vocabulary α β] [FinEnum β] (spec : LexerSpec α Γ σa) :
+    List (Ch Γ) → (Unit × LexingState σa) → List (Ch β) :=
+  (BuildInverseTokenSpannerTable (GCDComb (α := α) (β := β) spec)).snd
 
 /-! ### MaskChecker -/
 
 /-- The generic mask checker built from a lexer/parser combination together
 with its preprocessing artifacts. -/
 def MaskChecker
-  [BEq V] [BEq Γ] [BEq Qa] [LawfulBEq Qa]
-  (comb : FST (Ch V) (Ch Γ) Qa) (parser : PDA (Ch Γ) StackSym Qp)
-  (pp_table : PPTable (Ch V) Qp Qa (Ch Γ))
-  (itst : List (Ch Γ) → Qa → List (Ch V)) : List V → Ch V → Bool :=
+  [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa]
+  (comb : FST (Ch β) (Ch Γ) σa) (parser : PDA (Ch Γ) π σp)
+  (pp_table : PPTable (Ch β) σp σa (Ch Γ))
+  (itst : List (Ch Γ) → σa → List (Ch β)) : List β → Ch β → Bool :=
   fun curr cand =>
     match comb.eval (curr.map ExtChar.char) with
     | none => false
@@ -135,23 +135,23 @@ def MaskChecker
 /-- The end-to-end grammar-constrained checker associated to a lexer
 specification and a parser. -/
 @[reducible] def GCDChecker
-  [BEq Input] [BEq V] [BEq Γ] [BEq Qa] [LawfulBEq Qa] [Vocabulary Input V]
-  [DecidableEq Qa]
-  [FinEnum V] [FinEnum Qp] [FinEnum Qa] [FinEnum StackSym] [FinEnum Input]
-  (spec: LexerSpec Input Γ Qa) (parser0: PDA Γ StackSym Qp) : List V → Ch V → Bool :=
+  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+  [DecidableEq σa]
+  [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+  (spec: LexerSpec α Γ σa) (parser0: PDA Γ π σp) : List β → Ch β → Bool :=
   MaskChecker
-    (Detokenizing.BuildDetokLexer (V := Ch V) spec)
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec)
     (ParserWithEOS parser0)
-    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch V) spec) (ParserWithEOS parser0))
-    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch V) spec)).snd
+    (PreprocessParser (Detokenizing.BuildDetokLexer (V := Ch β) spec) (ParserWithEOS parser0))
+    (BuildInverseTokenSpannerTable (Detokenizing.BuildDetokLexer (V := Ch β) spec)).snd
 
 /-- Semantic viable-prefix predicate for the full GCD construction. -/
 @[reducible] def GCDViablePrefix
-  [BEq Input] [BEq V] [BEq Γ] [BEq Qa] [LawfulBEq Qa] [Vocabulary Input V]
-  [DecidableEq Qa]
-  [FinEnum V] [FinEnum Qp] [FinEnum Qa] [FinEnum StackSym] [FinEnum Input]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp) (w : List V) : Prop :=
+  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+  [DecidableEq σa]
+  [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) (w : List β) : Prop :=
   ∃ suffix qa gammas,
-    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
       (w.map ExtChar.char ++ suffix) = some (qa, gammas) ∧
     (ParserWithEOS P).evalFull gammas ≠ ∅

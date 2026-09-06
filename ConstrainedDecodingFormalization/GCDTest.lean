@@ -495,21 +495,21 @@ def jsonPP := PreprocessParser jsonFullFST jsonParserWithEOS
 
 /-- The final correctness theorem instantiated for the JSON lexer/parser. -/
 theorem jsonChecker_correct :
-    checkerCorrect (V := JVocab) jsonChecker (TargetLanguage jsonLexer jsonPDA) :=
+    checkerCorrect (β := JVocab) jsonChecker (TargetLanguage jsonLexer jsonPDA) :=
   by
     simpa [jsonChecker] using
-      (GCDChecker_correct (Input := JChar) (V := JVocab) (Γ := JTok)
-        (StackSym := JStack) (Qp := JParserState) (Qa := JLexState)
+      (GCDChecker_correct (α := JChar) (β := JVocab) (Γ := JTok)
+        (π := JStack) (σp := JParserState) (σa := JLexState)
         jsonLexer jsonPDA jsonGCDAssumptions)
 
 /-- Path independence also specializes to the JSON checker. -/
 theorem jsonChecker_pathIndependent :
-    checkerPathIndependent (Input := JChar) (V := JVocab)
-      jsonChecker (Vocabulary.flatten (Input := JChar)) :=
+    checkerPathIndependent (α := JChar) (β := JVocab)
+      jsonChecker (Vocabulary.flatten (α := JChar)) :=
   by
     simpa [jsonChecker] using
-      (GCDChecker_pathIndependent (Input := JChar) (V := JVocab) (Γ := JTok)
-        (StackSym := JStack) (Qp := JParserState) (Qa := JLexState)
+      (GCDChecker_pathIndependent (α := JChar) (β := JVocab) (Γ := JTok)
+        (π := JStack) (σp := JParserState) (σa := JLexState)
         jsonLexer jsonPDA jsonGCDAssumptions)
 
 #eval JChar.nl :: [JChar.nl] ∈ jsonFSA.accepts

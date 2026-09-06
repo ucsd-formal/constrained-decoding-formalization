@@ -8,11 +8,11 @@ accepted-language equality for the full checker.
 -/
 
 universe u v w x y z
-variable {Input : Type u} {V : Type x} {Γ : Type y} {StackSym : Type v} {Qp : Type w} {Qa : Type z}
+variable {α : Type u} {β : Type x} {Γ : Type y} {π : Type v} {σp : Type w} {σa : Type z}
 
 variable
-  [FinEnum Qp] [FinEnum Γ] [FinEnum Input] [FinEnum Qa] [FinEnum StackSym]
-  [DecidableEq Qp] [DecidableEq V] [DecidableEq Γ] [DecidableEq Input] [DecidableEq StackSym]
+  [FinEnum σp] [FinEnum Γ] [FinEnum α] [FinEnum σa] [FinEnum π]
+  [DecidableEq σp] [DecidableEq β] [DecidableEq Γ] [DecidableEq α] [DecidableEq π]
 
 /-! ## Checker interface connection
 
@@ -28,19 +28,19 @@ statement is packaged by `GCDChecker_correct`; its productivity obligation is
 now derived from the full whitespace assumption.
 -/
 
-omit [FinEnum Γ] [FinEnum Input] [FinEnum Qa] [DecidableEq V] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum α] [FinEnum σa] [DecidableEq β] [DecidableEq Γ] in
 /-- Evaluating `BuildDetokLexer` on a `.char`-lifted token list depends only on the
 flattened character content, not on the tokenization boundaries.
 
 This is a key building block for path independence: two token sequences with the
 same `flatMap flatten` value produce identical FST states and output lists. -/
 lemma BuildDetokLexer_eval_flatMap_eq
-    [BEq Input] [BEq V] [BEq Γ] [BEq Qa] [LawfulBEq Qa] [Vocabulary Input V]
-    [DecidableEq Qa] [FinEnum V] [FinEnum Qa] [FinEnum Input]
-    (spec : LexerSpec Input Γ Qa) (w₁ w₂ : List V)
-    (hfm : w₁.flatMap (Vocabulary.flatten (Input := Input)) = w₂.flatMap (Vocabulary.flatten (Input := Input))) :
-    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval (w₁.map ExtChar.char) =
-    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval (w₂.map ExtChar.char) := by
+    [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+    [DecidableEq σa] [FinEnum β] [FinEnum σa] [FinEnum α]
+    (spec : LexerSpec α Γ σa) (w₁ w₂ : List β)
+    (hfm : w₁.flatMap (Vocabulary.flatten (α := α)) = w₂.flatMap (Vocabulary.flatten (α := α))) :
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (w₁.map ExtChar.char) =
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval (w₂.map ExtChar.char) := by
   -- Reduce to detokenize equality via detokenize_eq_comp
   simp only [FST.eval, Detokenizing.BuildDetokLexer]
   apply Detokenizing.detokenize_eq_comp
@@ -49,8 +49,8 @@ lemma BuildDetokLexer_eval_flatMap_eq
   -- The extended Vocabulary instance: flatten (char t) = (flatten t).map char
   -- so (w.map char).flatMap Ch_flatten = (w.flatMap flatten).map char
   -- which equals (w.flatMap flatten).map char on both sides.
-  have key : ∀ (w : List V),
-      (w.map ExtChar.char).flatMap (Vocabulary.flatten (Input := Ch Input) (V := Ch V)) =
+  have key : ∀ (w : List β),
+      (w.map ExtChar.char).flatMap (Vocabulary.flatten (α := Ch α) (β := Ch β)) =
       (w.flatMap Vocabulary.flatten).map ExtChar.char := by
     intro w
     induction w with
@@ -60,17 +60,17 @@ lemma BuildDetokLexer_eval_flatMap_eq
       exact congrArg _ ih
   rw [key w₁, key w₂, hfm]
 
-omit [FinEnum Γ] [FinEnum Input] [FinEnum Qa] [DecidableEq V] [DecidableEq Γ] in
+omit [FinEnum Γ] [FinEnum α] [FinEnum σa] [DecidableEq β] [DecidableEq Γ] in
 /-- Evaluating `BuildDetokLexer` on arbitrary EOS-extended token lists depends
 only on their flattened EOS-extended character content. -/
 lemma BuildDetokLexer_eval_ch_flatMap_eq
-    [BEq Input] [BEq V] [BEq Γ] [BEq Qa] [LawfulBEq Qa] [Vocabulary Input V]
-    [DecidableEq Qa] [FinEnum V] [FinEnum Qa] [FinEnum Input]
-    (spec : LexerSpec Input Γ Qa) (w₁ w₂ : List (Ch V))
-    (hfm : w₁.flatMap (Vocabulary.flatten (Input := Ch Input) (V := Ch V)) =
-      w₂.flatMap (Vocabulary.flatten (Input := Ch Input) (V := Ch V))) :
-    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval w₁ =
-    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval w₂ := by
+    [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+    [DecidableEq σa] [FinEnum β] [FinEnum σa] [FinEnum α]
+    (spec : LexerSpec α Γ σa) (w₁ w₂ : List (Ch β))
+    (hfm : w₁.flatMap (Vocabulary.flatten (α := Ch α) (β := Ch β)) =
+      w₂.flatMap (Vocabulary.flatten (α := Ch α) (β := Ch β))) :
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval w₁ =
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval w₂ := by
   simp only [FST.eval, Detokenizing.BuildDetokLexer]
   apply Detokenizing.detokenize_eq_comp
   rw [Detokenizing.detokenize_flatmap, Detokenizing.detokenize_flatmap]
@@ -80,13 +80,13 @@ set_option linter.unusedSectionVars false in
 /-- A single GCD checker decision depends on the current prefix only through
 its flattened character content. -/
 theorem GCDChecker_eq_of_flatMap_eq
-    [BEq Input] [BEq V] [BEq Γ] [BEq Qa] [LawfulBEq Qa] [Vocabulary Input V]
-    [DecidableEq Qa]
-    [FinEnum V] [FinEnum Qp] [FinEnum Qa] [FinEnum StackSym] [FinEnum Input]
-    (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-    (w₁ w₂ : List V) (cand : Ch V)
-    (hfm : w₁.flatMap (Vocabulary.flatten (Input := Input)) =
-      w₂.flatMap (Vocabulary.flatten (Input := Input))) :
+    [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+    [DecidableEq σa]
+    [FinEnum β] [FinEnum σp] [FinEnum σa] [FinEnum π] [FinEnum α]
+    (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+    (w₁ w₂ : List β) (cand : Ch β)
+    (hfm : w₁.flatMap (Vocabulary.flatten (α := α)) =
+      w₂.flatMap (Vocabulary.flatten (α := α))) :
     GCDChecker spec P w₁ cand = GCDChecker spec P w₂ cand := by
   rw [GCDChecker_eq_MaskChecker, GCDChecker_eq_MaskChecker]
   apply MaskChecker_eq_of_eval_eq
@@ -96,29 +96,29 @@ theorem GCDChecker_eq_of_flatMap_eq
 composed detokenizing lexer processes `w.map char ++ [.eos]` successfully and
 the EOS-augmented parser accepts the resulting terminal sequence. -/
 def TargetLanguage
-  [BEq Input] [BEq V] [BEq Γ] [BEq Qa] [LawfulBEq Qa] [Vocabulary Input V]
-  [FinEnum V] [FinEnum Qa] [FinEnum Input]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp) : Language V :=
+  [BEq α] [BEq β] [BEq Γ] [BEq σa] [LawfulBEq σa] [Vocabulary α β]
+  [FinEnum β] [FinEnum σa] [FinEnum α]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp) : Language β :=
   { w | ∃ qa gammas,
-    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
       (w.map ExtChar.char ++ [.eos]) = some (qa, gammas) ∧
     gammas ∈ (ParserWithEOS P).accepts }
 
 /-- `TargetLanguage` itself depends only on the flattened character content of the
 token sequence. -/
 lemma TargetLanguage_of_flatMap_eq
-    [Vocabulary Input V] [FinEnum V]
-    (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-    (w₁ w₂ : List V)
-    (hfm : w₁.flatMap (Vocabulary.flatten (Input := Input)) =
-      w₂.flatMap (Vocabulary.flatten (Input := Input))) :
+    [Vocabulary α β] [FinEnum β]
+    (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+    (w₁ w₂ : List β)
+    (hfm : w₁.flatMap (Vocabulary.flatten (α := α)) =
+      w₂.flatMap (Vocabulary.flatten (α := α))) :
     w₁ ∈ TargetLanguage spec P → w₂ ∈ TargetLanguage spec P := by
   intro hw₁
   obtain ⟨qa, gammas, heval, hacc⟩ := hw₁
   refine ⟨qa, gammas, ?_, hacc⟩
-  have key : ∀ (w : List V),
-      (w.map ExtChar.char).flatMap (Vocabulary.flatten (Input := Ch Input) (V := Ch V)) =
-      (w.flatMap (Vocabulary.flatten (Input := Input))).map ExtChar.char := by
+  have key : ∀ (w : List β),
+      (w.map ExtChar.char).flatMap (Vocabulary.flatten (α := Ch α) (β := Ch β)) =
+      (w.flatMap (Vocabulary.flatten (α := α))).map ExtChar.char := by
     intro w
     induction w with
     | nil => simp
@@ -127,9 +127,9 @@ lemma TargetLanguage_of_flatMap_eq
       exact congrArg _ ih
   have hinput :
       (w₁.map ExtChar.char ++ [ExtChar.eos]).flatMap
-          (Vocabulary.flatten (Input := Ch Input) (V := Ch V)) =
+          (Vocabulary.flatten (α := Ch α) (β := Ch β)) =
         (w₂.map ExtChar.char ++ [ExtChar.eos]).flatMap
-          (Vocabulary.flatten (Input := Ch Input) (V := Ch V)) := by
+          (Vocabulary.flatten (α := Ch α) (β := Ch β)) := by
     simp only [List.flatMap_append, List.flatMap_singleton]
     rw [key w₁, key w₂, hfm]
   have heq := BuildDetokLexer_eval_ch_flatMap_eq spec
@@ -141,11 +141,11 @@ lemma TargetLanguage_of_flatMap_eq
 /-- The prefix closure of `TargetLanguage` is invariant under retokenizing the
 same flattened character content. -/
 lemma TargetLanguage_prefixes_iff_of_flatMap_eq
-    [Vocabulary Input V] [FinEnum V]
-    (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-    (w₁ w₂ : List V)
-    (hfm : w₁.flatMap (Vocabulary.flatten (Input := Input)) =
-      w₂.flatMap (Vocabulary.flatten (Input := Input))) :
+    [Vocabulary α β] [FinEnum β]
+    (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+    (w₁ w₂ : List β)
+    (hfm : w₁.flatMap (Vocabulary.flatten (α := α)) =
+      w₂.flatMap (Vocabulary.flatten (α := α))) :
     w₁ ∈ (TargetLanguage spec P).prefixes ↔
       w₂ ∈ (TargetLanguage spec P).prefixes := by
   constructor
@@ -170,12 +170,12 @@ This is the key inductive step for completeness: we strengthen the IH from
 "the full word is in the language" to "any prefix passes checkerAllows".
 The induction is on the length of the prefix `w'`. -/
 theorem TargetLanguage_checkerAllows_prefix
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite)
-  (w : List V) (hw : w ∈ TargetLanguage spec P)
-  (w' : List V) (rest : List V) (hrest : w = w' ++ rest) :
+  (w : List β) (hw : w ∈ TargetLanguage spec P)
+  (w' : List β) (rest : List β) (hrest : w = w' ++ rest) :
   checkerAllows (GCDChecker spec P) w' = true := by
   -- Extract the TargetLanguage witness
   obtain ⟨qa, gammas, heval, hacc⟩ := hw
@@ -184,9 +184,9 @@ theorem TargetLanguage_checkerAllows_prefix
   -- checkerAllows holds.
   -- We use Nat.rec_aux on the reverse of w':
   -- specifically, we show the stronger statement:
-  -- ∀ (n : Nat) (w' rest : List V), w'.length = n → w = w' ++ rest →
+  -- ∀ (n : Nat) (w' rest : List β), w'.length = n → w = w' ++ rest →
   --   checkerAllows (GCDChecker spec P) w' = true
-  suffices h : ∀ (n : Nat) (w' rest : List V),
+  suffices h : ∀ (n : Nat) (w' rest : List β),
       w'.length = n → w = w' ++ rest →
       checkerAllows (GCDChecker spec P) w' = true from
     h w'.length w' rest rfl hrest
@@ -223,7 +223,7 @@ theorem TargetLanguage_checkerAllows_prefix
       -- From heval: evalFrom start (w.map char ++ [.eos]) = some (qa, gammas)
       -- and hweq: w = w'' ++ [v] ++ rest (after concat_eq_append normalization)
       simp only [FST.eval] at heval ⊢
-      have heq : (w'' ++ [v]).map (ExtChar.char (Input := V)) ++ (rest.map ExtChar.char ++ [.eos]) =
+      have heq : (w'' ++ [v]).map (ExtChar.char (α := β)) ++ (rest.map ExtChar.char ++ [.eos]) =
           w.map ExtChar.char ++ [.eos] := by
         simp [hweq, List.map_append, List.append_assoc]
       rw [heq]
@@ -231,11 +231,11 @@ theorem TargetLanguage_checkerAllows_prefix
 
 /-- If `w ∈ TargetLanguage spec P`, then the GCD checker accepts `w`. -/
 theorem TargetLanguage_imp_checkerAccepts
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite)
-  (w : List V) (hw : w ∈ TargetLanguage spec P) :
+  (w : List β) (hw : w ∈ TargetLanguage spec P) :
   checkerAccepts (GCDChecker spec P) w = true := by
   obtain ⟨qa, gammas, heval, hacc⟩ := hw
   -- Show checkerAllows holds via the prefix lemma
@@ -253,9 +253,9 @@ theorem TargetLanguage_imp_checkerAccepts
 
 /-- If the GCD checker accepts `w`, then `w ∈ TargetLanguage spec P`. -/
 theorem checkerAccepts_imp_TargetLanguage
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  (w : List V)
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  (w : List β)
   (hw : checkerAccepts (GCDChecker spec P) w = true) :
   w ∈ TargetLanguage spec P := by
   -- Extract GCDChecker spec P w .eos = true from checkerAccepts.
@@ -270,7 +270,7 @@ theorem checkerAccepts_imp_TargetLanguage
   obtain ⟨suffix, qa_full, gammas_full, heval_full, hparse_full⟩ :=
     GCDChecker_eos_true_imp_viable spec P w heos_true
   -- Abbreviate
-  let comb := Detokenizing.BuildDetokLexer (V := Ch V) spec
+  let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
   -- Split FST run at w.map char: get comb.eval (w.map char) = some (q_fst, terms)
   have heval_full_from : comb.evalFrom comb.start
       (w.map ExtChar.char ++ (.eos :: suffix)) = some (qa_full, gammas_full) := by
@@ -341,11 +341,11 @@ theorem checkerAccepts_imp_TargetLanguage
 
 /-- The checker language of `GCDChecker spec P` equals `TargetLanguage spec P`. -/
 theorem GCDChecker_checkerLanguage_eq_TargetLanguage
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite) :
-  checkerLanguage (V := V) (GCDChecker spec P) = TargetLanguage spec P := by
+  checkerLanguage (β := β) (GCDChecker spec P) = TargetLanguage spec P := by
   ext w
   simp only [checkerLanguage]
   constructor

@@ -8,32 +8,32 @@ import Mathlib.Tactic.Linarith
 
 This is the ambient character type used throughout the development to model
 inputs and outputs that may be terminated by `eos`. Higher-level lexer and
-checker constructions work over `Ch Input` rather than bare `Input` for exactly this
+checker constructions work over `Ch α` rather than bare `α` for exactly this
 reason.
 -/
-inductive ExtChar (Input : Type u)
-| char : Input → ExtChar Input
-| eos  : ExtChar Input
+inductive ExtChar (α : Type u)
+| char : α → ExtChar α
+| eos  : ExtChar α
 deriving DecidableEq, Repr
 
-/-- `ExtChar Input` is inhabited by the EOS symbol. -/
-instance {Input} : Inhabited (ExtChar Input) := ⟨ExtChar.eos⟩
+/-- `ExtChar α` is inhabited by the EOS symbol. -/
+instance {α} : Inhabited (ExtChar α) := ⟨ExtChar.eos⟩
 
 /-- Coerce a plain symbol into the corresponding non-EOS extended symbol. -/
-instance {Input} : Coe (Input) (ExtChar Input) := ⟨fun a => ExtChar.char a⟩
+instance {α} : Coe (α) (ExtChar α) := ⟨fun a => ExtChar.char a⟩
 
-/-- If `Input` is finite and enumerable, then so is `ExtChar Input`, with one extra
+/-- If `α` is finite and enumerable, then so is `ExtChar α`, with one extra
 element representing EOS. -/
-instance {Input} [e: FinEnum Input] : FinEnum (ExtChar Input) where
-  card := FinEnum.card Input + 1
+instance {α} [e: FinEnum α] : FinEnum (ExtChar α) where
+  card := FinEnum.card α + 1
   equiv :=
     let e := e.equiv
     { toFun := fun x =>
         match x with
-        | ExtChar.eos     => ⟨FinEnum.card Input, Nat.lt_succ_self _⟩
+        | ExtChar.eos     => ⟨FinEnum.card α, Nat.lt_succ_self _⟩
         | ExtChar.char a  => ⟨e a, Nat.lt_succ_of_lt (Fin.is_lt (e a))⟩
       invFun := fun i =>
-        if h : i.val < FinEnum.card Input then ExtChar.char (e.symm ⟨i.val, h⟩)
+        if h : i.val < FinEnum.card α then ExtChar.char (e.symm ⟨i.val, h⟩)
         else ExtChar.eos
       left_inv := by
         intro x
@@ -44,9 +44,9 @@ instance {Input} [e: FinEnum Input] : FinEnum (ExtChar Input) where
           simp
       right_inv := by
         intro ⟨i, hi⟩
-        by_cases h : i < FinEnum.card Input
+        by_cases h : i < FinEnum.card α
         · simp [h]
-        · have : i = FinEnum.card Input := by
+        · have : i = FinEnum.card α := by
             linarith
           subst this
           simp

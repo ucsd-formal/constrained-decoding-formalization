@@ -9,21 +9,21 @@ assumption and parser prunedness, plus path independence and the final
 -/
 
 universe u v w x y z
-variable {Input : Type u} {V : Type x} {Γ : Type y} {StackSym : Type v} {Qp : Type w} {Qa : Type z}
+variable {α : Type u} {β : Type x} {Γ : Type y} {π : Type v} {σp : Type w} {σa : Type z}
 
 variable
-  [FinEnum Qp] [FinEnum Γ] [FinEnum Input] [FinEnum Qa] [FinEnum StackSym]
-  [DecidableEq Qp] [DecidableEq V] [DecidableEq Γ] [DecidableEq Input] [DecidableEq StackSym]
+  [FinEnum σp] [FinEnum Γ] [FinEnum α] [FinEnum σa] [FinEnum π]
+  [DecidableEq σp] [DecidableEq β] [DecidableEq Γ] [DecidableEq α] [DecidableEq π]
 
 private lemma GCDChecker_checkerAccepts_of_allowed_accepted_suffix
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite)
-  (curr tail : List V) (suffix : List (Ch V))
+  (curr tail : List β) (suffix : List (Ch β))
   (hcurr : checkerAllows (GCDChecker spec P) curr = true)
   (hrun : ∃ qa gammas,
-    (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval
+    (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
       (curr.map ExtChar.char ++ tail.map ExtChar.char ++ (ExtChar.eos :: suffix)) =
         some (qa, gammas) ∧
     gammas ∈ (ParserWithEOS P).accepts) :
@@ -48,7 +48,7 @@ private lemma GCDChecker_checkerAccepts_of_allowed_accepted_suffix
         rw [checkerAllows_snoc]
         simp [hnext, hcurr]
       have hrun_next : ∃ qa gammas,
-          (Detokenizing.BuildDetokLexer (V := Ch V) spec).eval
+          (Detokenizing.BuildDetokLexer (V := Ch β) spec).eval
             ((curr ++ [next]).map ExtChar.char ++ rest.map ExtChar.char ++
               (ExtChar.eos :: suffix)) = some (qa, gammas) ∧
           gammas ∈ (ParserWithEOS P).accepts := by
@@ -58,11 +58,11 @@ private lemma GCDChecker_checkerAccepts_of_allowed_accepted_suffix
       simpa [List.append_assoc] using haccept_next
 
 private lemma GCDChecker_char_true_head_witness
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  (curr : List V) (cand : V)
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  (curr : List β) (cand : β)
   (h : GCDChecker spec P curr (ExtChar.char cand) = true) :
-  let comb := Detokenizing.BuildDetokLexer (V := Ch V) spec
+  let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
   let parser := ParserWithEOS P
   ∃ q_fst terms qp st q₁ S head,
     comb.eval (curr.map ExtChar.char) = some (q_fst, terms) ∧
@@ -106,12 +106,12 @@ private lemma GCDChecker_char_true_head_witness
     simpa [List.dropLast_append_getLast hd_ne] using hcur
 
 private lemma GCDChecker_nil_checkerAccepts_extension
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite) :
-  ∃ w' : List V, checkerAccepts (GCDChecker spec P) w' ∧ ([] : List V).isPrefixOf w' := by
-  let comb := Detokenizing.BuildDetokLexer (V := Ch V) spec
+  ∃ w' : List β, checkerAccepts (GCDChecker spec P) w' ∧ ([] : List β).isPrefixOf w' := by
+  let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
   let parser := ParserWithEOS P
   obtain ⟨hlexer, hignoreP⟩ := hassum.whitespace
   let whiteTerm :=
@@ -134,24 +134,24 @@ private lemma GCDChecker_nil_checkerAccepts_extension
     simp [target]
   have hwhite_single :
       (ExtChar.char whiteTerm : Ch Γ) ∈
-        comb.singleProducible ((), LexingState.start (Q := Qa)) := by
+        comb.singleProducible ((), LexingState.start (σ := σa)) := by
     simpa [comb, whiteCh] using
       BuildDetokLexer_whitespace_singleProducible_start
-        (V := V) spec hlexer
+        (β := β) spec hlexer
   have hmod_eq :=
     Detokenizing.moddedRealizableSequences_eq_not_contains_whitespace
-      (vocab := (inferInstance : Vocabulary (Ch Input) (Ch V)))
+      (vocab := (inferInstance : Vocabulary (Ch α) (Ch β)))
       spec hassum.hempty hassum.lexer_pruned hlexer
-      (LexingState.start (Q := Qa)) hwhite_single
+      (LexingState.start (σ := σa)) hwhite_single
   have hmod_mem :
       target ∈ comb.moddedRealizableSequences
-        ((), LexingState.start (Q := Qa)) whiteTerm := by
+        ((), LexingState.start (σ := σa)) whiteTerm := by
     rw [← hmod_eq]
     simpa [comb, whiteCh, whiteTerm] using htarget_no_white
   simp only [FST.moddedRealizableSequences] at hmod_mem
   obtain ⟨outReal, houtReal_rs, hfilterOut⟩ := hmod_mem
   change ∃ q' inp,
-    comb.evalFrom ((), LexingState.start (Q := Qa)) inp =
+    comb.evalFrom ((), LexingState.start (σ := σa)) inp =
       some (q', outReal) at houtReal_rs
   obtain ⟨qtail, inp, hlexTail⟩ := houtReal_rs
   have haccOut : outReal ∈ parser.accepts := by
@@ -169,7 +169,7 @@ private lemma GCDChecker_nil_checkerAccepts_extension
     subst hinp
     have hout_no_eos :=
       BuildDetokLexer_char_evalFrom_no_eos spec
-        ((), LexingState.start (Q := Qa)) inpChars qtail outReal hlexTail
+        ((), LexingState.start (σ := σa)) inpChars qtail outReal hlexTail
     exact hout_no_eos heos_out
   obtain ⟨tailTokens, suffixAfter, hinp_decomp⟩ :=
     List.exists_map_char_append_eos_of_mem_eos heos_inp
@@ -184,13 +184,13 @@ private lemma GCDChecker_nil_checkerAccepts_extension
   · simp
 
 private lemma GCDChecker_snoc_checkerAccepts_extension
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite)
-  (pref : List V) (last : V)
+  (pref : List β) (last : β)
   (hw : checkerAllows (GCDChecker spec P) (pref ++ [last]) = true) :
-  ∃ w' : List V, checkerAccepts (GCDChecker spec P) w' ∧
+  ∃ w' : List β, checkerAccepts (GCDChecker spec P) w' ∧
     (pref ++ [last]).isPrefixOf w' := by
   have hlast : GCDChecker spec P pref (ExtChar.char last) = true := by
     exact (checkerAllows_snoc_iff (GCDChecker spec P) pref last).1
@@ -198,7 +198,7 @@ private lemma GCDChecker_snoc_checkerAccepts_extension
   obtain ⟨q_fst, terms, qp, st, q₁, S, head,
       hcomb, hcfg, hstep, hsingle, hparse⟩ :=
     GCDChecker_char_true_head_witness spec P pref last hlast
-  let comb := Detokenizing.BuildDetokLexer (V := Ch V) spec
+  let comb := Detokenizing.BuildDetokLexer (V := Ch β) spec
   let parser := ParserWithEOS P
   obtain ⟨hlexer, hignoreP⟩ := hassum.whitespace
   let whiteTerm :=
@@ -210,7 +210,7 @@ private lemma GCDChecker_snoc_checkerAccepts_extension
   have hprefix_ne : parser.evalFull (terms ++ (S ++ [head])) ≠ ∅ := by
     rw [parser.evalFull_append terms (S ++ [head])]
     rcases Finset.nonempty_iff_ne_empty.mpr hparse with ⟨cfg, hcfg_tail⟩
-    have hsingle_cfg : ({(qp, st)} : Finset (Ch Qp × List StackSym)) ⊆ parser.evalFull terms := by
+    have hsingle_cfg : ({(qp, st)} : Finset (Ch σp × List π)) ⊆ parser.evalFull terms := by
       intro x hx
       simp only [Finset.mem_singleton] at hx
       subst hx
@@ -245,7 +245,7 @@ private lemma GCDChecker_snoc_checkerAccepts_extension
         simpa [whiteCh, hhead_white, comb] using hsingle
       have hmod_eq :=
         Detokenizing.moddedRealizableSequences_eq_not_contains_whitespace
-          (vocab := (inferInstance : Vocabulary (Ch Input) (Ch V)))
+          (vocab := (inferInstance : Vocabulary (Ch α) (Ch β)))
           spec hassum.hempty hassum.lexer_pruned hlexer qlex hwhite_single
       have hmod_mem :
           tailFiltered ∈ comb.moddedRealizableSequences ((), qlex) whiteTerm := by
@@ -261,7 +261,7 @@ private lemma GCDChecker_snoc_checkerAccepts_extension
         simp [tailFiltered, tailRaw, hhead_white]
       have htail_eq :=
         Detokenizing.tailModdedRealizableSequences_eq_singleProducibleHead
-          (vocab := (inferInstance : Vocabulary (Ch Input) (Ch V)))
+          (vocab := (inferInstance : Vocabulary (Ch α) (Ch β)))
           spec hassum.hempty hassum.lexer_pruned hlexer qlex
       have htail_mem :
           tailFiltered ∈ comb.tailModdedRealizableSequences ((), qlex) whiteTerm := by
@@ -353,13 +353,13 @@ This theorem must use the `checkerAllows` evidence rather than merely a
 `GCDViablePrefix`: the latter forgets which single-producible lexer head the
 mask proved parseable. -/
 theorem GCDChecker_checkerAllows_imp_checkerAccepts_extension
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite)
-  (w : List V)
+  (w : List β)
   (hw : checkerAllows (GCDChecker spec P) w = true) :
-  ∃ w' : List V, checkerAccepts (GCDChecker spec P) w' ∧ w.isPrefixOf w' := by
+  ∃ w' : List β, checkerAccepts (GCDChecker spec P) w' ∧ w.isPrefixOf w' := by
   cases List.eq_nil_or_concat w with
   | inl hnil =>
       subst hnil
@@ -374,24 +374,24 @@ theorem GCDChecker_checkerAllows_imp_checkerAccepts_extension
 /-- Under the full whitespace assumption, every incrementally accepted prefix
 can be extended to a complete checker-accepted word. -/
 theorem GCDChecker_productive
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite) :
-  checkerProductive (V := V) (GCDChecker spec P) := by
+  checkerProductive (β := β) (GCDChecker spec P) := by
   intro w hw
   exact GCDChecker_checkerAllows_imp_checkerAccepts_extension spec P hassum w hw
 
 /-- The GCD checker's intermediate language is the prefix closure of
 `TargetLanguage`, assuming the full whitespace assumption. -/
 theorem GCDChecker_intermediateLanguage_eq_TargetLanguage_prefixes
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite) :
-  checkerIntermediateLanguage (V := V) (GCDChecker spec P) =
-    (TargetLanguage (V := V) spec P).prefixes := by
-  have hproductive : checkerProductive (V := V) (GCDChecker spec P) :=
+  checkerIntermediateLanguage (β := β) (GCDChecker spec P) =
+    (TargetLanguage (β := β) spec P).prefixes := by
+  have hproductive : checkerProductive (β := β) (GCDChecker spec P) :=
     GCDChecker_productive spec P hassum
   ext w
   simp only [checkerIntermediateLanguage, Language.prefixes]
@@ -404,7 +404,7 @@ theorem GCDChecker_intermediateLanguage_eq_TargetLanguage_prefixes
     have hprefix' : w <+: w' := List.isPrefixOf_iff_prefix.mp hprefix
     -- Use checkerLanguage = TargetLanguage: w' ∈ checkerLanguage c → w' ∈ TargetLanguage
     have hw'_lang : w' ∈ TargetLanguage spec P := by
-      have heq : checkerLanguage (V := V) (GCDChecker spec P) = TargetLanguage spec P :=
+      have heq : checkerLanguage (β := β) (GCDChecker spec P) = TargetLanguage spec P :=
         GCDChecker_checkerLanguage_eq_TargetLanguage spec P hassum
       rw [← heq]
       simp only [checkerLanguage]
@@ -420,30 +420,30 @@ theorem GCDChecker_intermediateLanguage_eq_TargetLanguage_prefixes
 retokenizing a prefix with the same flattened character content under the full
 whitespace assumption. -/
 theorem GCDChecker_pathIndependent
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite) :
-  checkerPathIndependent (Input := Input) (V := V)
-    (GCDChecker spec P) (Vocabulary.flatten (Input := Input)) := by
+  checkerPathIndependent (α := α) (β := β)
+    (GCDChecker spec P) (Vocabulary.flatten (α := α)) := by
   intro w₁ w₂ hfm
   have hintermediate :
-      checkerIntermediateLanguage (V := V) (GCDChecker spec P) =
-        (TargetLanguage (V := V) spec P).prefixes :=
+      checkerIntermediateLanguage (β := β) (GCDChecker spec P) =
+        (TargetLanguage (β := β) spec P).prefixes :=
     GCDChecker_intermediateLanguage_eq_TargetLanguage_prefixes spec P hassum
   have hw₁ :
       checkerAllows (GCDChecker spec P) w₁ = true ↔
-        w₁ ∈ (TargetLanguage (V := V) spec P).prefixes := by
-    have hmem := congrArg (fun l : Language V => w₁ ∈ l) hintermediate
+        w₁ ∈ (TargetLanguage (β := β) spec P).prefixes := by
+    have hmem := congrArg (fun l : Language β => w₁ ∈ l) hintermediate
     simpa [checkerIntermediateLanguage] using hmem
   have hw₂ :
       checkerAllows (GCDChecker spec P) w₂ = true ↔
-        w₂ ∈ (TargetLanguage (V := V) spec P).prefixes := by
-    have hmem := congrArg (fun l : Language V => w₂ ∈ l) hintermediate
+        w₂ ∈ (TargetLanguage (β := β) spec P).prefixes := by
+    have hmem := congrArg (fun l : Language β => w₂ ∈ l) hintermediate
     simpa [checkerIntermediateLanguage] using hmem
   have hprefix :
-      w₁ ∈ (TargetLanguage (V := V) spec P).prefixes ↔
-        w₂ ∈ (TargetLanguage (V := V) spec P).prefixes :=
+      w₁ ∈ (TargetLanguage (β := β) spec P).prefixes ↔
+        w₂ ∈ (TargetLanguage (β := β) spec P).prefixes :=
     TargetLanguage_prefixes_iff_of_flatMap_eq spec P w₁ w₂ hfm
   have hiff :
       checkerAllows (GCDChecker spec P) w₁ = true ↔
@@ -469,11 +469,11 @@ The `checkerLanguage` direction is fully proved (both directions).
 The `checkerIntermediateLanguage` direction uses productivity as derived from
 the full whitespace assumption. -/
 theorem GCDChecker_correct
-  [Vocabulary Input V] [FinEnum V]
-  (spec : LexerSpec Input Γ Qa) (P : PDA Γ StackSym Qp)
-  {tnonwhite twhite : Input} {qnonwhite qwhite : Qa}
+  [Vocabulary α β] [FinEnum β]
+  (spec : LexerSpec α Γ σa) (P : PDA Γ π σp)
+  {tnonwhite twhite : α} {qnonwhite qwhite : σa}
   (hassum : GCDAssumptions spec P tnonwhite twhite qnonwhite qwhite) :
-  checkerCorrect (V := V) (GCDChecker spec P) (TargetLanguage spec P) := by
+  checkerCorrect (β := β) (GCDChecker spec P) (TargetLanguage spec P) := by
   constructor
   · exact GCDChecker_checkerLanguage_eq_TargetLanguage spec P hassum
   · exact GCDChecker_intermediateLanguage_eq_TargetLanguage_prefixes

@@ -16,10 +16,10 @@ This formalization verifies that the composed system correctly computes the set 
 
 | File | Description |
 |------|-------------|
-| `Char.lean` | EOS-extended alphabet (`ExtChar Input`) used throughout |
+| `Char.lean` | EOS-extended alphabet (`ExtChar α`) used throughout |
 | `Automata.lean` | Deterministic FSA and FST with composition and mathlib DFA/NFA conversions |
 | `Language.lean` | Language helpers and prefix closure, bridging to `Mathlib.Computability.Language` |
-| `Vocabulary.lean` | `Vocabulary Input V` typeclass mapping tokens to character sequences |
+| `Vocabulary.lean` | `Vocabulary α β` typeclass mapping tokens to character sequences |
 | `Producible.lean` | DFS-based computation of singleton-producible FST outputs with correctness proof |
 | `PDA.lean` | Pushdown automaton with stack semantics, `evalFrom`, and NFA overapproximation |
 | `Lexing.lean` | Compatibility import for the split lexing development |
@@ -83,12 +83,12 @@ This table maps definitions, algorithms, and theorems from the paper to their Le
 
 | Paper | Notation | Lean Name | File |
 |-------|----------|-----------|------|
-| EOS-extended alphabet | $\Sigma \cup \{$`EOS`$\}$ | `ExtChar Input` (abbrev `Ch Input`) | `Char.lean` |
-| Finite-state automaton (FSA) | $\mathcal{A} = (\Sigma, Q, q_0, \delta, F)$ | `FSA Input Q` | `Automata.lean` |
-| Finite-state transducer (FST) | $\mathcal{T} = (\Sigma, \Gamma, Q, q_0, \delta, F)$ | `FST Input Γ Q` | `Automata.lean` |
-| Pushdown automaton (PDA) | $\mathcal{P} = (\Sigma, \Pi, Q, q_0, Z_0, \delta, F)$ | `PDA Γ StackSym Q` | `PDA.lean` |
-| Lexer specification | $\{(\mathcal{A}^i, T^i)\}_i$ | `LexerSpec Input Γ Q` | `Lexing/Base.lean` |
-| Token vocabulary | $\mathcal{V} \subseteq \Sigma^+$ | `Vocabulary Input V` | `Vocabulary.lean` |
+| EOS-extended alphabet | $\Sigma \cup \{$`EOS`$\}$ | `ExtChar α` (abbrev `Ch α`) | `Char.lean` |
+| Finite-state automaton (FSA) | $\mathcal{A} = (\Sigma, Q, q_0, \delta, F)$ | `FSA α σ` | `Automata.lean` |
+| Finite-state transducer (FST) | $\mathcal{T} = (\Sigma, \Gamma, Q, q_0, \delta, F)$ | `FST α Γ σ` | `Automata.lean` |
+| Pushdown automaton (PDA) | $\mathcal{P} = (\Sigma, \Pi, Q, q_0, Z_0, \delta, F)$ | `PDA Γ π σ` | `PDA.lean` |
+| Lexer specification | $\{(\mathcal{A}^i, T^i)\}_i$ | `LexerSpec α Γ σ` | `Lexing/Base.lean` |
+| Token vocabulary | $\mathcal{V} \subseteq \Sigma^+$ | `Vocabulary α β` | `Vocabulary.lean` |
 | Context-free grammar language | $\mathcal{L}(\mathcal{G})$ | `PDA.accepts` | `PDA.lean` |
 | Prefix language | $\mathcal{L}_{\text{prefix}}(\mathcal{G})$ | `Language.prefixes` | `Language.lean` |
 | Producible terminals (Def. C.1) | $\textit{Prod}(q)$ | `FST.singleProducible q` | `Producible.lean` |
@@ -96,7 +96,7 @@ This table maps definitions, algorithms, and theorems from the paper to their Le
 | Inverse token spanner table (Def. 3.3) | $T_{\text{inv}}(q, \alpha)$ | `InverseTokenSpannerTable fst_comp` | `RealizableSequence.lean` |
 | Always-accepted tokens | $A(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` (accepted bucket) | `GCDAlgorithm.lean` |
 | Context-dependent sequences | $D(q^\mathcal{A}, q^\mathcal{P})$ | `PPTable` (dependent bucket) | `GCDAlgorithm.lean` |
-| Checker | $\mathcal{C}$ | `Checker V` | `Checker.lean` |
+| Checker | $\mathcal{C}$ | `Checker β` | `Checker.lean` |
 | GCD target language | $\mathcal{L}^{\text{Lex}}(\mathcal{G})$ | `TargetLanguage spec P` | `GCDCheckerLanguage.lean` |
 
 ### Algorithms
@@ -137,11 +137,11 @@ Throughout the codebase, these type variables recur:
 
 | Variable | Role | Paper notation |
 |----------|------|----------------|
-| `Input` | Character/input alphabet | $\Sigma$ |
-| `V` | Token alphabet | $\mathcal{V}$ |
+| `α` | Character/input alphabet | $\Sigma$ |
+| `β` | Token alphabet | $\mathcal{V}$ |
 | `Γ` | Terminal/output alphabet | $\Gamma$ |
-| `StackSym` | Stack alphabet | $\Pi$ |
-| `Q`, `Qa`, `Qp` | Automaton/parser state types | $Q$ |
+| `π` | Stack alphabet | $\Pi$ |
+| `σ`, `σa`, `σp` | Automaton/parser state types | $Q$ |
 
 Most require `FinEnum`, `DecidableEq`, or `BEq`/`LawfulBEq` instances.
 
@@ -166,7 +166,7 @@ structure GCDAssumptions where
 **Full whitespace assumption.** `GCDWhitespaceAssumption` intuitively states that the language must contain a whitespace token that acts as a universal separator. More formally, it states that there is a a distinguished whitespace terminal `twhite`, as well as at least one non whitespace terminal `tnonwhite`. The parser must ignore whitespace. Whitespace tokens must only be accepted by the lexer if and only if the current state is `qstart` or `qwhite`.
 
 
-**Singleton vocabulary tokens.** The `Vocabulary Input V` instance is part of the theorem context. It provides an embedding of individual characters as singleton tokens (`flatten (embed a) = [a]`) and rules out empty tokens (`flatten b ≠ []`). The EOS-extended vocabulary preserves this singleton embedding for plain characters and maps EOS to the singleton EOS token. This is the vocabulary shape needed by the detokenization and whitespace-exchange proofs.
+**Singleton vocabulary tokens.** The `Vocabulary α β` instance is part of the theorem context. It provides an embedding of individual characters as singleton tokens (`flatten (embed a) = [a]`) and rules out empty tokens (`flatten b ≠ []`). The EOS-extended vocabulary preserves this singleton embedding for plain characters and maps EOS to the singleton EOS token. This is the vocabulary shape needed by the detokenization and whitespace-exchange proofs.
 
 ### What this means for users
 

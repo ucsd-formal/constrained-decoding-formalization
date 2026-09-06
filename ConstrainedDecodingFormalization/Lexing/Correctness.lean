@@ -12,23 +12,23 @@ open List
 universe u v w
 
 variable
-  {Input : Type u} {Γ : Type v} {Q : Type w}
-  [DecidableEq Input] [DecidableEq Q]
-  [BEq Input] [BEq Q] [LawfulBEq Q]
+  {α : Type u} {Γ : Type v} {σ : Type w}
+  [DecidableEq α] [DecidableEq σ]
+  [BEq α] [BEq σ] [LawfulBEq σ]
 
-omit [DecidableEq Input] [DecidableEq Q] [BEq Input] [BEq Q] [LawfulBEq Q] in
+omit [DecidableEq α] [DecidableEq σ] [BEq α] [BEq σ] [LawfulBEq σ] in
 /-- Under pruning, the seeded executable lexer and the relational semantics are
 equivalent in both directions. This is the technical core behind the later
 equivalence theorems. -/
-private lemma PartialLexRel_append_singleton_tail (spec: LexerSpec Input Γ Q)
-    {tail wp : List (Ch Input)} {c : Ch Input}
-    {terminals : List (Ch Γ)} {unlexed : List Input}
+private lemma PartialLexRel_append_singleton_tail (spec: LexerSpec α Γ σ)
+    {tail wp : List (Ch α)} {c : Ch α}
+    {terminals : List (Ch Γ)} {unlexed : List α}
     (h : PartialLexRel spec ((wp ++ [c]) ++ tail) terminals unlexed) :
     PartialLexRel spec (wp ++ c :: tail) terminals unlexed := by
   simpa using h
 
-omit [DecidableEq Input] [DecidableEq Q] [BEq Input] in
-lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec Input Γ Q) (hp: spec.automaton.pruned) :
+omit [DecidableEq α] [DecidableEq σ] [BEq α] in
+lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
   (∀ w terminals unlexed, (PartialLexRel spec w terminals unlexed) →
     PartialLex_seed spec (some ([], [])) w = some (terminals, unlexed)) ∧
   (∀ wp ws seed_f seed_s terminals unlexed,
@@ -57,7 +57,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec Input Γ Q) (hp: 
         have : unlexed ++ [ch] ∉ spec.automaton.prefixLanguage := by
           exact Eq.mpr_not (congrFun (id (Eq.symm hprune)) (unlexed ++ [ch])) fun a => a he
         contradiction
-      | some q' =>
+      | some σ' =>
         simp at he
         simp[he]
     case step_char_commit w wn terminals unlexed ch ih wwn hni hc_pfx ht hacc =>
@@ -74,7 +74,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec Input Γ Q) (hp: 
         subst wwn
         simp_all only [reduceCtorEq]
         have ⟨e, he'⟩ := ht
-        rename_i q' _ heq
+        rename_i σ' _ heq
         simp[he'] at heq
         constructor
         · rw[←hprune] at hc_pfx
@@ -95,7 +95,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec Input Γ Q) (hp: 
             simp [FSA.eval, he'.1]
           unfold LexerSpec.accept_seq_term
           simp [FSA.eval, he'.1, hterm]
-      | some q' =>
+      | some σ' =>
         have : spec.automaton.evalFrom spec.automaton.start (unlexed ++ [ch]) = none := by
           simp[←hprune] at hni
           simp[FSA.intermediateLanguage] at hni
@@ -172,7 +172,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec Input Γ Q) (hp: 
         | ExtChar.char ch =>
           simp[PartialLex_trans] at hns
           cases hp : spec.automaton.evalFrom spec.automaton.start (seed_s ++ [ch]) with
-          | some q' =>
+          | some σ' =>
             simp[hp] at hns
             let new_terminals := seed_f
             let new_unlexed := seed_s ++ [ch]
@@ -193,7 +193,7 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec Input Γ Q) (hp: 
           | none =>
             cases ha : spec.automaton.evalFrom spec.automaton.start seed_s with
             | none => simp[hp, ha] at hns
-            | some q =>
+            | some σ =>
               simp_all
               cases hbo : spec.automaton.eval [ch]
               . simp at hbo
@@ -209,12 +209,13 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec Input Γ Q) (hp: 
                 have haccept : (seed_s ∈ spec.automaton.accepts) := by
                   have ⟨⟨h, _⟩, ht⟩ := hns.right
                   change ∃ f, spec.automaton.evalFrom spec.automaton.start seed_s = some f ∧ f ∈ spec.automaton.accept
-                  exact ⟨q, ha, h⟩
+                  exact ⟨σ, ha, h⟩
 
-                let term := spec.term q
+                -- very round about away but works
+                let term := spec.term σ
                 have ⟨t, ht⟩ : ∃ t, term = some t := by
                   have ⟨⟨h, _⟩, ht⟩ := hns.right
-                  have h2 := (spec.hterm q).mp h
+                  have h2 := (spec.hterm σ).mp h
                   match hc: term with
                   | none =>
                     simp[term] at hc
@@ -254,9 +255,9 @@ lemma PartialLex_pruned_eq_PartialLexRel_seed (spec: LexerSpec Input Γ Q) (hp: 
 
 /-! ### Equivalence of relational and executable lexing -/
 
-omit [DecidableEq Input] [DecidableEq Q] [BEq Input] in
+omit [DecidableEq α] [DecidableEq σ] [BEq α] in
 /-- Pruning lets us identify `PartialLex` with the relational lexer semantics. -/
-theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec Input Γ Q) (hp: spec.automaton.pruned) :
+theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec α Γ σ) (hp: spec.automaton.pruned) :
   ∀ w terminals unlexed, (PartialLexRel spec w terminals unlexed) ↔
     PartialLex spec w = some (terminals, unlexed) := by
   intro w terminals unlexed
@@ -273,8 +274,8 @@ theorem PartialLex_pruned_eq_PartialLexRel (spec: LexerSpec Input Γ Q) (hp: spe
 
 /-- A character-level FSA run lifts to a lexing-FST run that produces no
 output terminals. -/
-private def FSA_ch_to_LexingFST (spec: LexerSpec Input Γ Q) :
-  ∀ (w : List Input) q q', (q ≠ LexingState.start ∨ w ≠ []) →
+private def FSA_ch_to_LexingFST (spec: LexerSpec α Γ σ) :
+  ∀ (w : List α) q q', (q ≠ LexingState.start ∨ w ≠ []) →
     (spec.automaton.evalFrom (q.src spec) w = some q' ↔
       (BuildLexingFST spec).evalFrom q w = some (LexingState.id q', [])) := by
   intro w q q' h
@@ -315,10 +316,10 @@ private def FSA_ch_to_LexingFST (spec: LexerSpec Input Γ Q) :
       convert ih
       split <;> simp_all
 
-omit [DecidableEq Input] [DecidableEq Q] [BEq Input] in
-private lemma PartialLex_append_singleton_of_trans (spec: LexerSpec Input Γ Q)
-    {w : List (Ch Input)} {head : Ch Input}
-    {seed_ts ts : List (Ch Γ)} {seed_wr wr : List Input}
+omit [DecidableEq α] [DecidableEq σ] [BEq α] in
+private lemma PartialLex_append_singleton_of_trans (spec: LexerSpec α Γ σ)
+    {w : List (Ch α)} {head : Ch α}
+    {seed_ts ts : List (Ch Γ)} {seed_wr wr : List α}
     (hw : PartialLex spec w = some (seed_ts, seed_wr))
     (hstep : PartialLex_trans spec (some (seed_ts, seed_wr)) head = some (ts, wr)) :
     PartialLex spec (w ++ [head]) = some (ts, wr) := by
@@ -326,9 +327,9 @@ private lemma PartialLex_append_singleton_of_trans (spec: LexerSpec Input Γ Q)
   rw [hw]
   simpa using hstep
 
-omit [DecidableEq Input] [DecidableEq Q] [BEq Input] [BEq Q] [LawfulBEq Q] in
-private lemma FST_eval_append_singleton_of_evalFrom_fold_step (M : FST Input Γ Q)
-    {w : List Input} {head : Input} {q q' : Q} {ts ts' : List Γ}
+omit [DecidableEq α] [DecidableEq σ] [BEq α] [BEq σ] [LawfulBEq σ] in
+private lemma FST_eval_append_singleton_of_evalFrom_fold_step (M : FST α Γ σ)
+    {w : List α} {head : α} {q q' : σ} {ts ts' : List Γ}
     (hw : M.eval w = some (q, ts))
     (hstep : M.evalFrom_fold_step (some (q, ts)) head = some (q', ts')) :
     M.eval (w ++ [head]) = some (q', ts') := by
@@ -338,7 +339,7 @@ private lemma FST_eval_append_singleton_of_evalFrom_fold_step (M : FST Input Γ 
   rw [hw]
   simpa using hstep
 
-private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec Input Γ Q) (he: [] ∉ spec.automaton.accepts) :
+private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) :
   ∀ wp ws q' seed_ts seed_wr,
     PartialLex spec wp = some (seed_ts, seed_wr) →
     (BuildLexingFST spec).eval wp = some (q', seed_ts) →
@@ -604,7 +605,7 @@ private def PartialLex_to_LexingFST_evalFold (spec: LexerSpec Input Γ Q) (he: [
         exact ih
 
 /-- The executable lexer and the lexing FST agree on successful executions. -/
-theorem PartialLex_to_LexingFST (spec: LexerSpec Input Γ Q) (he: [] ∉ spec.automaton.accepts) :
+theorem PartialLex_to_LexingFST (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) :
   ∀ w, match PartialLex spec w with
     | some (ts', wr) =>
       ∃ q', (BuildLexingFST spec).eval w = some (q', ts') ∧
@@ -646,7 +647,7 @@ theorem PartialLex_to_LexingFST (spec: LexerSpec Input Γ Q) (he: [] ∉ spec.au
 
 
 /-- A relational lexing derivation yields a corresponding FST execution. -/
-theorem PartialLexRel_to_LexingFST (spec: LexerSpec Input Γ Q) (he: [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned) :
+theorem PartialLexRel_to_LexingFST (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned) :
   ∀ w terminals unlexed,
     PartialLexRel spec w terminals unlexed →
     ∃ q', (BuildLexingFST spec).eval w = some (q', terminals) ∧
@@ -660,10 +661,10 @@ theorem PartialLexRel_to_LexingFST (spec: LexerSpec Input Γ Q) (he: [] ∉ spec
 
 /-- Any successful lexing-FST execution can be reinterpreted as a relational
 lexing derivation with some residual unlexed suffix. -/
-theorem LexingFST_to_PartialLexRel (spec: LexerSpec Input Γ Q) (he: [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned) :
+theorem LexingFST_to_PartialLexRel (spec: LexerSpec α Γ σ) (he: [] ∉ spec.automaton.accepts) (hpruned: spec.automaton.pruned) :
   ∀ w q' terminals,
     (BuildLexingFST spec).eval w = some (q', terminals) →
-    ∃ (unlexed : List Input),
+    ∃ (unlexed : List α),
       (BuildLexingFST spec).eval unlexed = some (q', []) ∧ PartialLexRel spec w terminals unlexed := by
   intro w q' terminals h
   cases hpl : PartialLex spec w
@@ -694,7 +695,7 @@ theorem LexingFST_to_PartialLexRel (spec: LexerSpec Input Γ Q) (he: [] ∉ spec
 
 /-- Every transition of the lexing FST emits either no terminals, a singleton
 terminal, or the special two-symbol output `[t, eos]` used on finalization. -/
-lemma LexingFst_smallStep (spec: LexerSpec Input Γ Q) :
+lemma LexingFst_smallStep (spec: LexerSpec α Γ σ) :
   ∀ q a q' terminals,
     (BuildLexingFST spec).step q a = some (q', terminals) →
     terminals = [] ∨ (∃ t, terminals = [t]) ∨ (LexingState.src spec q ∈ spec.automaton.accept ∧ a = ExtChar.eos ∧ ∃ t, terminals = [ExtChar.char t, ExtChar.eos]) := by
