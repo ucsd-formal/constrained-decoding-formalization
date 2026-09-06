@@ -52,7 +52,7 @@ lemma compl_card_lt_of_insert
 The search only recurses through transitions whose output is `[]`; whenever it
 encounters a transition with singleton output `[γ]`, it records `γ` in the
 accumulator. Transitions with longer outputs are ignored because they cannot
-contribute to single producibility.
+contribute.
 -/
 def dfs
   [ Fintype Γ ] [ Fintype σ ] [ a: FinEnum α ]
