@@ -57,28 +57,18 @@ contribute.
 def dfs
   [ Fintype Γ ] [ Fintype σ ] [ a: FinEnum α ]
   [DecidableEq σ ] [DecidableEq α ] [DecidableEq Γ ]
-  (curr : σ) (vis : Finset σ) (ret : List Γ) : Finset σ × List Γ :=
+  (curr : σ) (vis : Finset σ) (ret : List Γ) : List Γ :=
   let alph := a.toList
-  if _h_vis : curr ∈ vis then (vis, ret)
+  if _h_vis : curr ∈ vis then ret
   else
     let base := vis ∪ {curr}
-    let stepAccum :
-        (Finset σ × List Γ) → α → (Finset σ × List Γ) :=
-      fun acc next =>
-        let (visacc, retacc) := acc
+    let stepAccum : List Γ → α → List Γ :=
+      fun retacc next =>
         match M.step curr next with
-        | none => (visacc, retacc)
-        | some (nextState, output) =>
-          match output with
-          | [] =>
-              let (v2, r2) := dfs nextState base retacc
-              (visacc ∪ v2, retacc ∪ r2)
-          | [γ] =>
-              (visacc, γ :: retacc)
-          | _::_::_ =>
-              (visacc, retacc)
-    let (v, r) := alph.foldl stepAccum (base, ret)
-    (v, r)
+        | some (nextState, []) => dfs nextState base retacc
+        | some (_, [γ]) => γ :: retacc
+        | _ => retacc
+    alph.foldl stepAccum ret
   termination_by (visᶜ).card
   decreasing_by
     exact compl_card_lt_of_insert _h_vis
@@ -88,7 +78,7 @@ def computeSingleProducible
   [ Fintype Γ ] [ Fintype σ ] [ a: FinEnum α ]
   [DecidableEq σ ] [DecidableEq α ] [DecidableEq Γ ]
   (q : σ) : List Γ :=
-  (dfs M q {} []).snd
+  dfs M q {} []
 
 /-! ### Soundness of DFS -/
 
@@ -109,30 +99,82 @@ inductive DfsEpsReach : Finset σ → σ → σ → Prop where
       (hrest : DfsEpsReach (V ∪ {q}) q₁ s) :
       DfsEpsReach V q s
 
+omit [DecidableEq σ] in
+/-- Every token present in the seed list is still present in the result of
+`dfs`. The proof follows the recursion of `dfs`, recursing on the number of
+states not yet visited. -/
+lemma dfs_seed_mem
+  [Fintype σ] [Fintype Γ] [FinEnum α]
+  [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
+  {q : σ} {vis : Finset σ} {ret : List Γ} {t : Γ}
+  (ht : t ∈ ret) :
+  t ∈ M.dfs (a := a) q vis ret := by
+  let P : Nat → Prop := fun n =>
+    ∀ q vis ret,
+      (visᶜ).card = n →
+      t ∈ ret →
+      t ∈ M.dfs (a := a) q vis ret
+  have step : ∀ n, (∀ m, m < n → P m) → P n := by
+    intro n IH q vis ret hcard hmem
+    unfold dfs
+    by_cases h_vis : q ∈ vis
+    · simpa [h_vis] using hmem
+    ·
+      let base : Finset σ := vis ∪ {q}
+      let stepAccum : List Γ → α → List Γ :=
+        fun retacc next =>
+          match M.step q next with
+          | some (nextState, []) => M.dfs (a := a) nextState base retacc
+          | some (_, [γ]) => γ :: retacc
+          | _ => retacc
+      have fold_mem :
+        ∀ (L : List α) (acc : List Γ),
+          t ∈ acc → t ∈ L.foldl stepAccum acc := by
+        intro L
+        induction L with
+        | nil => intro acc hacc; simpa using hacc
+        | cons x xs ih =>
+            intro acc hacc
+            simp only [List.foldl_cons]
+            refine ih (stepAccum acc x) ?_
+            dsimp only [stepAccum]
+            cases hstepx : M.step q x with
+            | none => simpa [hstepx] using hacc
+            | some p =>
+                rcases p with ⟨nextState, output⟩
+                cases output with
+                | nil =>
+                    have hlt : (baseᶜ).card < n := by
+                      have hh := compl_card_lt_of_insert (σ := σ)
+                        (vis := vis) (s := q) h_vis
+                      simpa [base, hcard] using hh
+                    simpa [hstepx] using
+                      IH (baseᶜ).card hlt nextState base acc rfl hacc
+                | cons γ tail =>
+                    cases tail with
+                    | nil => simpa [hstepx] using List.mem_cons.2 (Or.inr hacc)
+                    | cons γ₂ tail₂ => simpa [hstepx] using hacc
+      have hgoal : t ∈ ((a : FinEnum α).toList).foldl stepAccum ret :=
+        fold_mem _ ret hmem
+      simpa [base, stepAccum, h_vis] using hgoal
+  have H : P ((visᶜ).card) := Nat.strongRecOn (motive := P) ((visᶜ).card) step
+  exact H q vis ret rfl ht
+
 /-- During the alphabet fold inside `dfs`, every token already present in the
 accumulator remains present afterwards. -/
 lemma mem_foldl_dfs_stepAccum_of_mem
   [Fintype Γ] [Fintype σ] [a : FinEnum α]
   [DecidableEq α] [DecidableEq Γ]
   {q : σ} {base : Finset σ} {t : Γ} :
-  ∀ (L : List α) (acc : Finset σ × List Γ),
-    t ∈ acc.2 →
-    let stepAccum :
-        (Finset σ × List Γ) → α → (Finset σ × List Γ) :=
-      fun acc next =>
-        let (visacc, retacc) := acc
+  ∀ (L : List α) (acc : List Γ),
+    t ∈ acc →
+    let stepAccum : List Γ → α → List Γ :=
+      fun retacc next =>
         match M.step q next with
-        | none => (visacc, retacc)
-        | some (nextState, output) =>
-          match output with
-          | [] =>
-              let (v2, r2) := M.dfs (a := a) nextState base retacc
-              (visacc ∪ v2, retacc ∪ r2)
-          | [γ] =>
-              (visacc, γ :: retacc)
-          | _::_::_ =>
-              (visacc, retacc)
-    t ∈ (L.foldl stepAccum acc).2 := by
+        | some (nextState, []) => M.dfs (a := a) nextState base retacc
+        | some (_, [γ]) => γ :: retacc
+        | _ => retacc
+    t ∈ L.foldl stepAccum acc := by
   intro L
   induction L with
   | nil =>
@@ -140,28 +182,22 @@ lemma mem_foldl_dfs_stepAccum_of_mem
       simpa using hmem
   | cons x xs ih =>
       intro acc hmem
-      cases acc with
-      | mk visacc retacc =>
-          dsimp
-          cases hstep : M.step q x with
-          | none =>
-              exact ih (visacc, retacc) hmem
-          | some p =>
-              rcases p with ⟨nextState, output⟩
-              cases output with
+      dsimp
+      cases hstep : M.step q x with
+      | none =>
+          exact ih acc hmem
+      | some p =>
+          rcases p with ⟨nextState, output⟩
+          cases output with
+          | nil =>
+              exact ih (M.dfs (a := a) nextState base acc)
+                (dfs_seed_mem (M := M) (a := a) hmem)
+          | cons γ tail =>
+              cases tail with
               | nil =>
-                  have hmem' : t ∈ (retacc ∪ (M.dfs (a := a) nextState base retacc).2) := by
-                    exact List.mem_union_iff.2 (Or.inl hmem)
-                  exact ih (visacc ∪ (M.dfs (a := a) nextState base retacc).1,
-                    retacc ∪ (M.dfs (a := a) nextState base retacc).2) hmem'
-              | cons γ tail =>
-                  cases tail with
-                  | nil =>
-                      have hmem' : t ∈ (γ :: retacc) := by
-                        exact List.mem_cons.2 (Or.inr hmem)
-                      exact ih (visacc, γ :: retacc) hmem'
-                  | cons γ₂ tail₂ =>
-                      exact ih (visacc, retacc) hmem
+                  exact ih (γ :: acc) (List.mem_cons.2 (Or.inr hmem))
+              | cons γ₂ tail₂ =>
+                  exact ih acc hmem
 
 /-- A singleton-output transition out of `q` is immediately recorded by `dfs`. -/
 lemma mem_dfs_of_singleton_step
@@ -170,27 +206,18 @@ lemma mem_dfs_of_singleton_step
   {V : Finset σ} {q q₁ : σ} {x : α} {t : Γ}
   (hq : q ∉ V)
   (hstep : M.step q x = some (q₁, [t])) :
-  t ∈ (M.dfs (a := a) q V []).2 := by
+  t ∈ M.dfs (a := a) q V [] := by
   let base : Finset σ := insert q V
-  let stepAccum :
-      (Finset σ × List Γ) → α → (Finset σ × List Γ) :=
-    fun acc next =>
-      let (visacc, retacc) := acc
+  let stepAccum : List Γ → α → List Γ :=
+    fun retacc next =>
       match M.step q next with
-      | none => (visacc, retacc)
-      | some (nextState, output) =>
-        match output with
-        | [] =>
-            let (v2, r2) := M.dfs (a := a) nextState base retacc
-            (visacc ∪ v2, retacc ∪ r2)
-        | [γ] =>
-            (visacc, γ :: retacc)
-        | _::_::_ =>
-            (visacc, retacc)
+      | some (nextState, []) => M.dfs (a := a) nextState base retacc
+      | some (_, [γ]) => γ :: retacc
+      | _ => retacc
   have hmem_in_fold :
-      ∀ (L : List α) (acc : Finset σ × List Γ),
+      ∀ (L : List α) (acc : List Γ),
         x ∈ L →
-        t ∈ (L.foldl stepAccum acc).2 := by
+        t ∈ L.foldl stepAccum acc := by
     intro L
     induction L with
     | nil =>
@@ -200,21 +227,20 @@ lemma mem_dfs_of_singleton_step
         intro acc hmem
         rcases List.mem_cons.1 hmem with rfl | htail
         ·
-          have hnow : t ∈ (stepAccum acc x).2 := by
-            cases acc with
-            | mk visacc retacc =>
-                dsimp [stepAccum]
-                simp [hstep]
-          exact mem_foldl_dfs_stepAccum_of_mem (M := M) (a := a) (q := q) (base := base) ys
-            (stepAccum acc x) hnow
+          have hnow : t ∈ stepAccum acc x := by
+            dsimp only [stepAccum]
+            simp [hstep]
+          simpa [List.foldl_cons] using
+            mem_foldl_dfs_stepAccum_of_mem (M := M) (a := a) (q := q) (base := base) ys
+              (stepAccum acc x) hnow
         ·
-          exact ih (stepAccum acc y) htail
+          simpa [List.foldl_cons] using ih (stepAccum acc y) htail
   have hx : x ∈ (a : FinEnum α).toList := FinEnum.mem_toList x
-  have hfold : t ∈ (((a : FinEnum α).toList).foldl stepAccum (base, [])).2 :=
-    hmem_in_fold ((a : FinEnum α).toList) (base, []) hx
+  have hfold : t ∈ ((a : FinEnum α).toList).foldl stepAccum [] :=
+    hmem_in_fold ((a : FinEnum α).toList) [] hx
   unfold dfs
   simp [hq]
-  change t ∈ (((a : FinEnum α).toList).foldl stepAccum (base, [])).2
+  change t ∈ ((a : FinEnum α).toList).foldl stepAccum []
   exact hfold
 
 omit [DecidableEq σ] in
@@ -229,15 +255,15 @@ lemma dfs_seed_subset
   {q : σ} {vis : Finset σ} {ret₁ ret₂ : List Γ}
   (hsubset : ∀ {x : Γ}, x ∈ ret₁ → x ∈ ret₂) :
   ∀ {t : Γ},
-    t ∈ (M.dfs (a := a) q vis ret₁).2 →
-    t ∈ (M.dfs (a := a) q vis ret₂).2 := by
+    t ∈ M.dfs (a := a) q vis ret₁ →
+    t ∈ M.dfs (a := a) q vis ret₂ := by
   let P : Nat → Prop := fun n =>
     ∀ q vis ret₁ ret₂,
       (visᶜ).card = n →
       (∀ {x : Γ}, x ∈ ret₁ → x ∈ ret₂) →
       ∀ {t : Γ},
-        t ∈ (M.dfs (a := a) q vis ret₁).2 →
-        t ∈ (M.dfs (a := a) q vis ret₂).2
+        t ∈ M.dfs (a := a) q vis ret₁ →
+        t ∈ M.dfs (a := a) q vis ret₂
 
   -- Strategy: strong induction on |vis^c| (unvisited states). The `dfs` function
   -- recurses only through epsilon transitions, each of which adds the current
@@ -253,46 +279,28 @@ lemma dfs_seed_subset
       exact hsubset hmem
     ·
       let base : Finset σ := vis ∪ {q}
-      let stepAccum₁ :
-          (Finset σ × List Γ) → α → (Finset σ × List Γ) :=
-        fun acc next =>
-          let (visacc, retacc) := acc
+      let stepAccum₁ : List Γ → α → List Γ :=
+        fun retacc next =>
           match M.step q next with
-          | none => (visacc, retacc)
-          | some (nextState, output) =>
-            match output with
-            | [] =>
-                let (v2, r2) := M.dfs (a := a) nextState base retacc
-                (visacc ∪ v2, retacc ∪ r2)
-            | [γ] =>
-                (visacc, γ :: retacc)
-            | _::_::_ =>
-                (visacc, retacc)
-      let stepAccum₂ :
-          (Finset σ × List Γ) → α → (Finset σ × List Γ) :=
-        fun acc next =>
-          let (visacc, retacc) := acc
+          | some (nextState, []) => M.dfs (a := a) nextState base retacc
+          | some (_, [γ]) => γ :: retacc
+          | _ => retacc
+      let stepAccum₂ : List Γ → α → List Γ :=
+        fun retacc next =>
           match M.step q next with
-          | none => (visacc, retacc)
-          | some (nextState, output) =>
-            match output with
-            | [] =>
-                let (v2, r2) := M.dfs (a := a) nextState base retacc
-                (visacc ∪ v2, retacc ∪ r2)
-            | [γ] =>
-                (visacc, γ :: retacc)
-            | _::_::_ =>
-                (visacc, retacc)
+          | some (nextState, []) => M.dfs (a := a) nextState base retacc
+          | some (_, [γ]) => γ :: retacc
+          | _ => retacc
       let alph : List α := (a : FinEnum α).toList
 
       -- Compare the two folds pointwise. In the epsilon case, the recursive
       -- call is controlled by the induction hypothesis on the smaller
       -- complement `(baseᶜ).card`.
       have fold_subset :
-        ∀ (L : List α) (acc₁ acc₂ : Finset σ × List Γ),
-          (∀ {x : Γ}, x ∈ acc₁.2 → x ∈ acc₂.2) →
-          t ∈ (L.foldl stepAccum₁ acc₁).2 →
-          t ∈ (L.foldl stepAccum₂ acc₂).2 := by
+        ∀ (L : List α) (acc₁ acc₂ : List Γ),
+          (∀ {x : Γ}, x ∈ acc₁ → x ∈ acc₂) →
+          t ∈ L.foldl stepAccum₁ acc₁ →
+          t ∈ L.foldl stepAccum₂ acc₂ := by
         intro L
         induction L with
         | nil =>
@@ -300,18 +308,17 @@ lemma dfs_seed_subset
             simpa using hacc hmem
         | cons x xs ih =>
             intro acc₁ acc₂ hacc hmem
-            simp only [List.foldl] at hmem ⊢
+            simp only [List.foldl_cons] at hmem ⊢
             cases hstep : M.step q x with
             | none =>
                 have hacc_step :
                     ∀ {y : Γ},
-                      y ∈ (stepAccum₁ acc₁ x).2 →
-                      y ∈ (stepAccum₂ acc₂ x).2 := by
+                      y ∈ stepAccum₁ acc₁ x →
+                      y ∈ stepAccum₂ acc₂ x := by
                   intro y hy
                   simpa [stepAccum₂, hstep] using
                     (hacc (by simpa [stepAccum₁, hstep] using hy))
-                simpa [stepAccum₁, stepAccum₂, hstep] using
-                  ih (stepAccum₁ acc₁ x) (stepAccum₂ acc₂ x) hacc_step hmem
+                exact ih (stepAccum₁ acc₁ x) (stepAccum₂ acc₂ x) hacc_step hmem
             | some p =>
                 rcases p with ⟨nextState, output⟩
                 cases output with
@@ -319,60 +326,47 @@ lemma dfs_seed_subset
                     have hlt : (baseᶜ).card < (visᶜ).card :=
                       compl_card_lt_of_insert (σ := σ) (vis := vis) (s := q) h_vis
                     have IHbase : P (baseᶜ).card := IH _ (by simpa [hcard] using hlt)
-                    have hacc' :
-                        ∀ {y : Γ},
-                          y ∈ (acc₁.2 ∪ (M.dfs (a := a) nextState base acc₁.2).2) →
-                          y ∈ (acc₂.2 ∪ (M.dfs (a := a) nextState base acc₂.2).2) := by
-                      intro y hy
-                      rw [List.mem_union_iff] at hy ⊢
-                      rcases hy with hy | hy
-                      · exact Or.inl (hacc hy)
-                      · exact Or.inr (IHbase nextState base acc₁.2 acc₂.2 rfl hacc hy)
                     have hacc_step :
                         ∀ {y : Γ},
-                          y ∈ (stepAccum₁ acc₁ x).2 →
-                          y ∈ (stepAccum₂ acc₂ x).2 := by
+                          y ∈ stepAccum₁ acc₁ x →
+                          y ∈ stepAccum₂ acc₂ x := by
                       intro y hy
+                      have hy' : y ∈ M.dfs (a := a) nextState base acc₁ := by
+                        simpa [stepAccum₁, hstep] using hy
                       simpa [stepAccum₂, hstep] using
-                        (hacc' (by simpa [stepAccum₁, hstep] using hy))
-                    simpa [stepAccum₁, stepAccum₂, hstep] using
-                      ih
-                        (stepAccum₁ acc₁ x)
-                        (stepAccum₂ acc₂ x)
-                        hacc_step hmem
+                        IHbase nextState base acc₁ acc₂ rfl hacc hy'
+                    exact ih (stepAccum₁ acc₁ x) (stepAccum₂ acc₂ x) hacc_step hmem
                 | cons γ tail =>
                     cases tail with
                     | nil =>
                         have hacc' :
-                            ∀ {y : Γ}, y ∈ (γ :: acc₁.2) → y ∈ (γ :: acc₂.2) := by
+                            ∀ {y : Γ}, y ∈ (γ :: acc₁) → y ∈ (γ :: acc₂) := by
                           intro y hy
                           rcases List.mem_cons.1 hy with rfl | hy
                           · simp
                           · exact List.mem_cons_of_mem _ (hacc hy)
                         have hacc_step :
                             ∀ {y : Γ},
-                              y ∈ (stepAccum₁ acc₁ x).2 →
-                              y ∈ (stepAccum₂ acc₂ x).2 := by
+                              y ∈ stepAccum₁ acc₁ x →
+                              y ∈ stepAccum₂ acc₂ x := by
                           intro y hy
                           simpa [stepAccum₂, hstep] using
                             (hacc' (by simpa [stepAccum₁, hstep] using hy))
-                        simpa [stepAccum₁, stepAccum₂, hstep] using
-                          ih (stepAccum₁ acc₁ x) (stepAccum₂ acc₂ x) hacc_step hmem
+                        exact ih (stepAccum₁ acc₁ x) (stepAccum₂ acc₂ x) hacc_step hmem
                     | cons γ₂ tail₂ =>
                         have hacc_step :
                             ∀ {y : Γ},
-                              y ∈ (stepAccum₁ acc₁ x).2 →
-                              y ∈ (stepAccum₂ acc₂ x).2 := by
+                              y ∈ stepAccum₁ acc₁ x →
+                              y ∈ stepAccum₂ acc₂ x := by
                           intro y hy
                           simpa [stepAccum₂, hstep] using
                             (hacc (by simpa [stepAccum₁, hstep] using hy))
-                        simpa [stepAccum₁, stepAccum₂, hstep] using
-                          ih (stepAccum₁ acc₁ x) (stepAccum₂ acc₂ x) hacc_step hmem
+                        exact ih (stepAccum₁ acc₁ x) (stepAccum₂ acc₂ x) hacc_step hmem
 
-      have hmem0 : t ∈ (alph.foldl stepAccum₁ (base, ret₁)).2 := by
+      have hmem0 : t ∈ alph.foldl stepAccum₁ ret₁ := by
         simpa [base, stepAccum₁, alph, h_vis] using hmem
-      have hgoal0 : t ∈ (alph.foldl stepAccum₂ (base, ret₂)).2 :=
-        fold_subset alph (base, ret₁) (base, ret₂) hsubset hmem0
+      have hgoal0 : t ∈ alph.foldl stepAccum₂ ret₂ :=
+        fold_subset alph ret₁ ret₂ hsubset hmem0
       simpa [base, stepAccum₂, alph, h_vis] using hgoal0
 
   have H : P ((visᶜ).card) := Nat.strongRecOn (motive := P) ((visᶜ).card) step
@@ -387,28 +381,19 @@ lemma mem_dfs_of_eps_step
   {V : Finset σ} {q q₁ : σ} {x : α} {t : Γ}
   (hq : q ∉ V)
   (hstep : M.step q x = some (q₁, []))
-  (hrec : t ∈ (M.dfs (a := a) q₁ (insert q V) []).2) :
-  t ∈ (M.dfs (a := a) q V []).2 := by
+  (hrec : t ∈ M.dfs (a := a) q₁ (insert q V) []) :
+  t ∈ M.dfs (a := a) q V [] := by
   let base : Finset σ := insert q V
-  let stepAccum :
-      (Finset σ × List Γ) → α → (Finset σ × List Γ) :=
-    fun acc next =>
-      let (visacc, retacc) := acc
+  let stepAccum : List Γ → α → List Γ :=
+    fun retacc next =>
       match M.step q next with
-      | none => (visacc, retacc)
-      | some (nextState, output) =>
-        match output with
-        | [] =>
-            let (v2, r2) := M.dfs (a := a) nextState base retacc
-            (visacc ∪ v2, retacc ∪ r2)
-        | [γ] =>
-            (visacc, γ :: retacc)
-        | _::_::_ =>
-            (visacc, retacc)
+      | some (nextState, []) => M.dfs (a := a) nextState base retacc
+      | some (_, [γ]) => γ :: retacc
+      | _ => retacc
   have hmem_in_fold :
-      ∀ (L : List α) (acc : Finset σ × List Γ),
+      ∀ (L : List α) (acc : List Γ),
         x ∈ L →
-        t ∈ (L.foldl stepAccum acc).2 := by
+        t ∈ L.foldl stepAccum acc := by
     intro L
     induction L with
     | nil =>
@@ -418,26 +403,23 @@ lemma mem_dfs_of_eps_step
         intro acc hmem
         rcases List.mem_cons.1 hmem with rfl | htail
         ·
-          have hnow : t ∈ (stepAccum acc x).2 := by
-            cases acc with
-            | mk visacc retacc =>
-                have hrec' : t ∈ (M.dfs (a := a) q₁ base retacc).2 := by
-                  exact dfs_seed_subset (M := M) (a := a) (q := q₁) (vis := base)
-                    (ret₁ := []) (ret₂ := retacc) (by intro z hz; cases hz) hrec
-                dsimp [stepAccum]
-                have : t ∈ (retacc ∪ (M.dfs (a := a) q₁ base retacc).2) := by
-                  exact List.mem_union_iff.2 (Or.inr hrec')
-                simpa [hstep] using this
-          exact mem_foldl_dfs_stepAccum_of_mem (M := M) (a := a) (q := q) (base := base) ys
-            (stepAccum acc x) hnow
+          have hnow : t ∈ stepAccum acc x := by
+            have hrec' : t ∈ M.dfs (a := a) q₁ base acc :=
+              dfs_seed_subset (M := M) (a := a) (q := q₁) (vis := base)
+                (ret₁ := []) (ret₂ := acc) (by intro z hz; cases hz) hrec
+            dsimp only [stepAccum]
+            simpa [hstep] using hrec'
+          simpa [List.foldl_cons] using
+            mem_foldl_dfs_stepAccum_of_mem (M := M) (a := a) (q := q) (base := base) ys
+              (stepAccum acc x) hnow
         ·
-          exact ih (stepAccum acc y) htail
+          simpa [List.foldl_cons] using ih (stepAccum acc y) htail
   have hx : x ∈ (a : FinEnum α).toList := FinEnum.mem_toList x
-  have hfold : t ∈ (((a : FinEnum α).toList).foldl stepAccum (base, [])).2 :=
-    hmem_in_fold ((a : FinEnum α).toList) (base, []) hx
+  have hfold : t ∈ ((a : FinEnum α).toList).foldl stepAccum [] :=
+    hmem_in_fold ((a : FinEnum α).toList) [] hx
   unfold dfs
   simp [hq]
-  change t ∈ (((a : FinEnum α).toList).foldl stepAccum (base, [])).2
+  change t ∈ ((a : FinEnum α).toList).foldl stepAccum []
   exact hfold
 
 /-! ### Completeness of DFS -/
@@ -459,7 +441,7 @@ lemma dfs_complete_from_reach
   {V : Finset σ} {q s : σ} {t : Γ}
   (hreach : DfsEpsReach (M := M) V q s)
   (hstep : ∃ x q₁, M.step s x = some (q₁, [t])) :
-  t ∈ (M.dfs (a := a) q V []).2 := by
+  t ∈ M.dfs (a := a) q V [] := by
   induction hreach with
   | here hq =>
       -- Base case: already at `s`, so the singleton step is directly recorded
@@ -467,7 +449,7 @@ lemma dfs_complete_from_reach
       exact mem_dfs_of_singleton_step (M := M) (a := a) hq hstepx
   | @next V q qnext s x hq hstep_eps hrest ih =>
       -- Inductive step: take the epsilon transition q -> qnext, then apply IH
-      have hrec_insert : t ∈ (M.dfs (a := a) qnext (insert q V) []).2 := by
+      have hrec_insert : t ∈ M.dfs (a := a) qnext (insert q V) [] := by
         have hinsert_eq_union : insert q V = V ∪ {q} := by
           ext y
           simp
@@ -588,12 +570,12 @@ lemma dfs_sound_core_or
   [Fintype σ] [Fintype Γ] [FinEnum α]
   [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
   (s : σ) (vis : Finset σ) (ret : List Γ) {t : Γ}
-  (h : t ∈ (M.dfs (a := a) s vis ret).2) :
+  (h : t ∈ M.dfs (a := a) s vis ret) :
   t ∈ ret ∨ ∃ w qf, M.evalFrom s w = some (qf, [t]) := by
   let P : Nat → Prop := fun n =>
     ∀ s vis ret {t : Γ},
       (visᶜ).card = n →
-      t ∈ (M.dfs (a := a) s vis ret).2 →
+      t ∈ M.dfs (a := a) s vis ret →
       t ∈ ret ∨ ∃ w qf, M.evalFrom s w = some (qf, [t])
 
   -- As in `dfs_seed_subset`, recurse on the number of states still outside the
@@ -607,132 +589,68 @@ lemma dfs_sound_core_or
       simp_all [true_or, P]
     ·
       let base := vis ∪ {s}
-      let stepAccum :
-          (Finset σ × List Γ) → α → (Finset σ × List Γ) :=
-        fun acc next =>
-          let (visacc, retacc) := acc
+      let stepAccum : List Γ → α → List Γ :=
+        fun retacc next =>
           match M.step s next with
-          | none => (visacc, retacc)
-          | some (s', out) =>
-            match out with
-            | [] =>
-                let (v2, r2) := M.dfs (a := a) s' base retacc
-                (visacc ∪ v2, retacc ∪ r2)
-            | [γ] =>
-                (visacc, γ :: retacc)
-            | _::_::_ =>
-                (visacc, retacc)
+          | some (s', []) => M.dfs (a := a) s' base retacc
+          | some (_, [γ]) => γ :: retacc
+          | _ => retacc
       let alph : List α := (a : FinEnum α).toList
 
       -- Analyse the fold over the alphabet. Each branch either preserves the
       -- accumulator, adds a directly produced singleton, or delegates to a
       -- smaller recursive call reached by an epsilon-output transition.
       have fold_ind :
-        ∀ (L : List α) (acc : Finset σ × List Γ),
-          t ∈ (L.foldl stepAccum acc).2 →
-          t ∈ acc.2 ∨ ∃ w qf, M.evalFrom s w = some (qf, [t]) :=
-      by
+        ∀ (L : List α) (acc : List Γ),
+          t ∈ L.foldl stepAccum acc →
+          t ∈ acc ∨ ∃ w qf, M.evalFrom s w = some (qf, [t]) := by
         intro L
         induction L with
         | nil =>
             intro acc ht
-            simp [List.foldl] at ht
-            exact Or.inl ht
+            exact Or.inl (by simpa using ht)
         | cons x xs ih =>
             intro acc ht
-            simp [List.foldl, stepAccum] at ht
-            cases hstepx : M.step s x with
-            | none =>
-              simp_all [base, P, stepAccum]
-              apply ih
-              · exact ht
-            | some p =>
-                rcases p with ⟨s', out⟩
-                cases h₀ : out with
-                | nil =>
-                  rcases acc with ⟨visacc, retacc⟩
-                  set res := M.dfs (a := a) s' base retacc with hres
-                  rcases res with ⟨v2, r2⟩
-                  have hstep1 : stepAccum (visacc, retacc) x = (visacc ∪ v2, retacc ∪ r2) := by
-                    dsimp [stepAccum]
-                    simp [hstepx, h₀]
-                    have : v2 = (M.dfs (a := a) s' base retacc).1 := congrArg Prod.fst hres
-                    subst this
-                    constructor
-                    . rfl
-                    . observe : r2 = (M.dfs (a := a) s' base retacc).2
-                      subst this
-                      rfl
-                  have ht1 : t ∈ (xs.foldl stepAccum (stepAccum (visacc, retacc) x)).2 := by
-                    simpa [List.foldl] using ht
-                  have hxs : t ∈ (xs.foldl stepAccum (visacc ∪ v2, retacc ∪ r2)).2 := by
-                    simpa [hstep1] using ht1
-                  have h_tail : t ∈ (visacc ∪ v2, retacc ∪ r2).2 ∨ ∃ w qf, M.evalFrom s w = some (qf, [t]) :=
-                    ih (visacc ∪ v2, retacc ∪ r2) hxs
-                  rcases h_tail with h_in_union | ⟨w, qf, hw⟩
-                  ·
-                    have hsplit : t ∈ retacc ∨ t ∈ r2 := by
-                      simp_all [base, P, stepAccum]
-                    rcases hsplit with h_in_retacc | h_in_r2
-                    .
-                      exact Or.inl h_in_retacc
-                    .
-                      have h_in_dfs' : t ∈ (M.dfs (a := a) s' base retacc).2 := by
-                        have : r2 = (M.dfs (a := a) s' (vis ∪ {s}) retacc).2 := congrArg Prod.snd hres
-                        subst this
-                        exact h_in_r2
-
+            rw [List.foldl_cons] at ht
+            rcases ih (stepAccum acc x) ht with hstepmem | hrun
+            ·
+              cases hstepx : M.step s x with
+              | none =>
+                  simp only [stepAccum, hstepx] at hstepmem
+                  exact Or.inl hstepmem
+              | some p =>
+                  rcases p with ⟨s', out⟩
+                  cases out with
+                  | nil =>
+                      simp only [stepAccum, hstepx] at hstepmem
+                      -- `hstepmem : t ∈ M.dfs s' base acc`; recurse via the IH
                       have hlt : (baseᶜ).card < (visᶜ).card :=
                         compl_card_lt_of_insert (σ := σ) (vis := vis) (s := s) h_vis
                       subst hcard
                       have IHbase : P (baseᶜ).card := IH _ hlt
-                      have res₂ := IHbase s' base retacc rfl h_in_dfs'
-                      rcases res₂ with h_in_seed | ⟨w', qf', hw'⟩
-                      . simp [h_in_seed]
-                      .
-                        refine Or.inr ?_
-                        refine ⟨x :: w', qf', ?_⟩
-                        have right : (∃ s0, M.step s x = some (s0, []) ∧ M.evalFrom s0 w' = some (qf', [t])) :=
-                          ⟨s', by simpa [hstepx], hw'⟩
-                        simpa [evalFrom_cons_singleton_iff (M := M)] using Or.inr right
-                  ·
-                    exact Or.inr ⟨w, qf, hw⟩
-                | cons γ tail =>
-                    cases tail with
-                    | nil =>
-                        rcases acc with ⟨visacc, retacc⟩
-                        have ht1 : t ∈ (xs.foldl stepAccum (visacc, γ :: retacc)).2 := by
-                          simpa [List.foldl, stepAccum, hstepx, h₀] using ht
-                        have h_tail : t ∈ (visacc, γ :: retacc).2 ∨ ∃ w qf, M.evalFrom s w = some (qf, [t]) :=
-                          ih (visacc, γ :: retacc) ht1
-                        rcases h_tail with h_in | ⟨w, qf, hw⟩
-                        ·
-                          have : t = γ ∨ t ∈ retacc := by
-                            simpa using (List.mem_cons.mp h_in)
-                          rcases this with h_eq | h_in_retacc
-                          ·
-                            subst h_eq
-                            refine Or.inr ?_
-                            refine ⟨[x], s', ?_⟩
-                            have left :
-                              (∃ s0, M.step s x = some (s0, [t]) ∧
-                                      M.evalFrom s0 [] = some (s', [])) :=
-                              ⟨s', by simpa [hstepx], by simp [evalFrom]⟩
-                            simp
-                            subst h₀ hcard
-                            simp_all [base, P, stepAccum]
-                          ·
-                            exact Or.inl h_in_retacc
-                        ·
-                          exact Or.inr ⟨w, qf, hw⟩
-                    | cons _ _ =>
-                        simp_all [base, P, stepAccum]
-                        apply ih
-                        · exact ht
+                      rcases IHbase s' base acc rfl hstepmem with h_in_seed | ⟨w', qf', hw'⟩
+                      · exact Or.inl h_in_seed
+                      · refine Or.inr ⟨x :: w', qf', ?_⟩
+                        exact (evalFrom_cons_singleton_iff (M := M)).mpr
+                          (Or.inr ⟨s', by simp [hstepx], hw'⟩)
+                  | cons γ tail =>
+                      cases tail with
+                      | nil =>
+                          simp only [stepAccum, hstepx] at hstepmem
+                          rcases List.mem_cons.1 hstepmem with rfl | h_in_acc
+                          · refine Or.inr ⟨[x], s', ?_⟩
+                            exact (evalFrom_cons_singleton_iff (M := M)).mpr
+                              (Or.inl ⟨s', by simp [hstepx], by simp [evalFrom]⟩)
+                          · exact Or.inl h_in_acc
+                      | cons γ₂ tail₂ =>
+                          simp only [stepAccum, hstepx] at hstepmem
+                          exact Or.inl hstepmem
+            ·
+              exact Or.inr hrun
 
-      have : t ∈ (alph.foldl stepAccum (base, ret)).2 := by
-        simp_all [base, P, stepAccum, alph]
-      exact fold_ind alph (base, ret) this
+      have hfold_start : t ∈ alph.foldl stepAccum ret := by
+        simpa [base, stepAccum, alph, h_vis] using hmem
+      exact fold_ind alph ret hfold_start
 
   have H : P ((visᶜ).card) := Nat.strongRecOn (motive := P) ((visᶜ).card) step
   exact H s vis ret rfl h
@@ -742,7 +660,7 @@ lemma dfs_sound_core
   (M : FST α Γ σ) [Fintype σ] [Fintype Γ] [FinEnum α]
   [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
   (s : σ) (vis : Finset σ) {t : Γ}
-  (h : t ∈ (M.dfs (a := a) s vis []).2) :
+  (h : t ∈ M.dfs (a := a) s vis []) :
   ∃ w qf, M.evalFrom s w = some (qf, [t]) := by
   have h_or := dfs_sound_core_or (M := M) (a := a) s vis [] h
   rcases h_or with h_in_seed | hex
@@ -754,7 +672,7 @@ singleton-producible. -/
 lemma dfs_sound {q : σ} {t : Γ}
   [ Fintype Γ ] [ Fintype σ ] [ a: FinEnum α ]
   [DecidableEq σ ] [DecidableEq α ] [DecidableEq Γ ]
-  (ht : t ∈ (M.dfs q {} []).2) :
+  (ht : t ∈ M.dfs q {} []) :
   ∃ w qf, M.evalFrom q w = some (qf, [t]) :=
   dfs_sound_core (M := M) (a := a) q ∅ ht
 
@@ -1012,7 +930,7 @@ lemma dfs_complete
   [DecidableEq σ] [DecidableEq α] [DecidableEq Γ]
   {q : σ} {t : Γ}
   (hex : ∃ w qf, M.evalFrom q w = some (qf, [t])) :
-  t ∈ (M.dfs (a := a) q ∅ []).2 := by
+  t ∈ M.dfs (a := a) q ∅ [] := by
   -- Strategy: decompose the singleton-output run into an epsilon prefix, a
   -- single producing transition, and an epsilon suffix. Convert the epsilon
   -- prefix into a DfsEpsReach witness, then apply dfs_complete_from_reach.
