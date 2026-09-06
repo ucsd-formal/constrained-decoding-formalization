@@ -22,7 +22,7 @@ variable [BEq V]
 /-- The FST that replaces each token by its flattened character sequence. -/
 def BuildDetokenizingFST [v: Vocabulary α V] : FST V α Unit :=
   let step := fun _ s => some (Unit.unit, v.flatten s)
-  FST.mk Unit.unit step [Unit.unit]
+  FST.mk Unit.unit step {Unit.unit}
 
 /-- Detokenize a token list by flattening each token and concatenating the
 results. -/
@@ -160,7 +160,7 @@ end Vocabulary
 
 /-- Compose detokenization with the lexing FST to obtain the token-level lexer
 used by grammar-constrained decoding. -/
-def BuildDetokLexer [v: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ) : FST V (Ch Γ) (Unit × LexingState σ) :=
+noncomputable def BuildDetokLexer [v: Vocabulary (Ch α) V] (spec: LexerSpec α Γ σ) : FST V (Ch Γ) (Unit × LexingState σ) :=
   let lex_fst := BuildLexingFST spec
   let detok := Detokenizing.BuildDetokenizingFST (v := v)
   FST.compose detok lex_fst

@@ -51,9 +51,9 @@ labels on accepting states.
 This is the interface from which the lexing FST and the grammar-constrained
 decoding checker are built.
 -/
-structure LexerSpec (α Γ σ) where
+structure LexerSpec (α γ σ) where
   automaton : FSA α σ
-  term: σ → Option Γ
+  term: σ → Option γ
   hterm: ∀ s, s ∈ automaton.accept ↔ (term s).isSome
   term_inj: ∀ s₁ s₂ t, term s₁ = some t ∧ term s₂ = some t → s₁ = s₂
   term_surj: ∀ t, ∃ s, term s = some t
@@ -268,7 +268,7 @@ def BuildLexingFST [BEq α] [DecidableEq α] (spec: LexerSpec α Γ σ)
       else
         none
 
-  ⟨new_q0, step, [new_q0]⟩
+  ⟨new_q0, step, {new_q0}⟩
 
 @[simp]
 def LexingFST_start (spec: LexerSpec α Γ σ) : (BuildLexingFST spec).start = LexingState.start := by

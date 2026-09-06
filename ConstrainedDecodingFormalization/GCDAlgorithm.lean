@@ -3,6 +3,8 @@ import ConstrainedDecodingFormalization.RealizableSequence
 import ConstrainedDecodingFormalization.Vocabulary
 import ConstrainedDecodingFormalization.ParserWithEOS
 
+noncomputable section
+
 /-!
 # Grammar-constrained decoding algorithm
 

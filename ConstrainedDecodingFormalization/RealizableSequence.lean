@@ -78,11 +78,11 @@ This is the executable object consumed later by parser preprocessing.
 -/
 def BuildInverseTokenSpannerTable
   (fst_comp : FST α Γ σ2) : Re Γ × (List Γ → σ2 → (List α)) := Id.run do
-  let Q := q.toList
+  let states := q.toList
   let A := a.toList
 
   let re :=
-    Q.flatMap (fun q =>
+    states.flatMap (fun q =>
       A.flatMap ( fun c =>
         match fst_comp.step q c with
         | none => []

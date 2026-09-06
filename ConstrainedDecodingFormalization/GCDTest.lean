@@ -3,6 +3,8 @@ import ConstrainedDecodingFormalization.Checker
 import ConstrainedDecodingFormalization.RealizableSequence
 import Mathlib.Tactic
 
+noncomputable section
+
 /-!
 # GCDTest
 
@@ -140,7 +142,7 @@ def jsonFSA : FSA JChar JLexState where
     | 21, 16 => some JLexState.nul
     | 22, 16 => some JLexState.nullDone
     | _, _ => none
-  accept := [
+  accept := {
     JLexState.white,
     JLexState.lbrace,
     JLexState.rbrace,
@@ -153,7 +155,7 @@ def jsonFSA : FSA JChar JLexState where
     JLexState.trueDone,
     JLexState.falseDone,
     JLexState.nullDone
-  ]
+  }
 
 /-- Terminal labels for accepting lexer states. -/
 def jsonTerm : JLexState → Option JTok

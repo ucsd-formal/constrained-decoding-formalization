@@ -32,7 +32,7 @@ variable
 structure FSA (α σ) where
   start : σ
   step : σ → α → Option σ
-  accept : List σ
+  accept : Finset σ
 
 /-! ### FSA: core structure and evaluation -/
 
@@ -172,8 +172,7 @@ variable [DecidableEq σ]
 instance (l : List α) : Decidable ( (A.eval l).isSome ) := inferInstance
 
 instance [BEq σ] [LawfulBEq σ] (l : List α) {h : (A.eval l).isSome} :
-  Decidable ((A.eval l).get h ∈ A.accept) :=
-  List.instDecidableMemOfLawfulBEq ((A.eval l).get h) A.accept
+  Decidable ((A.eval l).get h ∈ A.accept) := inferInstance
 
 instance [BEq σ] [LawfulBEq σ] (l : List α) : Decidable (l ∈ A.accepts) :=
   if h : (A.eval l).isSome then
@@ -207,9 +206,9 @@ def toDFA : DFA α (Option σ) :=
       | none => none
       | some s' => s'
 
-  let accept := A.accept.map (fun s => some s)
+  let accept := A.accept.image (fun s => some s)
 
-  ⟨step, A.start, SetLike.coe accept.toFinset⟩
+  ⟨step, A.start, SetLike.coe accept⟩
 
 lemma toDFA_none_not_accept : none ∉ A.toDFA.accept := by
   simp_all [toDFA]
@@ -313,7 +312,7 @@ without changing the underlying automaton.
 def toNFA : NFA α σ where
   step s a := (A.step s a).elim ∅ (fun s => {s})
   start := {A.start}
-  accept := A.accept.toFinset
+  accept := A.accept
 
 
 omit [DecidableEq α] [Inhabited α] [Fintype α] [Fintype σ]
@@ -376,10 +375,10 @@ end FSA
 
 /-- A deterministic finite-state transducer from inputs `α` to output words
 over `Γ`. -/
-structure FST (α Γ σ) where
+structure FST (α γ σ) where
   start : σ
-  step : σ → α → Option (σ × List Γ)
-  accept : List σ
+  step : σ → α → Option (σ × List γ)
+  accept : Finset σ
 
 namespace FST
 
@@ -968,18 +967,15 @@ def compose_fun_step (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (s₁ : σ) (s�
 
 /-- The composition of two FSTs `M₁`, `M₂` with `M₁.oalph = M₂.alph` gives a new FST `M'`, where
   `M'.alph = M₁.alph`, `M'.oalph = M₂.oalph` and `M'.eval w = M₂.eval (M₁.eval w)` -/
-def compose (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) : FST α β (σ × τ) :=
+noncomputable def compose (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) : FST α β (σ × τ) := by
+  classical
   let start : σ × τ := (M₁.start, M₂.start)
-  let accept := M₁.accept.flatMap (fun s₁ =>
-    M₂.accept.map (fun s₂ =>
-      (s₁, s₂)
-    )
-  )
+  let accept := M₁.accept.biUnion (fun s₁ => M₂.accept.image (fun s₂ => (s₁, s₂)))
   let step : (σ × τ) → α → Option ((σ × τ) × List β) := fun s a =>
     match s, a with
     | (s₁, s₂), a => compose_fun_step M₁ M₂ s₁ s₂ a
 
-  ⟨ start, step, accept⟩
+  exact ⟨ start, step, accept⟩
 
 /-- A direct semantic evaluator for the composition of `M₁` and `M₂`. -/
 def compose_fun_evalFrom (M₁ : FST α Γ σ) (M₂ : FST Γ β τ) (s₁ : σ) (s₂ : τ) (w : List α) : Option ((σ × τ) × List β) :=
