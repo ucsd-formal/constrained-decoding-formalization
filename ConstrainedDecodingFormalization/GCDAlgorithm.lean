@@ -79,19 +79,19 @@ def PreprocessParser (fst_comp : FST α Γ σa) (p : PDA Γ π σp) : PPTable α
 
 /-- Compute the valid next-token mask for a given parser state, automaton state,
 and current parser stack. -/
-def ComputeValidTokenMask (P : PDA Γ π σp) (itst : List Γ → σa → List α)
-  (table : PPTable α σp σa Γ) (qa : σa) (qp : σp) (st : List π) : List α :=
-  let accepted := (table qp qa).fst
+def ComputeValidTokenMask (P : PDA Γ π σp) (itst : List Γ → σa → List β)
+  (table : PPTable β σp σa Γ) (qa : σa) (qp : σp) (st : List π) : List β :=
+  let allowed := (table qp qa).fst
   let dependent := (table qp qa).2.1
-  let accepted :=
+  let allowed :=
     dependent.foldl
       (fun acc d =>
         if (P.evalFrom {(qp, st)} d) ≠ ∅ then
           acc ++ (itst d qa)
         else
           acc)
-      accepted
-  accepted.dedup
+      allowed
+  allowed.dedup
 
 /-! ### Full GCD checker assembly -/
 
